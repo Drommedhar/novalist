@@ -177,13 +177,6 @@
   cursor: pointer;
 }
 
-  width: 100%;
-  height: auto;
-  max-height: 220px;
-  object-fit: contain;
-  cursor: pointer;
-}
-
 .novalist-image-preview img.novalist-image {
   background: var(--background-primary);
 }
@@ -234,6 +227,54 @@
   padding: 10px;
   margin-bottom: 10px;
   border-radius: 6px;
+}
+
+.novalist-settings-section {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.novalist-settings-section h3 {
+  margin-top: 0;
+}
+
+.novalist-replacements {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.novalist-replacement-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr auto;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 2px 6px 2px;
+}
+
+.novalist-replacement-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.novalist-replacement-row input {
+  width: 100%;
+  min-width: 0;
+}
+
+.novalist-replacement-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
 }
 
 /* Hover Preview Enhancement */

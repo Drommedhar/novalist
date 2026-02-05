@@ -1,11 +1,47 @@
 {
   "projectPath": "NovelProject",
-  "autoReplacements": {
-    "'": "«",
-    "''": "»",
-    "--": "—",
-    "...": "…"
-  },
+  "autoReplacements": [
+    {
+      "start": "'",
+      "end": "'",
+      "startReplace": "»",
+      "endReplace": "«"
+    },
+    {
+      "start": "--",
+      "end": "--",
+      "startReplace": "—",
+      "endReplace": "—"
+    },
+    {
+      "start": "...",
+      "end": "...",
+      "startReplace": "…",
+      "endReplace": "…"
+    }
+  ],
+  "language": "de-guillemet",
+  "customLanguageLabel": "Test",
+  "customLanguageDefaults": [
+    {
+      "start": "'",
+      "end": "'",
+      "startReplace": "%",
+      "endReplace": "_"
+    },
+    {
+      "start": "--",
+      "end": "--",
+      "startReplace": "—",
+      "endReplace": "—"
+    },
+    {
+      "start": "...",
+      "end": "...",
+      "startReplace": "…",
+      "endReplace": "…"
+    }
+  ],
   "enableHoverPreview": true,
   "enableSidebarView": true,
   "enableMergeLog": false,

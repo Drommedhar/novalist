@@ -2,14 +2,76 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NOVELIST_SIDEBAR_VIEW_TYPE = void 0;
 const obsidian_1 = require("obsidian");
+const LANGUAGE_LABELS = {
+    'de-guillemet': 'German (Guillemets)',
+    'de-low': 'German (Low-High)',
+    en: 'English (Curly Quotes)',
+    fr: 'French (Guillemets with spaces)',
+    es: 'Spanish (Guillemets)',
+    it: 'Italian (Guillemets)',
+    pt: 'Portuguese (Guillemets)',
+    ru: 'Russian (Guillemets)',
+    pl: 'Polish (Low-High)',
+    cs: 'Czech (Low-High)',
+    sk: 'Slovak (Low-High)',
+    custom: 'Custom'
+};
+const COMMON_REPLACEMENTS = [
+    { start: '--', end: '--', startReplace: '—', endReplace: '—' },
+    { start: '...', end: '...', startReplace: '…', endReplace: '…' }
+];
+const LANGUAGE_DEFAULTS = {
+    'de-guillemet': [
+        { start: "'", end: "'", startReplace: '»', endReplace: '«' },
+        ...COMMON_REPLACEMENTS
+    ],
+    'de-low': [
+        { start: "'", end: "'", startReplace: '„', endReplace: '“' },
+        ...COMMON_REPLACEMENTS
+    ],
+    en: [
+        { start: "'", end: "'", startReplace: '“', endReplace: '”' },
+        ...COMMON_REPLACEMENTS
+    ],
+    fr: [
+        { start: "'", end: "'", startReplace: '«\u00a0', endReplace: '\u00a0»' },
+        ...COMMON_REPLACEMENTS
+    ],
+    es: [
+        { start: "'", end: "'", startReplace: '«', endReplace: '»' },
+        ...COMMON_REPLACEMENTS
+    ],
+    it: [
+        { start: "'", end: "'", startReplace: '«', endReplace: '»' },
+        ...COMMON_REPLACEMENTS
+    ],
+    pt: [
+        { start: "'", end: "'", startReplace: '«', endReplace: '»' },
+        ...COMMON_REPLACEMENTS
+    ],
+    ru: [
+        { start: "'", end: "'", startReplace: '«', endReplace: '»' },
+        ...COMMON_REPLACEMENTS
+    ],
+    pl: [
+        { start: "'", end: "'", startReplace: '„', endReplace: '”' },
+        ...COMMON_REPLACEMENTS
+    ],
+    cs: [
+        { start: "'", end: "'", startReplace: '„', endReplace: '“' },
+        ...COMMON_REPLACEMENTS
+    ],
+    sk: [
+        { start: "'", end: "'", startReplace: '„', endReplace: '“' },
+        ...COMMON_REPLACEMENTS
+    ]
+};
 const DEFAULT_SETTINGS = {
     projectPath: 'NovelProject',
-    autoReplacements: {
-        "'": "«",
-        "''": "»",
-        "--": "—",
-        "...": "…"
-    },
+    autoReplacements: LANGUAGE_DEFAULTS['de-guillemet'],
+    language: 'de-guillemet',
+    customLanguageLabel: 'Custom',
+    customLanguageDefaults: [],
     enableHoverPreview: true,
     enableSidebarView: true,
     enableMergeLog: false,
@@ -476,7 +538,8 @@ class NovalistSettingTab extends obsidian_1.PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
         containerEl.createEl('h2', { text: 'Novalist Settings' });
-        new obsidian_1.Setting(containerEl)
+        const projectSection = containerEl.createDiv('novalist-settings-section');
+        new obsidian_1.Setting(projectSection)
             .setName('Project Path')
             .setDesc('Root folder for your novel project')
             .addText(text => text
@@ -487,18 +550,80 @@ class NovalistSettingTab extends obsidian_1.PluginSettingTab {
             await this.plugin.saveSettings();
         }));
         // Auto Replacements
-        containerEl.createEl('h3', { text: 'Auto Replacements' });
-        containerEl.createEl('p', { text: 'Configure text shortcuts that will be auto-replaced while typing.' });
-        const replacementContainer = containerEl.createDiv('novalist-replacements');
-        Object.entries(this.plugin.settings.autoReplacements).forEach(([key, value]) => {
-            this.addReplacementSetting(replacementContainer, key, value);
+        const replacementsSection = containerEl.createDiv('novalist-settings-section');
+        replacementsSection.createEl('h3', { text: 'Auto Replacements' });
+        replacementsSection.createEl('p', { text: 'Configure text shortcuts that will be auto-replaced while typing.' });
+        new obsidian_1.Setting(replacementsSection)
+            .setName('Language')
+            .setDesc('Select the typographic language rules used for defaults')
+            .addDropdown(dropdown => {
+            const customLabel = this.plugin.settings.customLanguageLabel || LANGUAGE_LABELS.custom;
+            const options = {
+                ...LANGUAGE_LABELS,
+                custom: customLabel
+            };
+            dropdown
+                .addOptions(Object.fromEntries(Object.entries(options)))
+                .setValue(this.plugin.settings.language)
+                .onChange(async (value) => {
+                if (!(value in options))
+                    return;
+                this.plugin.settings.language = value;
+                this.plugin.applyLanguageDefaults(value);
+                await this.plugin.saveSettings();
+                this.display();
+            });
         });
-        new obsidian_1.ButtonComponent(containerEl)
+        if (this.plugin.settings.language === 'custom') {
+            new obsidian_1.Setting(replacementsSection)
+                .setName('Custom Language Name')
+                .setDesc('Display name for your custom language')
+                .addText(text => text
+                .setPlaceholder('Custom')
+                .setValue(this.plugin.settings.customLanguageLabel)
+                .onChange(async (value) => {
+                this.plugin.settings.customLanguageLabel = value || 'Custom';
+                await this.plugin.saveSettings();
+                this.display();
+            }));
+            new obsidian_1.Setting(replacementsSection)
+                .setName('Save current replacements as custom defaults')
+                .setDesc('Sets the custom language defaults to the current replacement pairs')
+                .addButton(btn => btn
+                .setButtonText('Save as Custom Defaults')
+                .onClick(async () => {
+                this.plugin.settings.customLanguageDefaults = this.plugin.clonePairs(this.plugin.settings.autoReplacements);
+                await this.plugin.saveSettings();
+                this.display();
+            }));
+        }
+        const replacementContainer = replacementsSection.createDiv('novalist-replacements');
+        const headerRow = replacementContainer.createDiv('novalist-replacement-header');
+        headerRow.createEl('div', { text: 'Start' });
+        headerRow.createEl('div', { text: 'End' });
+        headerRow.createEl('div', { text: 'Start Replace' });
+        headerRow.createEl('div', { text: 'End Replace' });
+        headerRow.createEl('div');
+        this.plugin.settings.autoReplacements.forEach((pair) => {
+            this.addReplacementSetting(replacementContainer, pair);
+        });
+        const replacementActions = replacementsSection.createDiv('novalist-replacement-actions');
+        new obsidian_1.ButtonComponent(replacementActions)
             .setButtonText('Add Replacement')
             .onClick(() => {
-            this.addReplacementSetting(replacementContainer, '', '');
+            this.plugin.settings.autoReplacements.push({ start: '', end: '', startReplace: '', endReplace: '' });
+            void this.plugin.saveSettings();
+            this.display();
         });
-        new obsidian_1.Setting(containerEl)
+        new obsidian_1.ButtonComponent(replacementActions)
+            .setButtonText('Reset to Language Defaults')
+            .onClick(async () => {
+            this.plugin.applyLanguageDefaults(this.plugin.settings.language);
+            await this.plugin.saveSettings();
+            this.display();
+        });
+        const behaviorSection = containerEl.createDiv('novalist-settings-section');
+        new obsidian_1.Setting(behaviorSection)
             .setName('Enable Hover Preview')
             .setDesc('Show character/location info on hover')
             .addToggle(toggle => toggle
@@ -507,7 +632,7 @@ class NovalistSettingTab extends obsidian_1.PluginSettingTab {
             this.plugin.settings.enableHoverPreview = value;
             await this.plugin.saveSettings();
         }));
-        new obsidian_1.Setting(containerEl)
+        new obsidian_1.Setting(behaviorSection)
             .setName('Enable Sidebar View')
             .setDesc('Show the Novalist context sidebar')
             .addToggle(toggle => toggle
@@ -516,7 +641,7 @@ class NovalistSettingTab extends obsidian_1.PluginSettingTab {
             this.plugin.settings.enableSidebarView = value;
             await this.plugin.saveSettings();
         }));
-        new obsidian_1.Setting(containerEl)
+        new obsidian_1.Setting(behaviorSection)
             .setName('Show Merge Log')
             .setDesc('Display merge logs in the Focus sidebar')
             .addToggle(toggle => toggle
@@ -526,30 +651,61 @@ class NovalistSettingTab extends obsidian_1.PluginSettingTab {
             await this.plugin.saveSettings();
         }));
     }
-    addReplacementSetting(container, key, value) {
-        const setting = new obsidian_1.Setting(container)
-            .addText(text => text
-            .setPlaceholder("Shortcut (e.g. '')")
-            .setValue(key)
-            .onChange(async (newKey) => {
-            delete this.plugin.settings.autoReplacements[key];
-            this.plugin.settings.autoReplacements[newKey] = value;
+    addReplacementSetting(container, pair) {
+        const row = container.createDiv('novalist-replacement-row');
+        const updateVisibility = () => {
+            const hasStart = pair.start.length > 0 && pair.startReplace.length > 0;
+            const emptyEnd = pair.end.length === 0 && pair.endReplace.length === 0;
+            const sameAsStart = pair.end === pair.start && pair.endReplace === pair.startReplace;
+            const isSingle = hasStart && (emptyEnd || sameAsStart);
+            endInput.inputEl.style.visibility = isSingle ? 'hidden' : 'visible';
+            endInput.inputEl.style.pointerEvents = isSingle ? 'none' : 'auto';
+            endReplaceInput.inputEl.style.visibility = isSingle ? 'hidden' : 'visible';
+            endReplaceInput.inputEl.style.pointerEvents = isSingle ? 'none' : 'auto';
+        };
+        const startInput = new obsidian_1.TextComponent(row)
+            .setPlaceholder('Start')
+            .setValue(pair.start)
+            .onChange(async (value) => {
+            pair.start = value;
             await this.plugin.saveSettings();
-        }))
-            .addText(text => text
-            .setPlaceholder('Replacement (e.g. »)')
-            .setValue(value)
-            .onChange(async (newValue) => {
-            this.plugin.settings.autoReplacements[key] = newValue;
+            updateVisibility();
+        });
+        const endInput = new obsidian_1.TextComponent(row)
+            .setPlaceholder('End')
+            .setValue(pair.end)
+            .onChange(async (value) => {
+            pair.end = value;
             await this.plugin.saveSettings();
-        }))
-            .addExtraButton(btn => btn
+            updateVisibility();
+        });
+        const startReplaceInput = new obsidian_1.TextComponent(row)
+            .setPlaceholder('Start Replace')
+            .setValue(pair.startReplace)
+            .onChange(async (value) => {
+            pair.startReplace = value;
+            await this.plugin.saveSettings();
+            updateVisibility();
+        });
+        const endReplaceInput = new obsidian_1.TextComponent(row)
+            .setPlaceholder('End Replace')
+            .setValue(pair.endReplace)
+            .onChange(async (value) => {
+            pair.endReplace = value;
+            await this.plugin.saveSettings();
+            updateVisibility();
+        });
+        new obsidian_1.ButtonComponent(row)
             .setIcon('trash')
+            .setTooltip('Remove')
             .onClick(async () => {
-            delete this.plugin.settings.autoReplacements[key];
+            const index = this.plugin.settings.autoReplacements.indexOf(pair);
+            if (index >= 0)
+                this.plugin.settings.autoReplacements.splice(index, 1);
             await this.plugin.saveSettings();
             this.display();
-        }));
+        });
+        updateVisibility();
     }
 }
 // ==========================================
@@ -775,9 +931,50 @@ class NovalistPlugin extends obsidian_1.Plugin {
     }
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        const legacyLanguage = this.settings.language;
+        if (legacyLanguage === 'de')
+            this.settings.language = 'de-guillemet';
+        if (legacyLanguage === 'en')
+            this.settings.language = 'en';
+        if (legacyLanguage === 'fr')
+            this.settings.language = 'fr';
+        if (!Array.isArray(this.settings.autoReplacements)) {
+            const legacy = this.settings.autoReplacements;
+            const pairs = [];
+            const open = legacy === null || legacy === void 0 ? void 0 : legacy["'"];
+            const close = legacy === null || legacy === void 0 ? void 0 : legacy["''"];
+            if (open || close) {
+                pairs.push({ start: "'", end: "'", startReplace: open || '', endReplace: close || '' });
+            }
+            for (const [key, value] of Object.entries(legacy || {})) {
+                if (key === "'" || key === "''")
+                    continue;
+                pairs.push({ start: key, end: key, startReplace: value, endReplace: value });
+            }
+            this.settings.autoReplacements = pairs;
+        }
+        if (!this.settings.autoReplacements || this.settings.autoReplacements.length === 0) {
+            this.applyLanguageDefaults(this.settings.language);
+        }
+        this.settings.autoReplacements = this.clonePairs(this.settings.autoReplacements || []);
     }
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+    applyLanguageDefaults(language) {
+        this.settings.autoReplacements = this.clonePairs(this.getLanguageAutoReplacements(language));
+    }
+    getLanguageAutoReplacements(language) {
+        var _a;
+        if (language === 'custom') {
+            return ((_a = this.settings.customLanguageDefaults) === null || _a === void 0 ? void 0 : _a.length)
+                ? this.settings.customLanguageDefaults
+                : this.settings.autoReplacements || [];
+        }
+        return LANGUAGE_DEFAULTS[language];
+    }
+    clonePairs(pairs) {
+        return pairs.map(pair => ({ ...pair }));
     }
     resolveConfigPath(configDir, basePath) {
         const normalized = configDir.replace(/\\/g, '/');
@@ -1498,9 +1695,50 @@ ${outline}
         const line = editor.getLine(cursor.line);
         let modified = false;
         let newLine = line;
-        for (const [shortcut, replacement] of Object.entries(this.settings.autoReplacements)) {
-            if (newLine.includes(shortcut)) {
-                newLine = newLine.replace(shortcut, replacement);
+        let cursorAdjustment = 0;
+        for (const pair of this.settings.autoReplacements) {
+            if (!pair.start)
+                continue;
+            if (pair.start === pair.end && this.isSmartQuoteToken(pair.start)) {
+                const skip = this.skipOverExistingCloser(newLine, cursor.ch + (newLine.length - line.length) + cursorAdjustment, pair);
+                if (skip.handled) {
+                    newLine = skip.line;
+                    cursorAdjustment += skip.cursorAdjustment;
+                    modified = true;
+                    continue;
+                }
+                const smartQuotedLine = this.applySmartQuotePair(newLine, pair);
+                if (smartQuotedLine !== newLine) {
+                    newLine = smartQuotedLine;
+                    modified = true;
+                }
+                const close = pair.endReplace;
+                if (close) {
+                    const collapse = this.collapseDuplicateCloser(newLine, cursor.ch + (newLine.length - line.length) + cursorAdjustment, close);
+                    if (collapse.changed) {
+                        newLine = collapse.line;
+                        cursorAdjustment += collapse.cursorAdjustment;
+                        modified = true;
+                    }
+                }
+                continue;
+            }
+            if (pair.start === pair.end) {
+                if (newLine.includes(pair.start)) {
+                    const replacement = pair.startReplace || pair.endReplace;
+                    if (replacement) {
+                        newLine = newLine.split(pair.start).join(replacement);
+                        modified = true;
+                    }
+                }
+                continue;
+            }
+            if (pair.start && pair.startReplace && newLine.includes(pair.start)) {
+                newLine = newLine.split(pair.start).join(pair.startReplace);
+                modified = true;
+            }
+            if (pair.end && pair.endReplace && newLine.includes(pair.end)) {
+                newLine = newLine.split(pair.end).join(pair.endReplace);
                 modified = true;
             }
         }
@@ -1508,8 +1746,89 @@ ${outline}
             editor.setLine(cursor.line, newLine);
             // Restore cursor position
             const diff = newLine.length - line.length;
-            editor.setCursor({ line: cursor.line, ch: cursor.ch + diff });
+            editor.setCursor({ line: cursor.line, ch: cursor.ch + diff + cursorAdjustment });
         }
+    }
+    applySmartQuotePair(line, pair) {
+        if (pair.start !== pair.end || pair.start.length !== 1)
+            return line;
+        const token = pair.start;
+        const openQuote = pair.startReplace;
+        const closeQuote = pair.endReplace;
+        if (!openQuote || !closeQuote || !line.includes(token))
+            return line;
+        let result = '';
+        let expectingOpen = true;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch !== token) {
+                result += ch;
+                continue;
+            }
+            const prev = i > 0 ? line[i - 1] : '';
+            const next = i + 1 < line.length ? line[i + 1] : '';
+            const prevIsWord = this.isWordChar(prev);
+            const nextIsWord = this.isWordChar(next);
+            // Keep apostrophes inside words unchanged
+            if (prevIsWord && nextIsWord) {
+                result += ch;
+                continue;
+            }
+            const prevIsSpace = prev === '' || /\s/.test(prev);
+            const nextIsSpace = next === '' || /\s/.test(next);
+            const prevIsOpenPunct = /[([{«„‚›<]/.test(prev) || prevIsSpace;
+            const nextIsClosePunct = /[)\]}»“’›>,.:;!?]/.test(next) || nextIsSpace;
+            const prevIsDash = /[—–-]/.test(prev);
+            let useOpen = null;
+            if ((prevIsOpenPunct || prevIsDash) && nextIsWord) {
+                useOpen = true;
+            }
+            else if (prevIsWord && nextIsClosePunct) {
+                useOpen = false;
+            }
+            else if (!prevIsWord && nextIsWord) {
+                useOpen = true;
+            }
+            else if (prevIsWord && !nextIsWord) {
+                useOpen = false;
+            }
+            if (useOpen === null) {
+                useOpen = expectingOpen;
+            }
+            result += useOpen ? openQuote : closeQuote;
+            expectingOpen = !useOpen;
+        }
+        return result;
+    }
+    isSmartQuoteToken(token) {
+        return token === "'" || token === '"';
+    }
+    collapseDuplicateCloser(line, cursorCh, close) {
+        const len = close.length;
+        if (len === 0)
+            return { line, cursorAdjustment: 0, changed: false };
+        if (cursorCh < len || cursorCh + len > line.length)
+            return { line, cursorAdjustment: 0, changed: false };
+        const before = line.slice(cursorCh - len, cursorCh);
+        const after = line.slice(cursorCh, cursorCh + len);
+        if (before !== close || after !== close)
+            return { line, cursorAdjustment: 0, changed: false };
+        const updated = line.slice(0, cursorCh - len) + line.slice(cursorCh);
+        return { line: updated, cursorAdjustment: len, changed: true };
+    }
+    skipOverExistingCloser(line, cursorCh, pair) {
+        const token = pair.start;
+        const close = pair.endReplace;
+        if (!token || !close)
+            return { line, cursorAdjustment: 0, handled: false };
+        if (cursorCh <= 0)
+            return { line, cursorAdjustment: 0, handled: false };
+        const typed = line.slice(cursorCh - token.length, cursorCh);
+        const ahead = line.slice(cursorCh, cursorCh + close.length);
+        if (typed !== token || ahead !== close)
+            return { line, cursorAdjustment: 0, handled: false };
+        const updated = line.slice(0, cursorCh - token.length) + line.slice(cursorCh);
+        return { line: updated, cursorAdjustment: close.length, handled: true };
     }
     isCursorInFrontmatter(editor) {
         var _a, _b;
@@ -1585,7 +1904,7 @@ ${outline}
         return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
     isWordChar(ch) {
-        return !!ch && /[A-Za-z0-9_]/.test(ch);
+        return !!ch && /[\p{L}\p{N}_]/u.test(ch);
     }
     getWordAtCursor(editor) {
         const cursor = editor.getCursor();
