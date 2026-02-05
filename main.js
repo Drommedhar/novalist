@@ -180,10 +180,12 @@ class NovalistSidebarView extends obsidian_1.ItemView {
                         const text = [(_b = chapterInfo.overrides) === null || _b === void 0 ? void 0 : _b.further_info, chapterInfo.info].filter(Boolean).join('\n');
                         const md = block.createDiv('novalist-markdown');
                         await obsidian_1.MarkdownRenderer.renderMarkdown(text, md, '', this);
+                        this.plugin.linkifyElement(md);
                     }
                 }
                 const md = details.createDiv('novalist-markdown');
                 await obsidian_1.MarkdownRenderer.renderMarkdown(body, md, '', this);
+                this.plugin.linkifyElement(md);
                 const logSnapshot = this.plugin.getMergeLogSnapshot();
                 if (this.plugin.settings.enableMergeLog && logSnapshot) {
                     const logSection = details.createDiv('novalist-section');
@@ -643,11 +645,13 @@ class NovalistPlugin extends obsidian_1.Plugin {
                 defaultMod: true,
             });
         }
-        // Auto-link character/location names in reading view for hover previews (chapters only)
+        // Auto-link character/location names in reading view for hover previews
         this.registerMarkdownPostProcessor((el, ctx) => {
             if (!this.settings.enableHoverPreview)
                 return;
-            if (!(ctx === null || ctx === void 0 ? void 0 : ctx.sourcePath) || !this.isChapterPath(ctx.sourcePath))
+            if (!(ctx === null || ctx === void 0 ? void 0 : ctx.sourcePath))
+                return;
+            if (!this.isChapterPath(ctx.sourcePath) && !this.isCharacterPath(ctx.sourcePath) && !this.isLocationPath(ctx.sourcePath))
                 return;
             this.linkifyElement(el);
         });
@@ -1775,6 +1779,28 @@ ${outline}
     }
     isChapterPath(path) {
         const folder = `${this.settings.projectPath}/${this.settings.chapterFolder}`;
+        if (!path.startsWith(folder))
+            return false;
+        if (!path.endsWith('.md'))
+            return false;
+        const base = path.split('/').pop() || '';
+        if (base.startsWith('_'))
+            return false;
+        return true;
+    }
+    isCharacterPath(path) {
+        const folder = `${this.settings.projectPath}/${this.settings.characterFolder}`;
+        if (!path.startsWith(folder))
+            return false;
+        if (!path.endsWith('.md'))
+            return false;
+        const base = path.split('/').pop() || '';
+        if (base.startsWith('_'))
+            return false;
+        return true;
+    }
+    isLocationPath(path) {
+        const folder = `${this.settings.projectPath}/${this.settings.locationFolder}`;
         if (!path.startsWith(folder))
             return false;
         if (!path.endsWith('.md'))

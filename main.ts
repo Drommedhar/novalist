@@ -240,11 +240,13 @@ class NovalistSidebarView extends ItemView {
             const text = [chapterInfo.overrides?.further_info, chapterInfo.info].filter(Boolean).join('\n');
             const md = block.createDiv('novalist-markdown');
             await MarkdownRenderer.renderMarkdown(text, md, '', this);
+            this.plugin.linkifyElement(md);
           }
         }
 
         const md = details.createDiv('novalist-markdown');
         await MarkdownRenderer.renderMarkdown(body, md, '', this);
+        this.plugin.linkifyElement(md);
 
         const logSnapshot = this.plugin.getMergeLogSnapshot();
         if (this.plugin.settings.enableMergeLog && logSnapshot) {
@@ -803,10 +805,11 @@ export default class NovalistPlugin extends Plugin {
       });
     }
 
-    // Auto-link character/location names in reading view for hover previews (chapters only)
+    // Auto-link character/location names in reading view for hover previews
     this.registerMarkdownPostProcessor((el, ctx) => {
       if (!this.settings.enableHoverPreview) return;
-      if (!ctx?.sourcePath || !this.isChapterPath(ctx.sourcePath)) return;
+      if (!ctx?.sourcePath) return;
+      if (!this.isChapterPath(ctx.sourcePath) && !this.isCharacterPath(ctx.sourcePath) && !this.isLocationPath(ctx.sourcePath)) return;
       this.linkifyElement(el);
     });
 
@@ -2043,6 +2046,24 @@ ${outline}
     return true;
   }
 
+  private isCharacterPath(path: string): boolean {
+    const folder = `${this.settings.projectPath}/${this.settings.characterFolder}`;
+    if (!path.startsWith(folder)) return false;
+    if (!path.endsWith('.md')) return false;
+    const base = path.split('/').pop() || '';
+    if (base.startsWith('_')) return false;
+    return true;
+  }
+
+  private isLocationPath(path: string): boolean {
+    const folder = `${this.settings.projectPath}/${this.settings.locationFolder}`;
+    if (!path.startsWith(folder)) return false;
+    if (!path.endsWith('.md')) return false;
+    const base = path.split('/').pop() || '';
+    if (base.startsWith('_')) return false;
+    return true;
+  }
+
   private isTemplateFile(file: TFile): boolean {
     if (file.basename.startsWith('_')) return true;
     const templatesPath = `${this.settings.projectPath}/Templates/`;
@@ -2206,7 +2227,7 @@ locations: []
     return true;
   }
 
-  private linkifyElement(el: HTMLElement) {
+  linkifyElement(el: HTMLElement) {
     if (!this.entityRegex || this.entityIndex.size === 0) return;
 
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
