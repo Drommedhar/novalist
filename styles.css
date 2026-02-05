@@ -3,6 +3,21 @@
 .novalist-sidebar {
   padding: 10px;
   font-size: 14px;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.novalist-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--background-primary);
+  padding: 10px 10px 8px;
+  margin: -10px -10px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .novalist-sidebar-header {
@@ -51,11 +66,21 @@
   background: var(--background-secondary);
   border-radius: 8px;
   padding: 10px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .novalist-selected-entity {
   background: var(--background-primary-alt);
   border: 1px solid var(--background-modifier-border);
+  flex: 1 1 auto;
+  width: calc(100% + 20px);
+  max-width: none;
+  box-sizing: border-box;
+  margin-bottom: 0;
+  margin-left: -10px;
+  margin-right: -10px;
+  border-radius: 0 0 8px 8px;
 }
 
 .novalist-section-title {

@@ -211,11 +211,13 @@ class NovalistSidebarView extends ItemView {
       });
     };
 
+    const sticky = container.createDiv('novalist-sticky');
+
     // Header
-    container.createEl('h3', { text: 'Novalist Context', cls: 'novalist-sidebar-header' });
+    sticky.createEl('h3', { text: 'Novalist Context', cls: 'novalist-sidebar-header' });
 
     // Tabs
-    const tabs = container.createDiv('novalist-tabs');
+    const tabs = sticky.createDiv('novalist-tabs');
     const setTab = (tab: 'actions' | 'context' | 'focus') => {
       this.autoFocusActive = false;
       this.activeTab = tab;
@@ -275,6 +277,53 @@ class NovalistSidebarView extends ItemView {
             ? await this.plugin.getChapterOverrideImages(this.selectedEntity.file, this.currentChapterFile)
             : null;
           const images = chapterOverrideImages ?? baseImages;
+          if (images.length > 0) {
+            const imageRow = details.createDiv('novalist-image-row');
+            imageRow.createEl('span', { text: 'Images', cls: 'novalist-image-label' });
+
+            const dropdown = new DropdownComponent(imageRow);
+            for (const img of images) {
+              dropdown.addOption(img.name, img.name);
+            }
+
+            const key = this.selectedEntity.file.path;
+            const selected = this.selectedImageByPath.get(key) || images[0].name;
+            dropdown.setValue(selected);
+
+            const imageContainer = details.createDiv('novalist-image-preview');
+            const renderImage = async (name: string) => {
+              const img = images.find(i => i.name === name) || images[0];
+              this.selectedImageByPath.set(key, img.name);
+              imageContainer.empty();
+
+              const file = this.plugin.resolveImagePath(img.path, this.selectedEntity!.file.path);
+              if (!file) {
+                imageContainer.createEl('p', { text: 'Image not found.', cls: 'novalist-empty' });
+                return;
+              }
+
+              const src = this.plugin.app.vault.getResourcePath(file);
+              const imgEl = imageContainer.createEl('img', {
+                attr: { src, alt: img.name },
+                cls: 'novalist-image'
+              });
+              imgEl.addEventListener('click', () => {
+                const leaf = this.plugin.app.workspace.getLeaf(true);
+                void leaf.openFile(file);
+              });
+            };
+
+            dropdown.onChange((val) => {
+              void renderImage(val);
+            });
+
+            await renderImage(selected);
+          }
+        }
+
+        if (this.selectedEntity.type === 'location') {
+          body = this.plugin.stripImagesSection(body);
+          const images = this.plugin.parseImagesSection(content);
           if (images.length > 0) {
             const imageRow = details.createDiv('novalist-image-row');
             imageRow.createEl('span', { text: 'Images', cls: 'novalist-image-label' });
@@ -1310,19 +1359,22 @@ export default class NovalistPlugin extends Plugin {
     
     // Location Template
     const locTemplate = `---
-name: 
-images: []
----
+  name: 
+  images: []
+  ---
 
-# Location Info
+  # Location Info
 
-## Description
+  ## Description
 
-## Images
+  ## Images
 
-## Appearances
-<!-- Auto-populated list of chapters -->
-`;
+  - Definition: path/to/image.png
+  - Side View: path/to/side-view.png
+
+  ## Appearances
+  <!-- Auto-populated list of chapters -->
+  `;
     
     // Chapter Description Template
     const chapDescTemplate = `---
@@ -1424,19 +1476,22 @@ locations: []
     const filepath = `${folder}/${filename}`;
 
     const content = `---
-name: ${name}
-images: []
----
+  name: ${name}
+  images: []
+  ---
 
-# ${name}
+  # ${name}
 
-## Description
-${description}
+  ## Description
+  ${description}
 
-## Images
+  ## Images
 
-## Appearances
-`;
+  - Definition: path/to/image.png
+  - Side View: path/to/side-view.png
+
+  ## Appearances
+  `;
 
     try {
       await vault.create(filepath, content);
