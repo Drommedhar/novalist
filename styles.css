@@ -302,6 +302,96 @@
   flex-wrap: wrap;
 }
 
+.novalist-explorer {
+  padding: 10px;
+  font-size: 14px;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.novalist-explorer-header {
+  margin: 0 0 6px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.novalist-explorer-tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--background-secondary);
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.novalist-explorer-tab {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.novalist-explorer-tab.is-active {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.novalist-explorer-tab:hover {
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+}
+
+.novalist-explorer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.novalist-explorer-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.novalist-explorer-item:hover {
+  border-color: var(--interactive-accent);
+  transform: translateX(3px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.novalist-explorer-item.is-selected {
+  background-color: var(--background-modifier-selection);
+  border-color: var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.novalist-explorer-item.is-drop-target {
+  border-color: var(--interactive-accent);
+  background: var(--background-primary-alt);
+}
+
+.novalist-explorer-item.is-dragging {
+  opacity: 0.6;
+}
+
+.novalist-explorer-label {
+  color: var(--text-normal);
+}
+
 /* Hover Preview Enhancement */
 .novalist-hover-popover {
   max-width: 400px;
@@ -329,3 +419,46 @@
   text-decoration-style: dotted;
   cursor: pointer;
 }
+
+.novalist-input-group {
+    margin-bottom: 15px;
+}
+.novalist-suggestions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.novalist-chip {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    border-radius: 12px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-secondary);
+    cursor: pointer;
+}
+
+.novalist-chip:hover {
+    background-color: var(--background-secondary-alt);
+}
+/* Explorer Badge */
+.novalist-explorer-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.novalist-explorer-badge {
+    font-size: 0.75em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background-color: var(--background-modifier-border);
+    color: var(--text-muted);
+    margin-left: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60px;
+}
+

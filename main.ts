@@ -1,8 +1,6 @@
 import {
   Plugin,
   TFile,
-  TFolder,
-  Vault,
   WorkspaceLeaf,
   ItemView,
   Setting,
@@ -15,13 +13,40 @@ import {
   Modal,
   App,
   ButtonComponent,
-  TextComponent,
-  DropdownComponent
+  DropdownComponent,
+  EditorSuggest,
+  EditorPosition,
+  EditorSuggestContext,
+  EditorSuggestTriggerInfo,
+  Menu
 } from 'obsidian';
+import cytoscape from 'cytoscape';
+// @ts-ignore
+import dagre from 'cytoscape-dagre';
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
+cytoscape.use(dagre as any);
 
 // ==========================================
 // INTERFACES
 // ==========================================
+
+interface NovalistSettings {
+  projectPath: string;
+  autoReplacements: AutoReplacementPair[];
+  language: LanguageKey;
+  customLanguageLabel: string;
+  customLanguageDefaults: AutoReplacementPair[];
+  enableMergeLog: boolean;
+  enableHoverPreview: boolean;
+  enableSidebarView: boolean;
+  enableCustomExplorer: boolean;
+  characterFolder: string;
+  locationFolder: string;
+  chapterDescFolder: string;
+  chapterFolder: string;
+  relationshipPairs: Record<string, string[]>;
+}
 
 interface AutoReplacementPair {
   start: string;
@@ -45,17 +70,17 @@ type LanguageKey =
   | 'custom';
 
 const LANGUAGE_LABELS: Record<LanguageKey, string> = {
-  'de-guillemet': 'German (Guillemets)',
-  'de-low': 'German (Low-High)',
-  en: 'English (Curly Quotes)',
-  fr: 'French (Guillemets with spaces)',
-  es: 'Spanish (Guillemets)',
-  it: 'Italian (Guillemets)',
-  pt: 'Portuguese (Guillemets)',
-  ru: 'Russian (Guillemets)',
-  pl: 'Polish (Low-High)',
-  cs: 'Czech (Low-High)',
-  sk: 'Slovak (Low-High)',
+  'de-guillemet': 'German (guillemets)',
+  'de-low': 'German (low-high)',
+  en: 'English (curly quotes)',
+  fr: 'French (guillemets with spaces)',
+  es: 'Spanish (guillemets)',
+  it: 'Italian (guillemets)',
+  pt: 'Portuguese (guillemets)',
+  ru: 'Russian (guillemets)',
+  pl: 'Polish (low-high)',
+  cs: 'Czech (low-high)',
+  sk: 'Slovak (low-high)',
   custom: 'Custom'
 };
 
@@ -111,34 +136,43 @@ const LANGUAGE_DEFAULTS: Record<Exclude<LanguageKey, 'custom'>, AutoReplacementP
   ]
 };
 
-interface NovalistSettings {
-  projectPath: string;
-  autoReplacements: AutoReplacementPair[];
-  language: LanguageKey;
-  customLanguageLabel: string;
-  customLanguageDefaults: AutoReplacementPair[];
-  enableHoverPreview: boolean;
-  enableSidebarView: boolean;
-  enableMergeLog: boolean;
-  characterFolder: string;
-  locationFolder: string;
-  chapterDescFolder: string;
-  chapterFolder: string;
-}
+const cloneAutoReplacements = (pairs: AutoReplacementPair[]): AutoReplacementPair[] =>
+  pairs.map((pair) => ({ ...pair }));
+
+type FrontmatterValue = string | string[];
+
+type CodeMirrorLine = {
+  text: string;
+  from: number;
+};
+
+type CodeMirrorDoc = {
+  lineAt: (pos: number) => CodeMirrorLine;
+};
+
+type CodeMirrorLike = {
+  dom: HTMLElement;
+  posAtCoords: (coords: { x: number; y: number }) => number | null;
+  state: { doc: CodeMirrorDoc };
+};
+
+type EditorWithCodeMirror = Editor & { cm?: CodeMirrorLike };
 
 const DEFAULT_SETTINGS: NovalistSettings = {
   projectPath: 'NovelProject',
-  autoReplacements: LANGUAGE_DEFAULTS['de-guillemet'],
-  language: 'de-guillemet',
+  autoReplacements: cloneAutoReplacements(LANGUAGE_DEFAULTS['de-low']),
+  language: 'de-low',
   customLanguageLabel: 'Custom',
   customLanguageDefaults: [],
+  enableMergeLog: false,
   enableHoverPreview: true,
   enableSidebarView: true,
-  enableMergeLog: false,
+  enableCustomExplorer: false,
   characterFolder: 'Characters',
   locationFolder: 'Locations',
   chapterDescFolder: 'ChapterDescriptions',
-  chapterFolder: 'Chapters'
+  chapterFolder: 'Chapters',
+  relationshipPairs: {}
 };
 
 // ==========================================
@@ -146,6 +180,7 @@ const DEFAULT_SETTINGS: NovalistSettings = {
 // ==========================================
 
 export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
+export const NOVELIST_EXPLORER_VIEW_TYPE = 'novalist-explorer';
 
 class NovalistSidebarView extends ItemView {
   plugin: NovalistPlugin;
@@ -167,7 +202,7 @@ class NovalistSidebarView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'Novalist Context';
+    return 'Novalist context';
   }
 
   getIcon(): string {
@@ -176,17 +211,22 @@ class NovalistSidebarView extends ItemView {
 
   async onOpen() {
     this.containerEl.empty();
-    this.render();
+    void this.render();
     
     // Listen for active file changes
     this.registerEvent(
       this.app.workspace.on('file-open', (file) => {
         if (file && file.extension === 'md') {
           this.currentChapterFile = file;
-          this.render();
+          void this.render();
         }
       })
     );
+    
+    // Listen for vault modifications (e.g. role changes)
+    this.registerEvent(this.app.vault.on('modify', () => {
+      void this.render();
+    }));
   }
 
   async render() {
@@ -195,8 +235,8 @@ class NovalistSidebarView extends ItemView {
     container.addClass('novalist-sidebar');
 
     container.onclick = (evt) => {
-      const target = evt.target as HTMLElement | null;
-      if (!target) return;
+      const target = evt.target;
+      if (!(target instanceof HTMLElement)) return;
       const link = target.closest('a');
       if (!link || !container.contains(link)) return;
 
@@ -211,18 +251,16 @@ class NovalistSidebarView extends ItemView {
       });
     };
 
-    const sticky = container.createDiv('novalist-sticky');
-
     // Header
-    sticky.createEl('h3', { text: 'Novalist Context', cls: 'novalist-sidebar-header' });
+    container.createEl('h3', { text: 'Novalist context', cls: 'novalist-sidebar-header' });
 
     // Tabs
-    const tabs = sticky.createDiv('novalist-tabs');
+    const tabs = container.createDiv('novalist-tabs');
     const setTab = (tab: 'actions' | 'context' | 'focus') => {
       this.autoFocusActive = false;
       this.activeTab = tab;
       if (tab !== 'focus') this.lastNonFocusTab = tab;
-      this.render();
+      void this.render();
     };
 
     const tabOrder: Array<{ id: 'actions' | 'context' | 'focus'; label: string }> = [
@@ -249,7 +287,8 @@ class NovalistSidebarView extends ItemView {
       if (!this.selectedEntity) {
         details.createEl('p', { text: 'No focused item.', cls: 'novalist-empty' });
       } else {
-        const content = await this.plugin.app.vault.read(this.selectedEntity.file);
+        const selectedEntity = this.selectedEntity;
+        const content = await this.plugin.app.vault.read(selectedEntity.file);
         let body = this.plugin.stripFrontmatter(content);
         const title = this.plugin.extractTitle(body);
         if (title) {
@@ -257,152 +296,78 @@ class NovalistSidebarView extends ItemView {
           body = this.plugin.removeTitle(body);
         }
 
-        if (this.selectedEntity.type === 'character') {
+        const images = this.plugin.parseImagesSection(content);
+        const renderImages = async () => {
+          if (images.length === 0) return;
+          const imageRow = details.createDiv('novalist-image-row');
+          imageRow.createEl('span', { text: 'Images', cls: 'novalist-image-label' });
+
+          const dropdown = new DropdownComponent(imageRow);
+          for (const img of images) {
+            dropdown.addOption(img.name, img.name);
+          }
+
+          const key = selectedEntity.file.path;
+          const selected = this.selectedImageByPath.get(key) || images[0].name;
+          dropdown.setValue(selected);
+
+          const imageContainer = details.createDiv('novalist-image-preview');
+          const renderImage = async (name: string) => {
+            const img = images.find(i => i.name === name) || images[0];
+            this.selectedImageByPath.set(key, img.name);
+            imageContainer.empty();
+
+            const file = this.plugin.resolveImagePath(img.path, selectedEntity.file.path);
+            if (!file) {
+              imageContainer.createEl('p', { text: 'Image not found.', cls: 'novalist-empty' });
+              return;
+            }
+
+            const src = this.plugin.app.vault.getResourcePath(file);
+            imageContainer.createEl('img', { attr: { src, alt: img.name } });
+          };
+
+          dropdown.onChange((val) => {
+            void renderImage(val);
+          });
+
+          await renderImage(selected);
+        };
+
+        if (selectedEntity.type === 'character') {
           body = this.plugin.stripChapterRelevantSection(body);
           body = this.plugin.stripImagesSection(body);
-          const baseImages = this.plugin.parseImagesSection(content);
           if (this.currentChapterFile) {
-            const charData = await this.plugin.parseCharacterFile(this.selectedEntity.file);
+            const charData = await this.plugin.parseCharacterFile(selectedEntity.file);
             const chapterKey = await this.plugin.getChapterNameForFile(this.currentChapterFile);
             const chapterInfo = charData.chapterInfos.find(ci => ci.chapter === chapterKey);
             if (chapterInfo) {
-              void this.plugin.logMerge(`Focus merge start. Character: ${this.selectedEntity.file.path}, Chapter: ${this.currentChapterFile.path}, ChapterKey: ${chapterKey}`);
-              void this.plugin.logMerge(`Chapter overrides input: ${JSON.stringify(chapterInfo.overrides)} | Info: ${chapterInfo.info}`);
               body = this.plugin.applyCharacterOverridesToBody(body, chapterInfo.overrides);
-              void this.plugin.logMerge(`Focus merge complete. Body length: ${body.length}`);
             }
           }
-
-          const chapterOverrideImages = this.currentChapterFile
-            ? await this.plugin.getChapterOverrideImages(this.selectedEntity.file, this.currentChapterFile)
-            : null;
-          const images = chapterOverrideImages ?? baseImages;
-          if (images.length > 0) {
-            const imageRow = details.createDiv('novalist-image-row');
-            imageRow.createEl('span', { text: 'Images', cls: 'novalist-image-label' });
-
-            const dropdown = new DropdownComponent(imageRow);
-            for (const img of images) {
-              dropdown.addOption(img.name, img.name);
-            }
-
-            const key = this.selectedEntity.file.path;
-            const selected = this.selectedImageByPath.get(key) || images[0].name;
-            dropdown.setValue(selected);
-
-            const imageContainer = details.createDiv('novalist-image-preview');
-            const renderImage = async (name: string) => {
-              const img = images.find(i => i.name === name) || images[0];
-              this.selectedImageByPath.set(key, img.name);
-              imageContainer.empty();
-
-              const file = this.plugin.resolveImagePath(img.path, this.selectedEntity!.file.path);
-              if (!file) {
-                imageContainer.createEl('p', { text: 'Image not found.', cls: 'novalist-empty' });
-                return;
-              }
-
-              const src = this.plugin.app.vault.getResourcePath(file);
-              const imgEl = imageContainer.createEl('img', {
-                attr: { src, alt: img.name },
-                cls: 'novalist-image'
-              });
-              imgEl.addEventListener('click', () => {
-                const leaf = this.plugin.app.workspace.getLeaf(true);
-                void leaf.openFile(file);
-              });
-            };
-
-            dropdown.onChange((val) => {
-              void renderImage(val);
-            });
-
-            await renderImage(selected);
-          }
+          await renderImages();
         }
 
-        if (this.selectedEntity.type === 'location') {
+        if (selectedEntity.type === 'location') {
           body = this.plugin.stripImagesSection(body);
-          const images = this.plugin.parseImagesSection(content);
-          if (images.length > 0) {
-            const imageRow = details.createDiv('novalist-image-row');
-            imageRow.createEl('span', { text: 'Images', cls: 'novalist-image-label' });
-
-            const dropdown = new DropdownComponent(imageRow);
-            for (const img of images) {
-              dropdown.addOption(img.name, img.name);
-            }
-
-            const key = this.selectedEntity.file.path;
-            const selected = this.selectedImageByPath.get(key) || images[0].name;
-            dropdown.setValue(selected);
-
-            const imageContainer = details.createDiv('novalist-image-preview');
-            const renderImage = async (name: string) => {
-              const img = images.find(i => i.name === name) || images[0];
-              this.selectedImageByPath.set(key, img.name);
-              imageContainer.empty();
-
-              const file = this.plugin.resolveImagePath(img.path, this.selectedEntity!.file.path);
-              if (!file) {
-                imageContainer.createEl('p', { text: 'Image not found.', cls: 'novalist-empty' });
-                return;
-              }
-
-              const src = this.plugin.app.vault.getResourcePath(file);
-              const imgEl = imageContainer.createEl('img', {
-                attr: { src, alt: img.name },
-                cls: 'novalist-image'
-              });
-              imgEl.addEventListener('click', () => {
-                const leaf = this.plugin.app.workspace.getLeaf(true);
-                void leaf.openFile(file);
-              });
-            };
-
-            dropdown.onChange((val) => {
-              void renderImage(val);
-            });
-
-            await renderImage(selected);
-          }
+          await renderImages();
         }
 
-        if (this.selectedEntity.type === 'character' && this.currentChapterFile) {
-          const charData = await this.plugin.parseCharacterFile(this.selectedEntity.file);
+        if (selectedEntity.type === 'character' && this.currentChapterFile) {
+          const charData = await this.plugin.parseCharacterFile(selectedEntity.file);
           const chapterKey = await this.plugin.getChapterNameForFile(this.currentChapterFile);
           const chapterInfo = charData.chapterInfos.find(ci => ci.chapter === chapterKey);
           if (chapterInfo && (chapterInfo.overrides?.further_info || chapterInfo.info)) {
             const block = details.createDiv('novalist-section');
-            block.createEl('h4', { text: `Chapter Notes: ${chapterKey}`, cls: 'novalist-section-title' });
+            block.createEl('h4', { text: `Chapter notes: ${chapterKey}`, cls: 'novalist-section-title' });
             const text = [chapterInfo.overrides?.further_info, chapterInfo.info].filter(Boolean).join('\n');
             const md = block.createDiv('novalist-markdown');
-            await MarkdownRenderer.renderMarkdown(text, md, '', this);
-            this.plugin.linkifyElement(md);
+            await MarkdownRenderer.render(this.app, text, md, '', this);
           }
         }
 
         const md = details.createDiv('novalist-markdown');
-        await MarkdownRenderer.renderMarkdown(body, md, '', this);
-        this.plugin.linkifyElement(md);
-
-        const logSnapshot = this.plugin.getMergeLogSnapshot();
-        if (this.plugin.settings.enableMergeLog && logSnapshot) {
-          const logSection = details.createDiv('novalist-section');
-          logSection.createEl('h4', { text: 'Merge Log (latest)', cls: 'novalist-section-title' });
-          const logActions = logSection.createDiv('novalist-merge-log-actions');
-          new ButtonComponent(logActions)
-            .setButtonText('Copy Log')
-            .onClick(() => {
-              void navigator.clipboard?.writeText(logSnapshot);
-              new Notice('Merge log copied.');
-            });
-          const logArea = logSection.createEl('textarea', { cls: 'novalist-merge-log' });
-          logArea.value = logSnapshot;
-          logArea.setAttr('readonly', 'true');
-          logArea.setAttr('rows', '10');
-          logArea.setAttr('wrap', 'off');
-        }
+        await MarkdownRenderer.render(this.app, body, md, '', this);
       }
 
       return;
@@ -410,32 +375,54 @@ class NovalistSidebarView extends ItemView {
 
     if (this.activeTab === 'actions') {
       const actionsSection = container.createDiv('novalist-section');
-      actionsSection.createEl('h4', { text: '⚡ Quick Actions', cls: 'novalist-section-title' });
+      actionsSection.createEl('h4', { text: 'Quick actions', cls: 'novalist-section-title' });
 
       const btnContainer = actionsSection.createDiv('novalist-actions');
 
       new ButtonComponent(btnContainer)
-        .setButtonText('Add Character')
+        .setButtonText('Add character')
         .onClick(() => this.plugin.openCharacterModal());
 
       new ButtonComponent(btnContainer)
-        .setButtonText('Add Location')
+        .setButtonText('Add location')
         .onClick(() => this.plugin.openLocationModal());
 
       new ButtonComponent(btnContainer)
-        .setButtonText('Add Chapter Description')
+        .setButtonText('Add chapter description')
         .onClick(() => this.plugin.openChapterDescriptionModal());
 
       return;
     }
 
     if (!this.currentChapterFile) {
+      // Clear legacy content just in case
+      // Actually container.empty() at the top handles this.
+      // But let's ensure we are not appending to existing.
       container.createEl('p', { text: 'Open a chapter file to see context.', cls: 'novalist-empty' });
       return;
     }
 
     // Get chapter data
+    // We should create a dedicated container for the list so we can clear it specifically if needed,
+    // but container.empty() should have done it.
+    // The issue is likely race condition if render() is called multiple times.
+    
+    const contextContent = container.createDiv('novalist-context-content');
+    
     const chapterData = await this.plugin.parseChapterFile(this.currentChapterFile);
+    
+    // Check if the container was cleared while we were awaiting
+    // If render() was called again, container.empty() would have removed contextContent.
+    // But if we have a reference to contextContent, we are appending to a detached element?
+    // No, contextContent is child of container. If container is emptied, contextContent is removed from DOM.
+    // So appending to it won't show up.
+    // BUT, if the *new* render call happens, it creates a NEW container content.
+    // If the OLD render call finishes its await, it might still try to append?
+    // No, because we are creating elements on `contextContent` which is now detached.
+    
+    // UNLESS `this.containerEl` is not what I think it is.
+    
+    // Let's protect against race conditions by tracking a render ID.
     
     // Characters Section
     if (chapterData.characters.length > 0) {
@@ -455,8 +442,8 @@ class NovalistSidebarView extends ItemView {
       }
 
       if (characterItems.length > 0) {
-        const charSection = container.createDiv('novalist-section');
-        charSection.createEl('h4', { text: '👤 Characters', cls: 'novalist-section-title' });
+        const charSection = contextContent.createDiv('novalist-section');
+        charSection.createEl('h4', { text: 'Characters', cls: 'novalist-section-title' });
 
         const charList = charSection.createDiv('novalist-list');
         for (const itemData of characterItems) {
@@ -471,12 +458,14 @@ class NovalistSidebarView extends ItemView {
           const info = item.createDiv('novalist-item-info');
           const age = chapterInfo?.overrides?.age || charData.age;
           const relationship = chapterInfo?.overrides?.relationship || charData.relationship;
+          const role = charData.role;
           if (age) info.createEl('span', { text: `Age: ${age}`, cls: 'novalist-tag' });
           if (relationship) info.createEl('span', { text: relationship, cls: 'novalist-tag' });
+          if (role) info.createEl('span', { text: role, cls: 'novalist-tag' });
 
           // Hover/Click to open
           item.addEventListener('click', () => {
-            this.plugin.focusEntityByName(`${charData.name} ${charData.surname}`.trim(), true);
+            void this.plugin.focusEntityByName(`${charData.name} ${charData.surname}`.trim(), true);
           });
         }
       }
@@ -494,8 +483,8 @@ class NovalistSidebarView extends ItemView {
       }
 
       if (locationItems.length > 0) {
-        const locSection = container.createDiv('novalist-section');
-        locSection.createEl('h4', { text: '📍 Locations', cls: 'novalist-section-title' });
+        const locSection = contextContent.createDiv('novalist-section');
+        locSection.createEl('h4', { text: 'Locations', cls: 'novalist-section-title' });
 
         const locList = locSection.createDiv('novalist-list');
         for (const locData of locationItems) {
@@ -505,7 +494,7 @@ class NovalistSidebarView extends ItemView {
             item.createEl('p', { text: locData.description });
           }
           item.addEventListener('click', () => {
-            this.plugin.focusEntityByName(locData.name, true);
+            void this.plugin.focusEntityByName(locData.name, true);
           });
         }
       }
@@ -539,22 +528,728 @@ class NovalistSidebarView extends ItemView {
       this.activeTab = 'focus';
     }
 
-    this.render();
+    void this.render();
+  }
+}
+
+class NovalistExplorerView extends ItemView {
+  plugin: NovalistPlugin;
+  private activeTab: 'chapters' | 'characters' | 'locations' = 'chapters';
+  private dragChapterIndex: number | null = null;
+  private dragCharacterPath: string | null = null;
+  private selectedFiles: Set<string> = new Set();
+  private lastSelectedPath: string | null = null;
+
+  constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType(): string {
+    return NOVELIST_EXPLORER_VIEW_TYPE;
+  }
+
+  getDisplayText(): string {
+    return 'Novalist explorer';
+  }
+
+  getIcon(): string {
+    return 'folder';
+  }
+
+  async onOpen() {
+    this.containerEl.empty();
+    void this.render();
+
+    this.registerEvent(this.app.vault.on('create', () => {
+      void this.render();
+    }));
+    this.registerEvent(this.app.vault.on('delete', () => {
+      void this.render();
+    }));
+    this.registerEvent(this.app.vault.on('rename', () => {
+      void this.render();
+    }));
+    this.registerEvent(this.app.vault.on('modify', () => {
+      void this.render();
+    }));
+  }
+
+  async render() {
+    const container = this.containerEl;
+    container.empty();
+    container.addClass('novalist-explorer');
+
+    container.createEl('h3', { text: 'Novalist explorer', cls: 'novalist-explorer-header' });
+
+    const tabs = container.createDiv('novalist-explorer-tabs');
+    const tabOrder: Array<{ id: 'chapters' | 'characters' | 'locations'; label: string }> = [
+      { id: 'chapters', label: 'Chapters' },
+      { id: 'characters', label: 'Characters' },
+      { id: 'locations', label: 'Locations' }
+    ];
+
+    const setTab = (tab: 'chapters' | 'characters' | 'locations') => {
+      this.activeTab = tab;
+      void this.render();
+    };
+
+    for (const tab of tabOrder) {
+      const btn = tabs.createEl('button', {
+        text: tab.label,
+        cls: `novalist-explorer-tab ${this.activeTab === tab.id ? 'is-active' : ''}`
+      });
+      btn.addEventListener('click', () => setTab(tab.id));
+    }
+
+    const list = container.createDiv('novalist-explorer-list');
+
+    if (this.activeTab === 'chapters') {
+      const chapters = await this.plugin.getChapterList();
+      this.renderChapterList(list, chapters, 'No chapters found.');
+      return;
+    }
+
+    if (this.activeTab === 'characters') {
+      const characters = await this.plugin.getCharacterList();
+      this.renderCharacterGroupedList(list, characters, 'No characters found.');
+      return;
+    }
+
+    const locations = await this.plugin.getLocationList();
+    this.renderList(list, locations, 'No locations found.');
+  }
+
+  private renderChapterList(
+    list: HTMLElement,
+    items: Array<{ name: string; file: TFile; descFile: TFile }>,
+    emptyMessage: string
+  ) {
+    if (items.length === 0) {
+      list.createEl('p', { text: emptyMessage, cls: 'novalist-empty' });
+      return;
+    }
+
+    items.forEach((item, index) => {
+      const row = list.createDiv('novalist-explorer-item');
+      row.setAttribute('draggable', 'true');
+      row.createEl('span', { text: `${index + 1}. ${item.name}`, cls: 'novalist-explorer-label' });
+
+      row.addEventListener('click', () => {
+        void this.openFileInExplorer(item.file);
+      });
+
+      row.addEventListener('dragstart', (evt) => {
+        this.dragChapterIndex = index;
+        row.addClass('is-dragging');
+        if (evt.dataTransfer) {
+          evt.dataTransfer.effectAllowed = 'move';
+          evt.dataTransfer.setData('text/plain', String(index));
+        }
+      });
+
+      row.addEventListener('dragend', () => {
+        this.dragChapterIndex = null;
+        row.removeClass('is-dragging');
+        list.querySelectorAll('.is-drop-target').forEach((el) => el.removeClass('is-drop-target'));
+      });
+
+      row.addEventListener('dragover', (evt) => {
+        evt.preventDefault();
+        row.addClass('is-drop-target');
+      });
+
+      row.addEventListener('dragleave', () => {
+        row.removeClass('is-drop-target');
+      });
+
+      row.addEventListener('drop', (evt) => {
+        evt.preventDefault();
+        row.removeClass('is-drop-target');
+        const fallback = evt.dataTransfer?.getData('text/plain');
+        const sourceIndex = this.dragChapterIndex ?? (fallback ? Number(fallback) : NaN);
+        if (Number.isNaN(sourceIndex)) return;
+        if (sourceIndex === index) return;
+
+        const reordered = [...items];
+        const [moved] = reordered.splice(sourceIndex, 1);
+        reordered.splice(index, 0, moved);
+        this.dragChapterIndex = null;
+
+        void this.plugin.updateChapterOrder(reordered.map((entry) => entry.descFile));
+        void this.render();
+      });
+    });
+  }
+
+  private renderCharacterGroupedList(
+    list: HTMLElement,
+    items: Array<{ name: string; file: TFile; role: string; gender: string }>,
+    emptyMessage: string
+  ) {
+    if (items.length === 0) {
+      list.createEl('p', { text: emptyMessage, cls: 'novalist-empty' });
+      return;
+    }
+
+    const groups: Record<string, Array<{ name: string; file: TFile; role: string; gender: string }>> = {};
+    
+    // Initialize standard groups to ensure ordering
+    const standardGroups = [
+      CHARACTER_ROLE_LABELS.main,
+      CHARACTER_ROLE_LABELS.side,
+      CHARACTER_ROLE_LABELS.background
+    ];
+    
+    // Distribute items
+    for (const item of items) {
+      const roleLabel = item.role || CHARACTER_ROLE_LABELS.side; // Default to Side if missing
+      
+      if (!groups[roleLabel]) {
+        groups[roleLabel] = [];
+      }
+      groups[roleLabel].push(item);
+    }
+
+    // Determine render order: Standard groups first, then others alphabetically
+    const existingRoles = Object.keys(groups);
+    const otherRoles = existingRoles.filter(r => !standardGroups.includes(r)).sort();
+    
+    // Only include standard groups if they exist in 'groups' (i.e., have items)
+    const rolesToRender = [
+      ...standardGroups.filter(r => groups[r]), 
+      ...otherRoles
+    ];
+
+    // Create a flattened visual order list for range selection logic
+    const visualOrder: Array<{ file: TFile }> = [];
+    for (const roleLabel of rolesToRender) {
+         if (groups[roleLabel]) {
+             visualOrder.push(...groups[roleLabel]);
+         }
+    }
+
+    for (const roleLabel of rolesToRender) {
+      const groupItems = groups[roleLabel];
+      if (!groupItems || groupItems.length === 0) continue;
+
+
+      // Group Header
+      const headerObj = list.createDiv('novalist-group-header');
+      headerObj.createEl('span', { text: roleLabel }); 
+
+      // Header drop target
+      headerObj.addEventListener('dragover', (evt) => {
+        evt.preventDefault();
+        headerObj.addClass('is-drop-target');
+      });
+      headerObj.addEventListener('dragleave', () => {
+        headerObj.removeClass('is-drop-target');
+      });
+      headerObj.addEventListener('drop', (evt) => {
+        evt.preventDefault();
+        headerObj.removeClass('is-drop-target');
+        
+        let paths: string[] = [];
+        try {
+            const json = evt.dataTransfer?.getData('application/json');
+            if (json) paths = JSON.parse(json) as string[];
+        } catch {
+          // ignore invalid json
+        }
+
+        if (paths.length === 0) {
+            const txt = evt.dataTransfer?.getData('text/plain');
+            if (txt) paths = [txt];
+        }
+        
+        for (const path of paths) {
+             const sourceItem = items.find(i => i.file.path === path);
+             if (sourceItem && sourceItem.role !== roleLabel) {
+                 void this.plugin.updateCharacterRole(sourceItem.file, roleLabel).then(() => {
+                     // Auto-refresh via file modify event
+                 });
+             }
+        }
+      });
+
+      const groupContainer = list.createDiv('novalist-group-container');
+      
+      for (const item of groupItems) {
+        const row = groupContainer.createDiv('novalist-explorer-item');
+        row.setAttribute('draggable', 'true');
+        row.dataset.path = item.file.path;
+        row.createEl('span', { text: item.name, cls: 'novalist-explorer-label' });
+        
+        if (item.gender) {
+            row.createEl('span', { 
+                text: item.gender, 
+                cls: 'novalist-explorer-badge novalist-gender-badge', 
+                attr: { title: `Gender: ${item.gender}` }
+            });
+        }
+
+        if (this.selectedFiles.has(item.file.path)) {
+            row.addClass('is-selected');
+        }
+
+        row.addEventListener('click', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                if (this.selectedFiles.has(item.file.path)) {
+                    this.selectedFiles.delete(item.file.path);
+                } else {
+                    this.selectedFiles.add(item.file.path);
+                    this.lastSelectedPath = item.file.path;
+                }
+            } else if (e.shiftKey && this.lastSelectedPath) {
+                const startIdx = visualOrder.findIndex(i => i.file.path === this.lastSelectedPath);
+                const endIdx = visualOrder.findIndex(i => i.file.path === item.file.path);
+                
+                if (startIdx !== -1 && endIdx !== -1) {
+                    const low = Math.min(startIdx, endIdx);
+                    const high = Math.max(startIdx, endIdx);
+                    this.selectedFiles.clear();
+                    for(let k = low; k <= high; k++) {
+                        this.selectedFiles.add(visualOrder[k].file.path);
+                    }
+                } else {
+                     this.selectedFiles.add(item.file.path);
+                }
+            } else {
+                this.selectedFiles.clear();
+                this.selectedFiles.add(item.file.path);
+                this.lastSelectedPath = item.file.path;
+                void this.openFileInExplorer(item.file);
+            }
+            
+            // Update UI without full re-render
+            const allRows = list.querySelectorAll('.novalist-explorer-item');
+            allRows.forEach((r) => {
+                const el = r as HTMLElement;
+                const p = el.dataset.path;
+                if (p && this.selectedFiles.has(p)) {
+                   el.addClass('is-selected');
+                } else {
+                   el.removeClass('is-selected');
+                }
+            });
+            
+            e.stopPropagation();
+        });
+
+        // Drag Start
+        row.addEventListener('dragstart', (evt) => {
+           let dragPaths: string[] = [];
+           if (this.selectedFiles.has(item.file.path)) {
+               dragPaths = Array.from(this.selectedFiles);
+           } else {
+               this.selectedFiles.clear();
+               this.selectedFiles.add(item.file.path);
+               this.lastSelectedPath = item.file.path;
+               list.querySelectorAll('.is-selected').forEach(el => el.removeClass('is-selected'));
+               row.addClass('is-selected');
+               dragPaths = [item.file.path];
+           }
+        
+           this.dragCharacterPath = item.file.path; 
+           row.addClass('is-dragging');
+           if (evt.dataTransfer) {
+             evt.dataTransfer.effectAllowed = 'move';
+             evt.dataTransfer.setData('application/json', JSON.stringify(dragPaths));
+             evt.dataTransfer.setData('text/plain', item.file.path);
+           }
+        });
+
+        // Drag End
+        row.addEventListener('dragend', () => {
+           this.dragCharacterPath = null;
+           row.removeClass('is-dragging');
+           list.querySelectorAll('.is-drop-target').forEach(el => el.removeClass('is-drop-target'));
+        });
+
+        // Drop on Item (to put into this group)
+        row.addEventListener('dragover', (evt) => {
+          evt.preventDefault();
+          row.addClass('is-drop-target'); 
+        });
+
+        row.addEventListener('dragleave', () => {
+          row.removeClass('is-drop-target');
+        });
+
+        row.addEventListener('drop', (evt) => {
+          evt.preventDefault();
+          row.removeClass('is-drop-target');
+          
+          let paths: string[] = [];
+          try {
+             const json = evt.dataTransfer?.getData('application/json');
+             if (json) paths = JSON.parse(json) as string[];
+          } catch {
+            // ignore invalid json
+          }
+ 
+          if (paths.length === 0) {
+             const txt = evt.dataTransfer?.getData('text/plain');
+             if (txt) paths = [txt];
+          }
+
+          for (const path of paths) {
+              const sourceItem = items.find(i => i.file.path === path);
+              if (sourceItem && sourceItem.role !== roleLabel) {
+                   void this.plugin.updateCharacterRole(sourceItem.file, roleLabel);
+              }
+          }
+        });
+      }
+    }
+  }
+
+  private renderList(
+    list: HTMLElement,
+    items: Array<{ name: string; file: TFile }>,
+    emptyMessage: string
+  ) {
+    if (items.length === 0) {
+      list.createEl('p', { text: emptyMessage, cls: 'novalist-empty' });
+      return;
+    }
+
+    for (const item of items) {
+      const row = list.createDiv('novalist-explorer-item');
+      row.createEl('span', { text: item.name, cls: 'novalist-explorer-label' });
+      row.addEventListener('click', () => {
+        void this.openFileInExplorer(item.file);
+      });
+    }
+  }
+
+  private async openFileInExplorer(file: TFile): Promise<void> {
+    const existingLeaf = this.app.workspace.getLeavesOfType('markdown')
+      .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
+
+    const leaf = existingLeaf ?? this.app.workspace.getLeaf(true);
+    await leaf.openFile(file);
+    await this.app.workspace.revealLeaf(leaf);
   }
 }
 
 // ==========================================
+// SUGGESTERS
+// ==========================================
+
+class RelationshipKeySuggester extends EditorSuggest<string> {
+  plugin: NovalistPlugin;
+
+  constructor(plugin: NovalistPlugin) {
+    super(plugin.app);
+    this.plugin = plugin;
+  }
+
+  onTrigger(cursor: EditorPosition, editor: Editor, _: TFile): EditorSuggestTriggerInfo | null {
+    const line = editor.getLine(cursor.line);
+    // Trigger if we are in a bullet point that looks like open metadata: "- **Key"
+    const match = line.match(/^(\s*[-*]\s*\*\*)([^*]*)$/);
+    if (!match) return null;
+
+    const prefix = match[1];
+    const query = match[2];
+
+    return {
+      start: { line: cursor.line, ch: prefix.length },
+      end: cursor,
+      query: query
+    };
+  }
+
+  getSuggestions(context: EditorSuggestContext): string[] {
+    const query = context.query.toLowerCase();
+    return Array.from(this.plugin.knownRelationshipKeys)
+       .filter(key => key.toLowerCase().includes(query))
+       .sort((a,b) => a.localeCompare(b));
+  }
+
+  renderSuggestion(key: string, el: HTMLElement): void {
+    el.createEl("div", { text: key });
+  }
+
+  selectSuggestion(key: string, _: MouseEvent | KeyboardEvent): void {
+     if (!this.context) return;
+     const editor = this.context.editor;
+     const completion = `${key}**: `;
+     const range = { start: this.context.start, end: this.context.end };
+     editor.replaceRange(completion, range.start, range.end);
+     // Move cursor to end
+     const newCursor = { 
+         line: range.start.line, 
+         ch: range.start.ch + completion.length 
+     };
+     editor.setCursor(newCursor);
+  }
+}
+
+class CharacterSuggester extends EditorSuggest<TFile> {
+  plugin: NovalistPlugin;
+
+  constructor(plugin: NovalistPlugin) {
+    super(plugin.app);
+    this.plugin = plugin;
+  }
+
+  onTrigger(cursor: EditorPosition, editor: Editor, _: TFile): EditorSuggestTriggerInfo | null {
+    const line = editor.getLine(cursor.line);
+    // Trigger if we are in a bullet point that looks like metadata: "- **Key**: Value" or "- **Key:** Value"
+    const match = line.match(/^(\s*[-*]\s*\*\*(.+?)\*\*([:]?)\s*)(.*)$/);
+    if (!match) return null;
+
+    const prefix = match[1];
+    let key = match[2];
+    const colonOutside = match[3];
+    const valueStr = match[4];
+
+    // Check for colon presence either inside or outside
+    if (!colonOutside && !key.trim().endsWith(':')) return null;
+
+    // Clean key (remove trailing colon if inside)
+    if (key.trim().endsWith(':')) key = key.trim().slice(0, -1);
+
+    // Check if cursor is in the value part
+    if (cursor.ch < prefix.length) return null;
+
+    // Check for "General Information" context if possible, but line regex is strong enough.
+    // Also support comma separation: "Value1, Value2"
+    // We want the current partial term.
+    const subCursor = cursor.ch - prefix.length;
+    const valueBeforeCursor = valueStr.substring(0, subCursor);
+    const lastComma = valueBeforeCursor.lastIndexOf(',');
+    
+    const query = lastComma === -1 ? valueBeforeCursor.trim() : valueBeforeCursor.substring(lastComma + 1).trim();
+
+    // Start index for replacement
+    // const startCh = prefix.length + (lastComma === -1 ? 0 : lastComma + 1) + (valueBeforeCursor.match(/,\s*$/) ? valueBeforeCursor.match(/,\s*$/)![0].length : 0);
+    
+    // Calculate start based on query position in valueBeforeCursor
+    let extraOffset = 0;
+    if (lastComma !== -1) {
+        // Find non-whitespace start after comma
+        const afterComma = valueBeforeCursor.substring(lastComma + 1);
+        const leadingSpaceMatch = afterComma.match(/^\s*/);
+        extraOffset = (lastComma + 1) + (leadingSpaceMatch ? leadingSpaceMatch[0].length : 0);
+    }
+
+    return {
+      start: { line: cursor.line, ch: prefix.length + extraOffset },
+      end: cursor,
+      query: query
+    };
+  }
+
+  async getSuggestions(context: EditorSuggestContext): Promise<TFile[]> {
+    const chars = await this.plugin.getCharacterList();
+    const query = context.query.toLowerCase().replace(/^\[\[/, '');
+    const activeFile = this.plugin.app.workspace.getActiveFile();
+    
+    return chars
+      .map(c => c.file)
+      .filter(f => {
+         if (activeFile && f.path === activeFile.path) return false;
+         return f.basename.toLowerCase().includes(query) || f.path.toLowerCase().includes(query);
+      });
+  }
+
+  renderSuggestion(file: TFile, el: HTMLElement): void {
+    el.createEl("div", { text: file.basename });
+    // el.createEl("small", { text: file.path });
+  }
+
+  selectSuggestion(file: TFile, _: MouseEvent | KeyboardEvent): void {
+     if (!this.context) return;
+     const editor = this.context.editor;
+     const range = { start: this.context.start, end: this.context.end };
+     
+     // Insert the wikilink
+     const link = `[[${file.basename}]]`;
+     editor.replaceRange(link, range.start, range.end);
+     const newCursor = { line: range.start.line, ch: range.start.ch + link.length };
+     editor.setCursor(newCursor);
+     
+     // Trigger reciprocal update
+     const activeFile = this.plugin.app.workspace.getActiveFile();
+     
+     // Re-extract key from line
+     const lineNum = this.context.start.line;
+     const line = editor.getLine(lineNum);
+     const match = line.match(/^(\s*[-*]\s*\*\*(.+?)\*\*([:]?)\s*)/);
+     
+     let key = '';
+     if (match) {
+        key = match[2];
+        if (key.trim().endsWith(':')) key = key.trim().slice(0, -1);
+     }
+     
+     if (activeFile && key) {
+         void (async () => {
+             // Attempt to deduce inverse key from siblings
+             let deducedKey: string | null = null;
+             
+             // Extract all wikilinks from the line
+             const linkRegex = /\[\[(.*?)\]\]/g;
+             let linkMatch: RegExpExecArray | null;
+             while ((linkMatch = linkRegex.exec(line)) !== null) {
+                 if (!linkMatch[1]) continue;
+                 const rawName = linkMatch[1];
+                 const name = rawName.split('|')[0]; // Handle aliases if any
+                 if (name === file.basename) continue; // Skip the one we just added
+
+                 // Find the file for this name
+                 const siblingFile = this.plugin.app.metadataCache.getFirstLinkpathDest(name, activeFile.path);
+                 if (siblingFile && siblingFile instanceof TFile) {
+                      // Check sibling file for reference to activeFile
+                      const content = await this.plugin.app.vault.read(siblingFile);
+                      // Look for: - **Role**: ... [[ActiveFile]] ...
+                      const escapeName = activeFile.basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                      // Matches: - **KEY**: [[Active]] or - **KEY**: [[Other]], [[Active]]
+                      const siblingRegex = new RegExp(`^\\s*[-*]\\s*\\*\\*(.+?)\\*\\*[:]?:.*?\\[\\[${escapeName}(?:\\|.*?)?\\]\\]`, 'm');
+                      const siblingMatch = content.match(siblingRegex);
+                      if (siblingMatch) {
+                          deducedKey = siblingMatch[1].trim();
+                          // Cleanup trailing colon if captured
+                          if (deducedKey.endsWith(':')) deducedKey = deducedKey.slice(0, -1).trim();
+                          break; 
+                      }
+                 }
+             }
+
+             if (deducedKey) {
+                 new Notice(`Auto-linked relationship as "${deducedKey}" based on existing siblings.`);
+                 void this.plugin.addRelationshipToFile(file, deducedKey, activeFile.basename);
+             } else {
+                 new InverseRelationshipModal(
+                     this.plugin.app, 
+                     this.plugin, 
+                     activeFile, 
+                     file, 
+                     key, 
+                     (inverseKey) => {
+                         void this.plugin.addRelationshipToFile(file, inverseKey, activeFile.basename);
+                         void this.plugin.learnRelationshipPair(key, inverseKey);
+                     }
+                 ).open();
+             }
+         })();
+     }
+  }
+} 
+// ==========================================
 // MODALS
 // ==========================================
+
+class InverseRelationshipModal extends Modal {
+  private targetFile: TFile;
+  private sourceFile: TFile;
+  private relationshipKey: string;
+  private inverseKey: string = '';
+  private plugin: NovalistPlugin;
+  onSubmit: (inverseKey: string) => void;
+
+  constructor(app: App, plugin: NovalistPlugin, sourceFile: TFile, targetFile: TFile, relationshipKey: string, onSubmit: (k: string) => void) {
+    super(app);
+    this.plugin = plugin;
+    this.sourceFile = sourceFile;
+    this.targetFile = targetFile;
+    this.relationshipKey = relationshipKey;
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h3', { text: 'Define inverse relationship' });
+    contentEl.createEl('p', { 
+        text: `You defined ${this.targetFile.basename} as "**${this.relationshipKey}**" of ${this.sourceFile.basename}.` 
+    });
+    contentEl.createEl('p', { 
+        text: `How is ${this.sourceFile.basename} related to ${this.targetFile.basename}?` 
+    });
+
+    const inputDiv = contentEl.createDiv('novalist-input-group');
+    const input = inputDiv.createEl('input', { type: 'text', placeholder: 'e.g. Child, Sibling...' });
+
+    // Suggestion bubbles
+    const suggestionsDiv = contentEl.createDiv('novalist-suggestions');
+
+    const renderSuggestions = () => {
+       suggestionsDiv.empty();
+       const currentInput = input.value.toLowerCase();
+       
+       // 1. Priortize known inverses for this key
+       const knownInverses = this.plugin.settings.relationshipPairs[this.relationshipKey] || [];
+       const allKeys = Array.from(this.plugin.knownRelationshipKeys);
+
+       // Filter and combine
+       const suggestions = new Set<string>();
+       
+       // Always show known inverses first
+       knownInverses.forEach(k => suggestions.add(k));
+       
+       // Add matching keys from vault
+       allKeys
+         .filter(k => k.toLowerCase().includes(currentInput) && !suggestions.has(k))
+         .sort()
+         .slice(0, 5) // Limit generic suggestions
+         .forEach(k => suggestions.add(k));
+
+       suggestions.forEach(key => {
+          const chip = suggestionsDiv.createEl('button', { text: key, cls: 'novalist-chip' });
+          
+          chip.addEventListener('click', () => {
+             this.submit(key);
+          });
+       });
+    };
+
+    input.addEventListener('input', renderSuggestions);
+    // Initial render
+    renderSuggestions();
+
+    input.focus();
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            this.submit(input.value);
+        }
+    });
+
+    new ButtonComponent(contentEl)
+        .setButtonText('Update')
+        .setCta()
+        .onClick(() => this.submit(input.value));
+  }
+
+  submit(value: string) {
+      if (!value.trim()) {
+          new Notice('Please enter a relationship label.');
+          return;
+      }
+      this.onSubmit(value.trim());
+      this.close();
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
 
 class CharacterModal extends Modal {
   plugin: NovalistPlugin;
   name: string = '';
   surname: string = '';
+  gender: string = '';
   age: string = '';
   relationship: string = '';
+  role: CharacterRole = 'main';
   furtherInfo: string = '';
   private previewEl: HTMLElement | null = null;
+  private previewComponent = new Component();
 
   constructor(app: App, plugin: NovalistPlugin) {
     super(app);
@@ -564,8 +1259,9 @@ class CharacterModal extends Modal {
   async onOpen() {
     const { contentEl } = this;
     contentEl.empty();
+    this.previewComponent.load();
     
-    contentEl.createEl('h2', { text: 'Create New Character' });
+    contentEl.createEl('h2', { text: 'Create new character' });
     
     // Name
     new Setting(contentEl)
@@ -577,6 +1273,11 @@ class CharacterModal extends Modal {
       .setName('Surname')
       .addText(text => text.onChange(value => this.surname = value));
     
+    // Gender
+    new Setting(contentEl)
+      .setName('Gender')
+      .addText(text => text.onChange(value => this.gender = value));
+
     // Age
     new Setting(contentEl)
       .setName('Age')
@@ -586,10 +1287,24 @@ class CharacterModal extends Modal {
     new Setting(contentEl)
       .setName('Relationship')
       .addText(text => text.onChange(value => this.relationship = value));
+
+    new Setting(contentEl)
+      .setName('Character role')
+      .addDropdown((dropdown) => {
+        for (const [key, label] of Object.entries(CHARACTER_ROLE_LABELS)) {
+          dropdown.addOption(key, label);
+        }
+        dropdown.setValue(this.role);
+        dropdown.onChange((value) => {
+          if (value in CHARACTER_ROLE_LABELS) {
+            this.role = value as CharacterRole;
+          }
+        });
+      });
     
     // Further Info
     new Setting(contentEl)
-      .setName('Further Information')
+      .setName('Further information')
       .addTextArea(text => text
         .setPlaceholder('Supports Markdown')
         .onChange(async (value) => {
@@ -613,7 +1328,15 @@ class CharacterModal extends Modal {
       .setButtonText('Create')
       .setCta()
       .onClick(async () => {
-        await this.plugin.createCharacter(this.name, this.surname, this.age, this.relationship, this.furtherInfo);
+        await this.plugin.createCharacter(
+          this.name,
+          this.surname,
+          this.age,
+          this.gender,
+          this.relationship,
+          this.role,
+          this.furtherInfo
+        );
         this.close();
       });
   }
@@ -621,6 +1344,7 @@ class CharacterModal extends Modal {
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
+    this.previewComponent.unload();
   }
 
   private async renderPreview() {
@@ -628,7 +1352,7 @@ class CharacterModal extends Modal {
     this.previewEl.empty();
     this.previewEl.createEl('small', { text: 'Preview' });
     const container = this.previewEl.createDiv();
-    await MarkdownRenderer.renderMarkdown(this.furtherInfo || '', container, '', this.plugin);
+    await MarkdownRenderer.render(this.app, this.furtherInfo || '', container, '', this.previewComponent);
   }
 }
 
@@ -646,7 +1370,7 @@ class LocationModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     
-    contentEl.createEl('h2', { text: 'Create New Location' });
+    contentEl.createEl('h2', { text: 'Create new location' });
     
     new Setting(contentEl)
       .setName('Name')
@@ -692,7 +1416,7 @@ class ChapterDescriptionModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
 
-    contentEl.createEl('h2', { text: 'Create Chapter Description' });
+    contentEl.createEl('h2', { text: 'Create chapter description' });
 
     new Setting(contentEl)
       .setName('Name')
@@ -745,107 +1469,129 @@ class NovalistSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Novalist Settings' });
+    new Setting(containerEl)
+      .setName('Preferences')
+      .setHeading();
 
-    const projectSection = containerEl.createDiv('novalist-settings-section');
-
-    new Setting(projectSection)
-      .setName('Project Path')
+    new Setting(containerEl)
+      .setName('Project path')
       .setDesc('Root folder for your novel project')
       .addText(text => text
-        .setPlaceholder('NovelProject')
+        .setPlaceholder('Novel project')
         .setValue(this.plugin.settings.projectPath)
         .onChange(async (value) => {
           this.plugin.settings.projectPath = value;
           await this.plugin.saveSettings();
         }));
 
-    // Auto Replacements
-    const replacementsSection = containerEl.createDiv('novalist-settings-section');
-    replacementsSection.createEl('h3', { text: 'Auto Replacements' });
-    replacementsSection.createEl('p', { text: 'Configure text shortcuts that will be auto-replaced while typing.' });
-
-    new Setting(replacementsSection)
+    new Setting(containerEl)
       .setName('Language')
-      .setDesc('Select the typographic language rules used for defaults')
-      .addDropdown(dropdown => {
-        const customLabel = this.plugin.settings.customLanguageLabel || LANGUAGE_LABELS.custom;
-        const options = {
-          ...LANGUAGE_LABELS,
-          custom: customLabel
-        } as Record<string, string>;
-
-        dropdown
-          .addOptions(Object.fromEntries(Object.entries(options)))
-          .setValue(this.plugin.settings.language)
-          .onChange(async (value) => {
-            if (!(value in options)) return;
-            this.plugin.settings.language = value as LanguageKey;
-            this.plugin.applyLanguageDefaults(value as LanguageKey);
-            await this.plugin.saveSettings();
-            this.display();
-          });
+      .setDesc('Choose default replacements for quotes and punctuation.')
+      .addDropdown((dropdown) => {
+        for (const [key, label] of Object.entries(LANGUAGE_LABELS)) {
+          dropdown.addOption(key, label);
+        }
+        dropdown.setValue(this.plugin.settings.language);
+        dropdown.onChange(async (value) => {
+          if (!(value in LANGUAGE_LABELS)) return;
+          const nextLanguage = value as LanguageKey;
+          this.plugin.settings.language = nextLanguage;
+          if (nextLanguage !== 'custom') {
+            const defaults = LANGUAGE_DEFAULTS[nextLanguage];
+            this.plugin.settings.autoReplacements = cloneAutoReplacements(defaults);
+          }
+          await this.plugin.saveSettings();
+          this.display();
+        });
       });
 
-    if (this.plugin.settings.language === 'custom') {
-      new Setting(replacementsSection)
-        .setName('Custom Language Name')
-        .setDesc('Display name for your custom language')
-        .addText(text => text
-          .setPlaceholder('Custom')
-          .setValue(this.plugin.settings.customLanguageLabel)
-          .onChange(async (value) => {
-            this.plugin.settings.customLanguageLabel = value || 'Custom';
-            await this.plugin.saveSettings();
-            this.display();
-          }));
+    new Setting(containerEl)
+      .setName('Auto replacements')
+      .setHeading();
+    containerEl.createEl('p', { text: 'Configure text shortcuts that will be auto-replaced while typing.' });
 
-      new Setting(replacementsSection)
-        .setName('Save current replacements as custom defaults')
-        .setDesc('Sets the custom language defaults to the current replacement pairs')
-        .addButton(btn => btn
-          .setButtonText('Save as Custom Defaults')
-          .onClick(async () => {
-            this.plugin.settings.customLanguageDefaults = this.plugin.clonePairs(this.plugin.settings.autoReplacements);
-            await this.plugin.saveSettings();
-            this.display();
-          }));
+    const isCustomLanguage = this.plugin.settings.language === 'custom';
+    if (!isCustomLanguage) {
+      containerEl.createEl('p', { text: 'Switch language to custom to edit replacements.' });
     }
 
-    const replacementContainer = replacementsSection.createDiv('novalist-replacements');
-    const headerRow = replacementContainer.createDiv('novalist-replacement-header');
-    headerRow.createEl('div', { text: 'Start' });
-    headerRow.createEl('div', { text: 'End' });
-    headerRow.createEl('div', { text: 'Start Replace' });
-    headerRow.createEl('div', { text: 'End Replace' });
-    headerRow.createEl('div');
-    
-    this.plugin.settings.autoReplacements.forEach((pair) => {
-      this.addReplacementSetting(replacementContainer, pair);
-    });
+    const replacementContainer = containerEl.createDiv('novalist-replacements');
+    const header = replacementContainer.createDiv('novalist-replacement-header');
+    header.createEl('span', { text: 'Start token' });
+    header.createEl('span', { text: 'End token' });
+    header.createEl('span', { text: 'Start replacement' });
+    header.createEl('span', { text: 'End replacement' });
+    header.createEl('span', { text: '' });
 
-    const replacementActions = replacementsSection.createDiv('novalist-replacement-actions');
+    const updatePair = async () => {
+      await this.plugin.saveSettings();
+    };
 
-    new ButtonComponent(replacementActions)
-      .setButtonText('Add Replacement')
-      .onClick(() => {
-        this.plugin.settings.autoReplacements.push({ start: '', end: '', startReplace: '', endReplace: '' });
-        void this.plugin.saveSettings();
-        this.display();
+    for (const pair of this.plugin.settings.autoReplacements) {
+      const row = replacementContainer.createDiv('novalist-replacement-row');
+
+      const startInput = row.createEl('input', { type: 'text', value: pair.start });
+      startInput.placeholder = "For example: '";
+      startInput.disabled = !isCustomLanguage;
+      startInput.addEventListener('input', () => {
+        pair.start = startInput.value;
+        void updatePair();
       });
 
-    new ButtonComponent(replacementActions)
-      .setButtonText('Reset to Language Defaults')
+      const endInput = row.createEl('input', { type: 'text', value: pair.end });
+      endInput.placeholder = 'Optional';
+      endInput.disabled = !isCustomLanguage;
+      endInput.addEventListener('input', () => {
+        pair.end = endInput.value;
+        void updatePair();
+      });
+
+      const startReplaceInput = row.createEl('input', { type: 'text', value: pair.startReplace });
+      startReplaceInput.placeholder = 'For example: „';
+      startReplaceInput.disabled = !isCustomLanguage;
+      startReplaceInput.addEventListener('input', () => {
+        pair.startReplace = startReplaceInput.value;
+        void updatePair();
+      });
+
+      const endReplaceInput = row.createEl('input', { type: 'text', value: pair.endReplace });
+      endReplaceInput.placeholder = 'Optional';
+      endReplaceInput.disabled = !isCustomLanguage;
+      endReplaceInput.addEventListener('input', () => {
+        pair.endReplace = endReplaceInput.value;
+        void updatePair();
+      });
+
+      const actions = row.createDiv();
+      const deleteButton = new ButtonComponent(actions)
+        .setIcon('trash')
+        .setTooltip('Remove replacement');
+      deleteButton.setDisabled(!isCustomLanguage);
+      deleteButton.onClick(async () => {
+        const index = this.plugin.settings.autoReplacements.indexOf(pair);
+        if (index >= 0) this.plugin.settings.autoReplacements.splice(index, 1);
+        await this.plugin.saveSettings();
+        this.display();
+      });
+    }
+
+    const actionsRow = containerEl.createDiv('novalist-replacement-actions');
+    new ButtonComponent(actionsRow)
+      .setButtonText('Add replacement')
+      .setDisabled(!isCustomLanguage)
       .onClick(async () => {
-        this.plugin.applyLanguageDefaults(this.plugin.settings.language);
+        this.plugin.settings.autoReplacements.push({
+          start: '',
+          end: '',
+          startReplace: '',
+          endReplace: ''
+        });
         await this.plugin.saveSettings();
         this.display();
       });
 
-    const behaviorSection = containerEl.createDiv('novalist-settings-section');
-
-    new Setting(behaviorSection)
-      .setName('Enable Hover Preview')
+    new Setting(containerEl)
+      .setName('Enable hover preview')
       .setDesc('Show character/location info on hover')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.enableHoverPreview)
@@ -854,9 +1600,9 @@ class NovalistSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
-    new Setting(behaviorSection)
-      .setName('Enable Sidebar View')
-      .setDesc('Show the Novalist context sidebar')
+    new Setting(containerEl)
+      .setName('Enable sidebar view')
+      .setDesc('Show the context sidebar')
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.enableSidebarView)
         .onChange(async (value) => {
@@ -864,78 +1610,21 @@ class NovalistSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
-    new Setting(behaviorSection)
-      .setName('Show Merge Log')
-      .setDesc('Display merge logs in the Focus sidebar')
+    new Setting(containerEl)
+      .setName('Enable custom explorer')
+      .setDesc('Replace the file explorer with a custom view')
       .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.enableMergeLog)
+        .setValue(this.plugin.settings.enableCustomExplorer)
         .onChange(async (value) => {
-          this.plugin.settings.enableMergeLog = value;
+          this.plugin.settings.enableCustomExplorer = value;
           await this.plugin.saveSettings();
+          if (value) {
+            void this.plugin.activateExplorerView(true);
+          }
         }));
   }
 
-  addReplacementSetting(container: HTMLElement, pair: AutoReplacementPair) {
-    const row = container.createDiv('novalist-replacement-row');
-    const updateVisibility = () => {
-      const hasStart = pair.start.length > 0 && pair.startReplace.length > 0;
-      const emptyEnd = pair.end.length === 0 && pair.endReplace.length === 0;
-      const sameAsStart = pair.end === pair.start && pair.endReplace === pair.startReplace;
-      const isSingle = hasStart && (emptyEnd || sameAsStart);
-      endInput.inputEl.style.visibility = isSingle ? 'hidden' : 'visible';
-      endInput.inputEl.style.pointerEvents = isSingle ? 'none' : 'auto';
-      endReplaceInput.inputEl.style.visibility = isSingle ? 'hidden' : 'visible';
-      endReplaceInput.inputEl.style.pointerEvents = isSingle ? 'none' : 'auto';
-    };
-
-    const startInput = new TextComponent(row)
-      .setPlaceholder('Start')
-      .setValue(pair.start)
-      .onChange(async (value) => {
-        pair.start = value;
-        await this.plugin.saveSettings();
-        updateVisibility();
-      });
-
-    const endInput = new TextComponent(row)
-      .setPlaceholder('End')
-      .setValue(pair.end)
-      .onChange(async (value) => {
-        pair.end = value;
-        await this.plugin.saveSettings();
-        updateVisibility();
-      });
-
-    const startReplaceInput = new TextComponent(row)
-      .setPlaceholder('Start Replace')
-      .setValue(pair.startReplace)
-      .onChange(async (value) => {
-        pair.startReplace = value;
-        await this.plugin.saveSettings();
-        updateVisibility();
-      });
-
-    const endReplaceInput = new TextComponent(row)
-      .setPlaceholder('End Replace')
-      .setValue(pair.endReplace)
-      .onChange(async (value) => {
-        pair.endReplace = value;
-        await this.plugin.saveSettings();
-        updateVisibility();
-      });
-
-    new ButtonComponent(row)
-      .setIcon('trash')
-      .setTooltip('Remove')
-      .onClick(async () => {
-        const index = this.plugin.settings.autoReplacements.indexOf(pair);
-        if (index >= 0) this.plugin.settings.autoReplacements.splice(index, 1);
-        await this.plugin.saveSettings();
-        this.display();
-      });
-
-      updateVisibility();
-  }
+  
 }
 
 // ==========================================
@@ -944,15 +1633,13 @@ class NovalistSettingTab extends PluginSettingTab {
 
 export default class NovalistPlugin extends Plugin {
   settings: NovalistSettings;
-  sidebarView: NovalistSidebarView | null = null;
   private entityIndex: Map<string, { path: string; display: string }> = new Map();
   private entityRegex: RegExp | null = null;
   private lastHoverEntity: string | null = null;
-  private hoverTimer: number | null = null;
-  private caretTimer: number | null = null;
+  private hoverTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private caretTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private mergeLogPath: string | null = null;
-  private mergeLogBuffer: string[] = [];
-  private mergeLogBufferLimit = 200;
+  public knownRelationshipKeys: Set<string> = new Set();
 
   async onload() {
     await this.loadSettings();
@@ -964,82 +1651,138 @@ export default class NovalistPlugin extends Plugin {
 
     await this.refreshEntityIndex();
     await this.syncAllCharactersChapterInfos();
+    await this.migrateCharacterRoles();
     this.app.workspace.onLayoutReady(() => {
       void this.syncAllCharactersChapterInfos();
     });
+    
+    // Register Editor Suggester
+    this.registerEditorSuggest(new CharacterSuggester(this));
+    this.registerEditorSuggest(new RelationshipKeySuggester(this));
 
     // Register sidebar view
     this.registerView(
       NOVELIST_SIDEBAR_VIEW_TYPE,
-      (leaf) => {
-        this.sidebarView = new NovalistSidebarView(leaf, this);
-        return this.sidebarView;
-      }
+      (leaf) => new NovalistSidebarView(leaf, this)
+    );
+
+    // Register custom explorer view
+    this.registerView(
+      NOVELIST_EXPLORER_VIEW_TYPE,
+      (leaf) => new NovalistExplorerView(leaf, this)
+    );
+
+    // Register character map view
+    this.registerView(
+      CHARACTER_MAP_VIEW_TYPE,
+      (leaf) => new CharacterMapView(leaf, this)
     );
 
     // Add ribbon icon
     this.addRibbonIcon('book-open', 'Novalist', () => {
-      this.activateView();
+      void this.activateView();
     });
 
     // Initialize project structure command
     this.addCommand({
       id: 'initialize-novel-project',
-      name: 'Initialize Novel Project Structure',
-      callback: () => this.initializeProjectStructure()
+      name: 'Initialize novel project structure',
+      callback: () => {
+        void this.initializeProjectStructure();
+      }
     });
 
     // Open sidebar command
     this.addCommand({
-      id: 'open-novalist-sidebar',
-      name: 'Open Context Sidebar',
-      callback: () => this.activateView()
+      id: 'open-context-sidebar',
+      name: 'Open context sidebar',
+      callback: () => {
+        void this.activateView();
+      }
+    });
+
+    // Open custom explorer command
+    this.addCommand({
+      id: 'open-custom-explorer',
+      name: 'Open custom explorer',
+      callback: () => {
+        void this.activateExplorerView(true);
+      }
+    });
+
+    this.addCommand({
+      id: 'open-character-map',
+      name: 'Open character map',
+      callback: () => {
+        void this.activateCharacterMapView();
+      }
     });
 
     // Open focused entity in sidebar (edit mode)
     this.addCommand({
       id: 'open-entity-in-sidebar',
-      name: 'Open Entity In Sidebar',
-      callback: () => this.openEntityFromEditor()
+      name: 'Open entity in sidebar',
+      callback: () => {
+        void this.openEntityFromEditor();
+      }
     });
 
     // Add new character command
     this.addCommand({
       id: 'add-character',
-      name: 'Add New Character',
-      callback: () => this.openCharacterModal()
+      name: 'Add new character',
+      callback: () => {
+        this.openCharacterModal();
+      }
     });
 
     // Add new location command
     this.addCommand({
       id: 'add-location',
-      name: 'Add New Location',
-      callback: () => this.openLocationModal()
+      name: 'Add new location',
+      callback: () => {
+        this.openLocationModal();
+      }
     });
 
     // Add new chapter description command
     this.addCommand({
       id: 'add-chapter-description',
-      name: 'Add Chapter Description',
-      callback: () => this.openChapterDescriptionModal()
+      name: 'Add chapter description',
+      callback: () => {
+        this.openChapterDescriptionModal();
+      }
     });
 
     // Sync character chapter info command
     this.addCommand({
       id: 'sync-character-chapter-info',
-      name: 'Sync Character Chapter Info',
-      callback: () => this.syncAllCharactersChapterInfos()
+      name: 'Sync character chapter info',
+      callback: () => {
+        void this.syncAllCharactersChapterInfos();
+      }
+    });
+
+    this.addCommand({
+      id: 'migrate-character-roles',
+      name: 'Migrate character roles',
+      callback: () => {
+        void this.migrateCharacterRoles();
+      }
     });
 
     // Settings tab
     this.addSettingTab(new NovalistSettingTab(this.app, this));
 
-    // Auto-replacement on typing
-    this.registerDomEvent(document, 'keyup', (evt: KeyboardEvent) => {
-      if (evt.key.length === 1 || evt.key === 'Space' || evt.key === 'Enter') {
-        this.handleAutoReplacement();
-      }
-    });
+    const doc = globalThis.document;
+    if (doc) {
+      // Auto-replacement on typing
+      this.registerDomEvent(doc, 'keyup', (evt: KeyboardEvent) => {
+        if (evt.key.length === 1 || evt.key === 'Space' || evt.key === 'Enter') {
+          this.handleAutoReplacement();
+        }
+      });
+    }
 
     // Hover preview handler
     if (this.settings.enableHoverPreview) {
@@ -1049,26 +1792,26 @@ export default class NovalistPlugin extends Plugin {
       });
     }
 
-    // Auto-link character/location names in reading view for hover previews
+    // Auto-link character/location names in reading view for hover previews (chapters only)
     this.registerMarkdownPostProcessor((el, ctx) => {
       if (!this.settings.enableHoverPreview) return;
-      if (!ctx?.sourcePath) return;
-      if (!this.isChapterPath(ctx.sourcePath) && !this.isCharacterPath(ctx.sourcePath) && !this.isLocationPath(ctx.sourcePath)) return;
+      if (!ctx?.sourcePath || !this.isChapterPath(ctx.sourcePath)) return;
       this.linkifyElement(el);
     });
 
     // Edit-mode hover and click handling
-    this.registerDomEvent(document, 'mousemove', (evt: MouseEvent) => {
+    if (doc) {
+      this.registerDomEvent(doc, 'mousemove', (evt: MouseEvent) => {
       if (!this.settings.enableHoverPreview) return;
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (!view) return;
       if (!view.file || !this.isChapterFile(view.file)) return;
       const editor = view.editor;
-      const cm = (editor as any)?.cm;
+      const cm = (editor as EditorWithCodeMirror).cm;
       if (!cm || !(evt.target instanceof Node) || !cm.dom?.contains(evt.target)) return;
 
-      if (this.hoverTimer) window.clearTimeout(this.hoverTimer);
-      this.hoverTimer = window.setTimeout(() => {
+      if (this.hoverTimer) globalThis.clearTimeout(this.hoverTimer);
+      this.hoverTimer = globalThis.setTimeout(() => {
         const name = this.getEntityAtCoords(editor, evt.clientX, evt.clientY);
         if (!name) {
           if (!this.getEntityAtCursor(editor)) {
@@ -1078,25 +1821,27 @@ export default class NovalistPlugin extends Plugin {
         }
         if (name === this.lastHoverEntity) return;
         this.lastHoverEntity = name;
-        this.openEntityInSidebar(name, { reveal: false });
+        void this.openEntityInSidebar(name, { reveal: false });
       }, 120);
-    });
+      });
+    }
 
     const handleEntityClick = (evt: MouseEvent) => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (!view) return;
       if (!view.file || !this.isChapterFile(view.file)) return;
       const editor = view.editor;
-      const cm = (editor as any)?.cm;
+      const cm = (editor as EditorWithCodeMirror).cm;
       if (!cm || !(evt.target instanceof Node) || !cm.dom?.contains(evt.target)) return;
       if (!evt.ctrlKey && !evt.metaKey) return;
 
       const name = this.getEntityAtCoords(editor, evt.clientX, evt.clientY);
-      if (name) this.openEntityInSidebar(name, { reveal: true });
+      if (name) void this.openEntityInSidebar(name, { reveal: true });
     };
-
-    this.registerDomEvent(document, 'mousedown', handleEntityClick);
-    this.registerDomEvent(document, 'click', handleEntityClick);
+    if (doc) {
+      this.registerDomEvent(doc, 'mousedown', handleEntityClick);
+      this.registerDomEvent(doc, 'click', handleEntityClick);
+    }
 
     // Caret-driven focus update (edit mode)
     const handleCaret = () => {
@@ -1109,195 +1854,343 @@ export default class NovalistPlugin extends Plugin {
       const editor = view.editor;
       const name = this.getEntityAtCursor(editor);
       if (name) {
-        this.openEntityInSidebar(name, { reveal: false });
+        void this.openEntityInSidebar(name, { reveal: false });
       } else {
         this.clearFocus();
       }
     };
 
-    this.registerDomEvent(document, 'selectionchange', () => {
-      if (this.caretTimer) window.clearTimeout(this.caretTimer);
-      this.caretTimer = window.setTimeout(handleCaret, 120);
-    });
-    this.registerDomEvent(document, 'keyup', () => {
-      if (this.caretTimer) window.clearTimeout(this.caretTimer);
-      this.caretTimer = window.setTimeout(handleCaret, 120);
-    });
+    if (doc) {
+      this.registerDomEvent(doc, 'selectionchange', () => {
+        if (this.caretTimer) globalThis.clearTimeout(this.caretTimer);
+        this.caretTimer = globalThis.setTimeout(handleCaret, 120);
+      });
+      this.registerDomEvent(doc, 'keyup', () => {
+        if (this.caretTimer) globalThis.clearTimeout(this.caretTimer);
+        this.caretTimer = globalThis.setTimeout(handleCaret, 120);
+      });
+    }
 
     // Keep index up to date
-    this.registerEvent(this.app.vault.on('create', () => this.refreshEntityIndex()));
-    this.registerEvent(this.app.vault.on('delete', () => this.refreshEntityIndex()));
-    this.registerEvent(this.app.vault.on('modify', () => this.refreshEntityIndex()));
-    this.registerEvent(this.app.vault.on('rename', () => this.refreshEntityIndex()));
+    this.registerEvent(this.app.vault.on('create', () => {
+      void this.refreshEntityIndex();
+    }));
+    this.registerEvent(this.app.vault.on('delete', () => {
+      void this.refreshEntityIndex();
+    }));
+    this.registerEvent(this.app.vault.on('modify', () => {
+      void this.refreshEntityIndex();
+    }));
+    this.registerEvent(this.app.vault.on('rename', () => {
+      void this.refreshEntityIndex();
+    }));
 
     // Auto-create chapter files when chapter descriptions appear
     this.registerEvent(this.app.vault.on('create', (file) => {
-      if (file instanceof TFile) this.ensureChapterFileForDesc(file);
+      if (file instanceof TFile) void this.ensureChapterFileForDesc(file);
     }));
     this.registerEvent(this.app.vault.on('rename', (file) => {
-      if (file instanceof TFile) this.ensureChapterFileForDesc(file);
+      if (file instanceof TFile) void this.ensureChapterFileForDesc(file);
     }));
 
     // Sync character/location references into chapter descriptions
     this.registerEvent(this.app.vault.on('modify', (file) => {
-      if (file instanceof TFile) this.syncChapterDescriptionFromChapter(file);
+      if (file instanceof TFile) void this.syncChapterDescriptionFromChapter(file);
     }));
     this.registerEvent(this.app.vault.on('rename', (file) => {
-      if (file instanceof TFile) this.syncChapterDescriptionFromChapter(file);
+      if (file instanceof TFile) void this.syncChapterDescriptionFromChapter(file);
     }));
 
     // Ensure character chapter info sections stay in sync with chapter descriptions
     this.registerEvent(this.app.vault.on('create', (file) => {
-      if (file instanceof TFile) this.syncCharacterChapterInfos(file);
+      if (file instanceof TFile) void this.syncCharacterChapterInfos(file);
     }));
     this.registerEvent(this.app.vault.on('rename', (file) => {
-      if (file instanceof TFile) this.syncCharacterChapterInfos(file);
+      if (file instanceof TFile) void this.syncCharacterChapterInfos(file);
     }));
 
     // Auto-activate sidebar if enabled
     if (this.settings.enableSidebarView) {
-      this.activateView();
+      void this.activateView();
     }
 
-    console.log('Novalist plugin loaded');
+    if (this.settings.enableCustomExplorer) {
+      void this.activateExplorerView(true);
+    }
   }
 
   onunload() {
-    this.app.workspace.detachLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE);
+    return;
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    const legacyLanguage = this.settings.language as unknown as string;
-    if (legacyLanguage === 'de') this.settings.language = 'de-guillemet';
-    if (legacyLanguage === 'en') this.settings.language = 'en';
-    if (legacyLanguage === 'fr') this.settings.language = 'fr';
-
-    if (!Array.isArray(this.settings.autoReplacements)) {
-      const legacy = this.settings.autoReplacements as unknown as Record<string, string>;
-      const pairs: AutoReplacementPair[] = [];
-      const open = legacy?.["'"];
-      const close = legacy?.["''"];
-      if (open || close) {
-        pairs.push({ start: "'", end: "'", startReplace: open || '', endReplace: close || '' });
-      }
-
-      for (const [key, value] of Object.entries(legacy || {})) {
-        if (key === "'" || key === "''") continue;
-        pairs.push({ start: key, end: key, startReplace: value, endReplace: value });
-      }
-
-      this.settings.autoReplacements = pairs;
-    }
-
-    if (!this.settings.autoReplacements || this.settings.autoReplacements.length === 0) {
-      this.applyLanguageDefaults(this.settings.language);
-    }
-    this.settings.autoReplacements = this.clonePairs(this.settings.autoReplacements || []);
+    const data: unknown = await this.loadData();
+    const stored = this.isSettingsData(data) ? data : {};
+    const language = this.isLanguageKey(stored.language) ? stored.language : DEFAULT_SETTINGS.language;
+    const customLanguageLabel = typeof stored.customLanguageLabel === 'string' && stored.customLanguageLabel.trim().length > 0
+      ? stored.customLanguageLabel.trim()
+      : DEFAULT_SETTINGS.customLanguageLabel;
+    const customLanguageDefaults = this.normalizeAutoReplacementPairs(stored.customLanguageDefaults);
+    const normalized = {
+      ...stored,
+      language,
+      customLanguageLabel,
+      customLanguageDefaults,
+      autoReplacements: this.normalizeAutoReplacements(stored.autoReplacements, language, customLanguageDefaults),
+      relationshipPairs: stored.relationshipPairs || {}
+    };
+    this.settings = { ...DEFAULT_SETTINGS, ...normalized };
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
   }
 
-  applyLanguageDefaults(language: LanguageKey) {
-    this.settings.autoReplacements = this.clonePairs(this.getLanguageAutoReplacements(language));
-  }
+  async addRelationshipToFile(file: TFile, relationshipKey: string, sourceName: string) {
+    
+    // Logic 1: Update persistent memory
+    // If this call came from an inverse operation (keyA -> keyB), we should learn it.
+    // However, this function is generic. We can just ensure we track the key.
+    if (!this.knownRelationshipKeys.has(relationshipKey)) {
+        this.knownRelationshipKeys.add(relationshipKey);
+    }
+    
+    // We can try to infer the pair source.
+    // If the source file has a relationship pointing to 'file' with key 'X', then X <-> relationshipKey is a pair.
+    // This is expensive to check every time.
+    // Better: Update the function signature or rely on the caller to update settings.
+    
+    // Wait, the caller (submit) knows the pair!
+    
+    const content = await this.app.vault.read(file);
+    const lines = content.split('\n');
+    const headerRegex = /^##\s+General Information\s*$/i;
+    let headerIndex = -1;
+    let generalInfoEnd = lines.length;
 
-  private getLanguageAutoReplacements(language: LanguageKey): AutoReplacementPair[] {
-    if (language === 'custom') {
-      return this.settings.customLanguageDefaults?.length
-        ? this.settings.customLanguageDefaults
-        : this.settings.autoReplacements || [];
+    for (let i = 0; i < lines.length; i++) {
+        if (headerRegex.test(lines[i])) {
+            headerIndex = i;
+            // Find end of section
+            for (let j = i + 1; j < lines.length; j++) {
+                if (lines[j].trim().startsWith('## ')) {
+                    generalInfoEnd = j;
+                    break;
+                }
+            }
+            break;
+        }
     }
 
-    return LANGUAGE_DEFAULTS[language];
+    // Try to find existing key in General Information section
+    if (headerIndex !== -1) {
+        for (let i = headerIndex + 1; i < generalInfoEnd; i++) {
+            const line = lines[i];
+            const match = line.match(/^(\s*[-*]\s*\*\*(.+?)\*\*([:]?)\s*)(.*)$/);
+            if (match) {
+                let key = match[2];
+                // remove trailing colon if inside
+                if (key.trim().endsWith(':')) key = key.trim().slice(0, -1);
+                
+                if (key.trim().toLowerCase() === relationshipKey.trim().toLowerCase()) {
+                    // Found existing key! Append.
+                    const existingValues = match[4];
+                    // Clean up existing values, check if already exists
+                    if (!existingValues.includes(`[[${sourceName}]]`)) {
+                        // Append with comma if not empty
+                        const separator = existingValues.trim().length > 0 ? ', ' : '';
+                        lines[i] = `${match[1]}${existingValues.trimEnd()}${separator}[[${sourceName}]]`;
+                        await this.app.vault.modify(file, lines.join('\n'));
+                        new Notice(`Updated "${relationshipKey}" in ${file.basename}`);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    const newLine = `- **${relationshipKey}**: [[${sourceName}]]`;
+
+    if (headerIndex !== -1) {
+        // Insert at end of General Information
+        lines.splice(generalInfoEnd, 0, newLine);
+    } else {
+        if (lines[lines.length - 1].trim() !== '') {
+            lines.push('');
+        }
+        lines.push('## General Information');
+        lines.push(newLine);
+    }
+
+    await this.app.vault.modify(file, lines.join('\n'));
+    new Notice(`Added "${relationshipKey}: [[${sourceName}]]" to ${file.basename}`);
   }
 
-  clonePairs(pairs: AutoReplacementPair[]): AutoReplacementPair[] {
-    return pairs.map(pair => ({ ...pair }));
+  async learnRelationshipPair(keyA: string, keyB: string) {
+      let changed = false;
+      
+      // keyA -> keyB
+      if (!this.settings.relationshipPairs[keyA]) {
+          this.settings.relationshipPairs[keyA] = [keyB];
+          changed = true;
+      } else if (!this.settings.relationshipPairs[keyA].includes(keyB)) {
+          this.settings.relationshipPairs[keyA].push(keyB);
+          changed = true;
+      }
+      
+      // keyB -> keyA
+      if (!this.settings.relationshipPairs[keyB]) {
+          this.settings.relationshipPairs[keyB] = [keyA];
+          changed = true;
+      } else if (!this.settings.relationshipPairs[keyB].includes(keyA)) {
+          this.settings.relationshipPairs[keyB].push(keyA);
+          changed = true;
+      }
+      
+      if (changed) {
+          await this.saveSettings();
+      }
   }
 
-  private resolveConfigPath(configDir: string, basePath: string): string {
-    const normalized = configDir.replace(/\\/g, '/');
-    if (/^[A-Za-z]:\//.test(normalized) || normalized.startsWith('/')) return normalized;
-    return `${basePath}/${normalized}`;
+  private isSettingsData(value: unknown): value is Partial<NovalistSettings> {
+    return this.isRecord(value);
+  }
+
+  private normalizeAutoReplacements(
+    value: unknown,
+    language: LanguageKey,
+    customDefaults: AutoReplacementPair[]
+  ): AutoReplacementPair[] {
+    if (language !== 'custom') {
+      return cloneAutoReplacements(LANGUAGE_DEFAULTS[language]);
+    }
+
+    const fromValue = this.normalizeAutoReplacementPairs(value);
+    if (fromValue.length > 0) return fromValue;
+
+    if (customDefaults.length > 0) return cloneAutoReplacements(customDefaults);
+
+    return cloneAutoReplacements(DEFAULT_SETTINGS.autoReplacements);
+  }
+
+  private normalizeAutoReplacementPairs(value: unknown): AutoReplacementPair[] {
+    if (!value) return [];
+
+    if (Array.isArray(value)) {
+      const normalized: AutoReplacementPair[] = [];
+      for (const entry of value as unknown[]) {
+        if (!this.isRecord(entry)) continue;
+        const start = this.getReplacementField(entry, 'start');
+        const end = this.getReplacementField(entry, 'end');
+        const startReplace = this.getReplacementField(entry, 'startReplace');
+        const endReplace = this.getReplacementField(entry, 'endReplace');
+        if (!start || !startReplace) continue;
+        normalized.push({
+          start,
+          end: end || start,
+          startReplace,
+          endReplace: endReplace || startReplace
+        });
+      }
+      return normalized;
+    }
+
+    if (this.isRecord(value)) {
+      const normalized: AutoReplacementPair[] = [];
+      for (const [key, replacement] of Object.entries(value)) {
+        if (typeof key !== 'string') continue;
+        if (typeof replacement !== 'string') continue;
+        const start = key.trim();
+        const startReplace = replacement.trim();
+        if (!start || !startReplace) continue;
+        normalized.push({ start, end: start, startReplace, endReplace: startReplace });
+      }
+      return normalized;
+    }
+
+    return [];
+  }
+
+  private getReplacementField(entry: Record<string, unknown>, key: string): string {
+    const value = entry[key];
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private isLanguageKey(value: unknown): value is LanguageKey {
+    return typeof value === 'string' && value in LANGUAGE_LABELS;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
   }
 
   private getMergeLogPath(): string | null {
     try {
-      const configDir = (this.app.vault as any)?.configDir || '.obsidian';
-      const adapter = this.app.vault.adapter as any;
-      const basePath = typeof adapter?.getBasePath === 'function' ? adapter.getBasePath() : '';
-      if (!configDir || !this.manifest?.id || !basePath) return null;
-      const configPath = this.resolveConfigPath(configDir, basePath);
-      return `${configPath}/plugins/${this.manifest.id}/merge-log.txt`;
+      const configDir = this.app.vault.configDir;
+      if (!configDir || !this.manifest?.id) return null;
+      return `${configDir}/plugins/${this.manifest.id}/merge-log.txt`;
     } catch {
       return null;
     }
   }
 
-  async logMerge(message: string): Promise<void> {
-    const stamp = new Date().toISOString();
-    const entry = `[${stamp}] ${message}`;
-    this.mergeLogBuffer.push(entry);
-    if (this.mergeLogBuffer.length > this.mergeLogBufferLimit) {
-      this.mergeLogBuffer = this.mergeLogBuffer.slice(-this.mergeLogBufferLimit);
-    }
-    if (!this.mergeLogPath) return;
-    try {
-      const adapter = this.app.vault.adapter;
-      const entryWithNewline = `${entry}\n`;
-
-      const writeToPath = async (path: string | null) => {
-        if (!path) return;
-        const dir = path.split('/').slice(0, -1).join('/');
-        try {
-          const exists = await adapter.exists(dir);
-          if (!exists) {
-            await adapter.mkdir(dir);
-          }
-        } catch {
-          // ignore dir creation errors
-        }
-        let existing = '';
-        try {
-          existing = await adapter.read(path);
-        } catch {
-          existing = '';
-        }
-        await adapter.write(path, existing + entryWithNewline);
-      };
-
-      await writeToPath(this.mergeLogPath);
-    } catch {
-      // ignore logging errors
-    }
+  private async logMerge(message: string): Promise<void> {
+    // Disabled
   }
 
-  getMergeLogSnapshot(): string {
-    return this.mergeLogBuffer.join('\n');
-  }
-
-  async activateView() {
+  async activateView(): Promise<WorkspaceLeaf> {
     const { workspace } = this.app;
     
-    let leaf: WorkspaceLeaf | null = null;
-    const leaves = workspace.getLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE);
-
-    if (leaves.length > 0) {
-      leaf = leaves[0];
-    } else {
+    let leaf = workspace.getLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE)[0];
+    if (!leaf) {
       leaf = workspace.getRightLeaf(false);
       await leaf.setViewState({ type: NOVELIST_SIDEBAR_VIEW_TYPE, active: true });
     }
 
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
+    return leaf;
+  }
+
+  async activateExplorerView(replaceFileExplorer: boolean): Promise<WorkspaceLeaf> {
+    const { workspace } = this.app;
+    let leaf: WorkspaceLeaf | null = null;
+
+    if (replaceFileExplorer) {
+      leaf = workspace.getLeavesOfType('file-explorer')[0] ?? null;
+    }
+
+    if (!leaf) {
+      leaf = workspace.getLeftLeaf(false);
+    }
+
+    await leaf.setViewState({ type: NOVELIST_EXPLORER_VIEW_TYPE, active: true });
+    if (leaf) await workspace.revealLeaf(leaf);
+    return leaf;
+  }
+
+  async activateCharacterMapView(): Promise<void> {
+    const { workspace } = this.app;
+    let leaf: WorkspaceLeaf | null = null;
+    const leaves = workspace.getLeavesOfType(CHARACTER_MAP_VIEW_TYPE);
+    
+    if (leaves.length > 0) {
+      leaf = leaves[0];
+    } else {
+      leaf = workspace.getLeaf(true);
+      await leaf.setViewState({ type: CHARACTER_MAP_VIEW_TYPE, active: true });
+    }
+    await workspace.revealLeaf(leaf);
+  }
+
+  private getSidebarView(): NovalistSidebarView | null {
+    const leaf = this.app.workspace.getLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE)[0];
+    if (!leaf) return null;
+    return leaf.view instanceof NovalistSidebarView ? leaf.view : null;
   }
 
   private async ensureSidebarView(): Promise<NovalistSidebarView | null> {
-    await this.activateView();
-    return this.sidebarView;
+    const leaf = await this.activateView();
+    return leaf.view instanceof NovalistSidebarView ? leaf.view : null;
   }
 
   // ==========================================
@@ -1319,7 +2212,7 @@ export default class NovalistPlugin extends Plugin {
     for (const folder of folders) {
       try {
         await vault.createFolder(folder);
-      } catch (e) {
+      } catch {
         // Folder might already exist
       }
     }
@@ -1337,9 +2230,10 @@ export default class NovalistPlugin extends Plugin {
     // Character Template
     const charTemplate = `# Character Name Surname
 
-## General Information
-- **Age:** 
-- **Relationship:** 
+  ## General Information
+  - **Age:** 
+  - **Relationship:** 
+  - **Character role:** Main character
 
 ## Further Information
 
@@ -1359,22 +2253,19 @@ export default class NovalistPlugin extends Plugin {
     
     // Location Template
     const locTemplate = `---
-  name: 
-  images: []
-  ---
+name: 
+images: []
+---
 
-  # Location Info
+# Location Info
 
-  ## Description
+## Description
 
-  ## Images
+## Images
 
-  - Definition: path/to/image.png
-  - Side View: path/to/side-view.png
-
-  ## Appearances
-  <!-- Auto-populated list of chapters -->
-  `;
+## Appearances
+<!-- Auto-populated list of chapters -->
+`;
     
     // Chapter Description Template
     const chapDescTemplate = `---
@@ -1423,12 +2314,14 @@ locations: []
 
     try {
       await vault.createFolder(`${root}/Templates`);
-    } catch (e) {}
+    } catch {
+      // Folder might already exist
+    }
 
     for (const tmpl of templates) {
       try {
         await vault.create(tmpl.path, tmpl.content);
-      } catch (e) {
+      } catch {
         // File might exist
       }
     }
@@ -1438,17 +2331,31 @@ locations: []
   // FILE CREATION
   // ==========================================
 
-  async createCharacter(name: string, surname: string, age: string, relationship: string, furtherInfo: string) {
+  async createCharacter(
+    name: string,
+    surname: string,
+    age: string,
+    gender: string,
+    relationship: string,
+    role: CharacterRole,
+    furtherInfo: string
+  ) {
     const vault = this.app.vault;
     const folder = `${this.settings.projectPath}/${this.settings.characterFolder}`;
-    const filename = `${name}_${surname}.md`;
-    const filepath = `${folder}/${filename}`;
+    const filename = `${name.trim() || 'Unnamed'}_${surname.trim()}.md`.replace(/_{2,}/g, '_').replace(/^_|_$/g, '');
+    // Sanitize
+    
+    // Fallback if empty
+    const fileBase = filename || 'New Character.md';
+    const filepath = `${folder}/${fileBase}`;
 
     const content = `# ${name} ${surname}
 
   ## General Information
-  - **Age:** ${age}
-  - **Relationship:** ${relationship}
+  - **Gender**: ${gender}
+  - **Age**: ${age}
+  - **Relationship**: ${relationship}
+  - **Character role**: ${CHARACTER_ROLE_LABELS[role]}
 
   ## Further Information
   ${furtherInfo}
@@ -1464,8 +2371,9 @@ locations: []
     try {
       await vault.create(filepath, content);
       new Notice(`Character ${name} ${surname} created!`);
-    } catch (e) {
-      new Notice('Error creating character: ' + e.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Error creating character: ${message}`);
     }
   }
 
@@ -1476,28 +2384,26 @@ locations: []
     const filepath = `${folder}/${filename}`;
 
     const content = `---
-  name: ${name}
-  images: []
-  ---
+name: ${name}
+images: []
+---
 
-  # ${name}
+# ${name}
 
-  ## Description
-  ${description}
+## Description
+${description}
 
-  ## Images
+## Images
 
-  - Definition: path/to/image.png
-  - Side View: path/to/side-view.png
-
-  ## Appearances
-  `;
+## Appearances
+`;
 
     try {
       await vault.create(filepath, content);
       new Notice(`Location ${name} created!`);
-    } catch (e) {
-      new Notice('Error creating location: ' + e.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Error creating location: ${message}`);
     }
   }
 
@@ -1534,8 +2440,9 @@ ${outline}
       if (file instanceof TFile) {
         await this.ensureChapterFileForDesc(file);
       }
-    } catch (e) {
-      new Notice('Error creating chapter description: ' + e.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      new Notice(`Error creating chapter description: ${message}`);
     }
   }
 
@@ -1559,9 +2466,12 @@ ${outline}
     name: string;
     surname: string;
     age: string;
+    gender: string;
     relationship: string;
+    role: string;
     furtherInfo: string;
     chapterInfos: Array<{chapter: string, info: string, overrides: Record<string, string>}>;
+    customRelationships: Record<string, string[]>;
   }> {
     const content = await this.app.vault.read(file);
     const textData = this.parseCharacterText(content);
@@ -1572,9 +2482,12 @@ ${outline}
       name: textData.name || '',
       surname: textData.surname || '',
       age: textData.age || '',
+      gender: textData.gender || '',
       relationship: textData.relationship || '',
+      role: textData.role || '',
       furtherInfo: textData.furtherInfo || '',
-      chapterInfos
+      chapterInfos,
+      customRelationships: textData.customRelationships
     };
   }
 
@@ -1587,15 +2500,16 @@ ${outline}
     
     const descMatch = content.match(/## Description\s+([\s\S]*?)(?=##|$)/);
     const description = descMatch ? descMatch[1].trim() : '';
+    const name = this.getFrontmatterText(frontmatter.name);
 
     return {
-      name: frontmatter.name || '',
+      name,
       description
     };
   }
 
   parseImagesSection(content: string): Array<{ name: string; path: string }> {
-    const match = content.match(/\s*## Images\s+([\s\S]*?)(?=##|$)/);
+    const match = content.match(/## Images\s+([\s\S]*?)(?=##|$)/);
     if (!match) return [];
 
     const lines = match[1].split('\n').map(l => l.trim()).filter(l => l.startsWith('-'));
@@ -1607,53 +2521,39 @@ ${outline}
 
       const parts = cleaned.split(':');
       if (parts.length >= 2) {
-        const name = parts.shift()!.trim();
-        let path = parts.join(':').trim();
-        path = path.replace(/^!\[\[/, '').replace(/\]\]$/, '').trim();
-        if (name) images.push({ name, path });
+        const first = parts.shift();
+        if (!first) continue;
+        const name = first.trim();
+        const path = parts.join(':').trim();
+        if (name && path) images.push({ name, path });
       } else {
-        const nameOnly = cleaned.replace(/^!\[\[/, '').replace(/\]\]$/, '').trim();
-        images.push({ name: nameOnly, path: '' });
+        images.push({ name: cleaned, path: cleaned });
       }
     }
 
     return images;
   }
 
-  private parseImageOverrideValue(value: string): Array<{ name: string; path: string }> {
-    const lines = value
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 0);
-
-    const images: Array<{ name: string; path: string }> = [];
-
-    for (const line of lines) {
-      const cleaned = line.replace(/^[-*]\s*/, '').trim();
-      if (!cleaned) continue;
-
-      const parts = cleaned.split(':');
-      if (parts.length >= 2) {
-        const name = parts.shift()!.trim();
-        let path = parts.join(':').trim();
-        path = path.replace(/^!\[\[/, '').replace(/\]\]$/, '').trim();
-        if (name) images.push({ name, path });
-      } else {
-        const nameOnly = cleaned.replace(/^!\[\[/, '').replace(/\]\]$/, '').trim();
-        images.push({ name: nameOnly, path: '' });
-      }
-    }
-
-    return images;
-  }
-
-  private parseCharacterText(content: string): { name: string; surname: string; age: string; relationship: string; furtherInfo: string } {
+  private parseCharacterText(content: string): { 
+      name: string; 
+      surname: string; 
+      age: string; 
+      gender: string; 
+      relationship: string; 
+      role: string; 
+      furtherInfo: string;
+      customRelationships: Record<string, string[]>;
+  } {
     const body = this.stripFrontmatter(content);
     let name = '';
     let surname = '';
     let age = '';
+    let gender = '';
     let relationship = '';
+    let role = CHARACTER_ROLE_LABELS.side;
+    let roleSet = false;
     let furtherInfo = '';
+    const customRelationships: Record<string, string[]> = {};
 
     const titleMatch = body.match(/^#\s+(.+)$/m);
     if (titleMatch) {
@@ -1663,18 +2563,51 @@ ${outline}
       surname = parts.join(' ');
     }
 
-    const generalMatch = body.match(/## General Information\s+([\s\S]*?)(?=##|$)/);
-    if (generalMatch) {
-      const lines = generalMatch[1].split('\n').map(l => l.trim());
-      for (const line of lines) {
-        const ageMatch = line.match(/^[-*]\s*\*\*Age\*\*:\s*(.+)$/i);
+    const generalLines = this.getSectionLines(body, 'General Information');
+    if (generalLines) {
+      for (const line of generalLines) {
+        const trimmedLine = line.trim();
+        // Relaxed regex to support both **Key**: and **Key:**
+        const ageMatch = trimmedLine.match(/^[-*]\s*\*\*Age(?:[:])?\*\*(?:[:])?\s*(.+)$/i);
         if (ageMatch) {
           age = ageMatch[1].trim();
           continue;
         }
-        const relMatch = line.match(/^[-*]\s*\*\*Relationship\*\*:\s*(.+)$/i);
+        const genderMatch = trimmedLine.match(/^[-*]\s*\*\*Gender(?:[:])?\*\*(?:[:])?\s*(.+)$/i);
+        if (genderMatch) {
+          gender = genderMatch[1].trim();
+          continue;
+        }
+        const relMatch = trimmedLine.match(/^[-*]\s*\*\*Relationship\*\*:\s*(.+)$/i);
         if (relMatch) {
           relationship = relMatch[1].trim();
+          // Check for wikilinks here too? Usually 'Single', but maybe 'Dating [[Bob]]'
+          // We will treat it as a custom relationship if it has links
+        }
+        const roleMatch = trimmedLine.match(/^[-*]\s*\*\*(?:Character\s+)?role(?:[:\s]*\*\*[:\s]*|\*\*[:\s]*)(.+)$/i);
+        if (roleMatch && !roleSet) {
+          role = normalizeCharacterRole(roleMatch[1]);
+          roleSet = true;
+          continue;
+        }
+
+        // Catch-all for relationships
+        const genericMatch = trimmedLine.match(/^[-*]\s*\*\*(.+?)\*\*(?:[:])?\s*(.*)$/);
+        if (genericMatch) {
+            const key = genericMatch[1].trim();
+            // removing any trailing colon in key
+            const cleanKey = key.replace(/:$/, '').trim();
+            const value = genericMatch[2].trim();
+            
+            // Extract links
+            const links = value.match(/\[\[(.*?)\]\]/g);
+            if (links) {
+                const targets = links.map(l => l.replace(/^\[\[|\]\]$/g, '').split('|')[0]);
+                if (!customRelationships[cleanKey]) {
+                    customRelationships[cleanKey] = [];
+                }
+                customRelationships[cleanKey].push(...targets);
+            }
         }
       }
     }
@@ -1684,11 +2617,30 @@ ${outline}
       furtherInfo = furtherMatch[1].trim();
     }
 
-    return { name, surname, age, relationship, furtherInfo };
+    return { name, surname, age, gender, relationship, role, furtherInfo, customRelationships };
+  }
+
+  private getSectionLines(content: string, heading: string): string[] | null {
+    const lines = content.split(/\r?\n/);
+    const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const headerRegex = new RegExp(`^##\\s+${escaped}\\s*$`, 'i');
+
+    const headerIndex = lines.findIndex((line) => headerRegex.test(line.trim()));
+    if (headerIndex === -1) return null;
+
+    let endIndex = lines.length;
+    for (let i = headerIndex + 1; i < lines.length; i += 1) {
+      if (/^##\s+/.test(lines[i].trim())) {
+        endIndex = i;
+        break;
+      }
+    }
+
+    return lines.slice(headerIndex + 1, endIndex);
   }
 
   parseChapterOverrides(content: string): Array<{ chapter: string; info: string; overrides: Record<string, string> }> {
-    const section = content.match(/(?:^|\n)[\t ]*[-*]?\s*## Chapter Relevant Information\s+([\s\S]*?)(?=##|$)/);
+    const section = content.match(/## Chapter Relevant Information\s+([\s\S]*?)(?=##|$)/);
     if (!section) return [];
 
     const lines = section[1].split('\n');
@@ -1696,7 +2648,6 @@ ${outline}
 
     let current: { chapter: string; info: string; overrides: Record<string, string> } | null = null;
     let currentKey: string | null = null;
-    let currentIndent: number | null = null;
 
     for (const raw of lines) {
       const line = raw.trim();
@@ -1705,34 +2656,28 @@ ${outline}
         if (current) results.push(current);
         current = { chapter: chapterMatch[1].trim(), info: '', overrides: {} };
         currentKey = null;
-        currentIndent = null;
         continue;
       }
 
       if (!current) continue;
-
-      const rawIndent = raw.length - raw.trimStart().length;
-      if (currentKey && currentIndent != null && rawIndent > currentIndent) {
-        const continuation = raw.trimEnd();
-        if (currentKey === 'info') {
-          current.info = current.info ? `${current.info}\n${continuation.trim()}` : continuation.trim();
-        } else {
-          const prev = current.overrides[currentKey] || '';
-          current.overrides[currentKey] = prev ? `${prev}\n${continuation.trim()}` : continuation.trim();
-        }
-        continue;
-      }
 
       const kvMatch = line.match(/^[-*]\s*([^:]+):\s*(.*)$/);
       if (kvMatch) {
         const key = kvMatch[1].trim();
         const value = kvMatch[2].trim();
         currentKey = key.toLowerCase();
-        currentIndent = rawIndent;
         if (currentKey === 'info') {
           current.info = value;
         } else {
           current.overrides[currentKey] = value;
+        }
+      } else if (/^\s{2,}\S/.test(raw) && currentKey) {
+        const continuation = raw.trimEnd();
+        if (currentKey === 'info') {
+          current.info = current.info ? `${current.info}\n${continuation.trim()}` : continuation.trim();
+        } else {
+          const prev = current.overrides[currentKey] || '';
+          current.overrides[currentKey] = prev ? `${prev}\n${continuation.trim()}` : continuation.trim();
         }
       } else if (line.length > 0) {
         current.info = current.info ? `${current.info}\n${line}` : line;
@@ -1752,41 +2697,6 @@ ${outline}
     return direct instanceof TFile ? direct : null;
   }
 
-  async getChapterOverrideImages(charFile: TFile, chapterFile: TFile): Promise<Array<{ name: string; path: string }> | null> {
-    const charData = await this.parseCharacterFile(charFile);
-    const chapterKey = await this.getChapterNameForFile(chapterFile);
-    const chapterInfo = charData.chapterInfos.find(ci => ci.chapter === chapterKey);
-    const raw = chapterInfo?.overrides?.images;
-    if (!raw || raw.trim().length === 0) return null;
-
-    const content = await this.app.vault.read(charFile);
-    const baseImages = this.parseImagesSection(content);
-    const baseByName = new Map(baseImages.map(img => [img.name.toLowerCase(), img]));
-
-    const overrides = this.parseImageOverrideValue(raw);
-    const used = new Set<string>();
-    const merged: Array<{ name: string; path: string }> = [];
-
-    for (const item of overrides) {
-      const key = item.name.toLowerCase();
-      const base = baseByName.get(key);
-      const overridePath = item.path?.trim() ?? '';
-      if (!overridePath && base) {
-        merged.push({ name: base.name, path: base.path });
-      } else {
-        merged.push({ name: item.name, path: overridePath });
-      }
-      used.add(key);
-    }
-
-    for (const base of baseImages) {
-      const key = base.name.toLowerCase();
-      if (!used.has(key)) merged.push(base);
-    }
-
-    return merged.length ? merged : null;
-  }
-
   private async syncAllCharactersChapterInfos() {
     const folder = `${this.settings.projectPath}/${this.settings.characterFolder}`;
     const files = this.app.vault.getFiles().filter(f => f.path.startsWith(folder) && !this.isTemplateFile(f));
@@ -1801,12 +2711,96 @@ ${outline}
     await this.syncAllCharactersChapterInfos();
   }
 
+  private async migrateCharacterRoles(): Promise<void> {
+    const folder = `${this.settings.projectPath}/${this.settings.characterFolder}`;
+    const files = this.app.vault.getFiles().filter(f => f.path.startsWith(folder) && !this.isTemplateFile(f));
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const updated = this.ensureCharacterRoleLine(content);
+      if (updated !== content) {
+        await this.app.vault.modify(file, updated);
+      }
+    }
+  }
+
+  private ensureCharacterRoleLine(content: string): string {
+    const newline = content.includes('\r\n') ? '\r\n' : '\n';
+    const lines = content.split(/\r?\n/);
+    const headerIndex = lines.findIndex((line) => /^##\s+General Information\s*$/i.test(line.trim()));
+    if (headerIndex === -1) return content;
+
+    let endIndex = lines.length;
+    for (let i = headerIndex + 1; i < lines.length; i += 1) {
+      if (/^##\s+/.test(lines[i].trim())) {
+        endIndex = i;
+        break;
+      }
+    }
+
+    const sectionLines = lines.slice(headerIndex + 1, endIndex);
+    let roleValue: string | null = null;
+    const cleanedLines: string[] = [];
+    let removedRole = false;
+
+    for (const line of sectionLines) {
+      const trimmedLine = line.trim();
+      const roleMatch = trimmedLine.match(/^[-*]\s*\*\*(?:Character\s+)?role(?:[:\s]*\*\*[:\s]*|\*\*[:\s]*)(.+)$/i);
+
+      if (roleMatch) {
+        if (!roleValue) {
+          roleValue = normalizeCharacterRole(roleMatch[1]);
+        }
+        removedRole = true;
+        if (cleanedLines[cleanedLines.length - 1]?.trim() === '') {
+          cleanedLines.pop();
+        }
+        continue;
+      }
+
+      if (removedRole && trimmedLine === '') {
+        removedRole = false;
+        continue;
+      }
+
+      removedRole = false;
+      cleanedLines.push(line);
+    }
+
+    // Collapse consecutive blank lines in General Information
+    for (let i = cleanedLines.length - 1; i > 0; i -= 1) {
+      if (cleanedLines[i].trim() === '' && cleanedLines[i - 1].trim() === '') {
+        cleanedLines.splice(i, 1);
+      }
+    }
+
+    const resolvedRole = roleValue ?? CHARACTER_ROLE_LABELS.side;
+    const roleLine = `- **Character role:** ${resolvedRole}`;
+    const relIndex = cleanedLines.findIndex((line) => /\*\*Relationship\*\*/i.test(line.trim()));
+    const ageIndex = cleanedLines.findIndex((line) => /\*\*Age\*\*/i.test(line.trim()));
+    const blankIndex = cleanedLines.findIndex((line) => line.trim() === '');
+
+    if (relIndex >= 0 && cleanedLines[relIndex + 1]?.trim() === '') {
+      cleanedLines.splice(relIndex + 1, 1);
+    }
+
+    let insertAt = relIndex >= 0
+      ? relIndex + 1
+      : (ageIndex >= 0 ? ageIndex + 1 : (blankIndex >= 0 ? blankIndex : cleanedLines.length));
+    if (insertAt < cleanedLines.length && cleanedLines[insertAt].trim() === '') {
+      insertAt = Math.max(insertAt - 1, 0);
+    }
+    cleanedLines.splice(insertAt, 0, roleLine);
+
+    const updated = [...lines.slice(0, headerIndex + 1), ...cleanedLines, ...lines.slice(endIndex)].join(newline);
+    return updated;
+  }
+
   private async ensureCharacterChapterInfos(charFile: TFile) {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (activeFile && activeFile.path === charFile.path) return;
+
     const content = await this.app.vault.read(charFile);
-    const baseImages = this.parseImagesSection(content);
-    const baseImageTags = baseImages.length
-      ? baseImages.map(img => `- ${img.name}:`).join('\n')
-      : '';
     const chapters = await this.getChapterDescriptions();
     if (chapters.length === 0) return;
 
@@ -1826,36 +2820,22 @@ ${outline}
         const age = prev?.overrides?.age ?? '';
         const relationship = prev?.overrides?.relationship ?? '';
         const furtherInfo = prev?.overrides?.further_info ?? '';
-        const imagesRaw = prev?.overrides?.images ?? '';
-        const images = imagesRaw.trim().length > 0 ? imagesRaw : baseImageTags;
         const info = prev?.info ?? '';
 
-        const knownKeys = new Set(['age', 'relationship', 'further_info', 'images']);
-        const extraOverrides = Object.entries(prev?.overrides ?? {})
-          .filter(([key]) => !knownKeys.has(key))
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, value]) => `  - ${key}:${formatValue(value)}`)
-          .join('\n');
-
-        const baseBlock = `- **${c.name}**${c.order ? ` (Order: ${c.order})` : ''}:\n` +
+        return `- **${c.name}**${c.order ? ` (Order: ${c.order})` : ''}:\n` +
           `  - age:${formatValue(age)}\n` +
           `  - relationship:${formatValue(relationship)}\n` +
           `  - further_info:${formatValue(furtherInfo)}\n` +
-          `  - images:${formatValue(images)}\n` +
           `  - info:${formatValue(info)}`;
-
-        return extraOverrides ? `${baseBlock}\n${extraOverrides}` : baseBlock;
       })
       .join('\n');
 
-    const section = content.match(/(?:^|\n)[\t ]*[-*]?\s*## Chapter Relevant Information\s+([\s\S]*?)(?=##|$)/);
+    const section = content.match(/## Chapter Relevant Information\s+([\s\S]*?)(?=##|$)/);
     const newSection = `## Chapter Relevant Information\n${entries}\n`;
-
-    const normalized = content.replace(/(\S)\s*## Chapter Relevant Information/g, '$1\n\n## Chapter Relevant Information');
 
     if (!section) {
       const append = `\n${newSection}`;
-      const updated = `${normalized.trim()}\n\n${append}`;
+      const updated = `${content.trim()}\n\n${append}`;
       if (updated !== content) {
         await this.app.vault.modify(charFile, updated);
       }
@@ -1864,7 +2844,7 @@ ${outline}
 
     if (section[0] === newSection) return;
 
-    const updated = normalized.replace(section[0], `\n\n${newSection}`);
+    const updated = content.replace(section[0], newSection);
     if (updated !== content) {
       await this.app.vault.modify(charFile, updated);
     }
@@ -1878,8 +2858,9 @@ ${outline}
     for (const file of files) {
       const content = await this.app.vault.read(file);
       const fm = this.parseFrontmatter(content);
-      const name = (fm.name || file.basename || '').toString().trim();
-      const order = fm.order ? fm.order.toString().trim() : undefined;
+      const name = this.getFrontmatterText(fm.name) || file.basename || '';
+      const orderText = this.getFrontmatterText(fm.order);
+      const order = orderText.length > 0 ? orderText : undefined;
       if (name) chapters.push({ name, order, file });
     }
 
@@ -1895,6 +2876,105 @@ ${outline}
     return chapters;
   }
 
+  async getChapterList(): Promise<Array<{ name: string; file: TFile; descFile: TFile }>> {
+    const chapters = await this.getChapterDescriptions();
+    const results: Array<{ name: string; file: TFile; descFile: TFile }> = [];
+    const chapterFolder = `${this.settings.projectPath}/${this.settings.chapterFolder}`;
+
+    for (const chapter of chapters) {
+      const chapterPath = `${chapterFolder}/${chapter.file.basename}.md`;
+      const chapterFile = this.app.vault.getAbstractFileByPath(chapterPath);
+      const file = chapterFile instanceof TFile ? chapterFile : chapter.file;
+      results.push({ name: chapter.name, file, descFile: chapter.file });
+    }
+
+    return results;
+  }
+
+  async updateChapterOrder(descFiles: TFile[]): Promise<void> {
+    for (let index = 0; index < descFiles.length; index += 1) {
+      const file = descFiles[index];
+      const content = await this.app.vault.read(file);
+      const fm = this.parseFrontmatter(content);
+      fm.order = String(index + 1);
+
+      const fmLines = Object.entries(fm)
+        .map(([key, value]) => {
+          if (Array.isArray(value)) return `${key}: [${value.join(', ')}]`;
+          return `${key}: ${value}`;
+        })
+        .join('\n');
+
+      const newFrontmatter = `---\n${fmLines}\n---`;
+      const body = this.stripFrontmatter(content);
+      const updated = `${newFrontmatter}\n\n${body.trim()}\n`;
+
+      if (updated !== content) {
+        await this.app.vault.modify(file, updated);
+      }
+    }
+  }
+
+  async getCharacterList(): Promise<Array<{ name: string; file: TFile; role: string; gender: string }>> {
+    const folder = `${this.settings.projectPath}/${this.settings.characterFolder}`;
+    const files = this.app.vault.getFiles().filter(f => f.path.startsWith(folder) && !this.isTemplateFile(f));
+    const results: Array<{ name: string; file: TFile; surname: string; firstName: string; role: string; gender: string }> = [];
+
+    for (const file of files) {
+      const data = await this.parseCharacterFile(file);
+      const display = `${data.name} ${data.surname}`.trim();
+      const surname = data.surname || data.name;
+      results.push({ name: display || file.basename, file, surname, firstName: data.name, role: data.role, gender: data.gender });
+    }
+
+    results.sort((a, b) => {
+      const surnameCompare = a.surname.localeCompare(b.surname);
+      if (surnameCompare !== 0) return surnameCompare;
+      const nameCompare = a.firstName.localeCompare(b.firstName);
+      if (nameCompare !== 0) return nameCompare;
+      return a.name.localeCompare(b.name);
+    });
+
+    return results.map(({ name, file, role, gender }) => ({ name, file, role, gender }));
+  }
+
+  async updateCharacterRole(file: TFile, roleLabel: string): Promise<void> {
+    let content = await this.app.vault.read(file);
+    content = this.ensureCharacterRoleLine(content);
+    
+    const newline = content.includes('\r\n') ? '\r\n' : '\n';
+    const lines = content.split(/\r?\n/);
+    const roleRegex = /^([-*]\s*\*\*(?:Character\s+)?role(?:[:\s]*\*\*[:\s]*|\*\*[:\s]*))(.+)$/i;
+    
+    let modified = false;
+    const updatedLines = lines.map(line => {
+        if (roleRegex.test(line.trim())) {
+            modified = true;
+            return `- **Character role:** ${roleLabel}`;
+        }
+        return line;
+    });
+
+    if (modified) {
+        await this.app.vault.modify(file, updatedLines.join(newline));
+    }
+  }
+
+  async getLocationList(): Promise<Array<{ name: string; file: TFile }>> {
+    const folder = `${this.settings.projectPath}/${this.settings.locationFolder}`;
+    const files = this.app.vault.getFiles().filter(f => f.path.startsWith(folder) && !this.isTemplateFile(f));
+    const results: Array<{ name: string; file: TFile }> = [];
+
+    for (const file of files) {
+      const data = await this.parseLocationFile(file);
+      const name = data.name || file.basename;
+      results.push({ name, file });
+    }
+
+    results.sort((a, b) => a.name.localeCompare(b.name));
+    return results;
+  }
+
   async getChapterNameForFile(file: TFile): Promise<string> {
     const descFolder = `${this.settings.projectPath}/${this.settings.chapterDescFolder}`;
     const descPath = `${descFolder}/${file.basename}.md`;
@@ -1902,13 +2982,13 @@ ${outline}
     if (descFile instanceof TFile) {
       const descContent = await this.app.vault.read(descFile);
       const fm = this.parseFrontmatter(descContent);
-      const name = (fm.name || descFile.basename || '').toString().trim();
+      const name = this.getFrontmatterText(fm.name) || descFile.basename || '';
       if (name) return name;
     }
 
     const content = await this.app.vault.read(file);
     const fm = this.parseFrontmatter(content);
-    const title = (fm.title || file.basename || '').toString().trim();
+    const title = this.getFrontmatterText(fm.title) || file.basename || '';
     return title || file.basename;
   }
 
@@ -1922,8 +3002,8 @@ ${outline}
     // Also scan content for character/location mentions
     const textContent = content.replace(/---[\s\S]*?---/, ''); // Remove frontmatter
     
-    const characters = frontmatter.characters || [];
-    const locations = frontmatter.locations || [];
+    const characters = Array.isArray(frontmatter.characters) ? [...frontmatter.characters] : [];
+    const locations = Array.isArray(frontmatter.locations) ? [...frontmatter.locations] : [];
 
     // Scan for mentions and link them
     const charFolder = `${this.settings.projectPath}/${this.settings.characterFolder}`;
@@ -1955,22 +3035,23 @@ ${outline}
     return { characters, locations };
   }
 
-  parseFrontmatter(content: string): Record<string, any> {
+  parseFrontmatter(content: string): Record<string, FrontmatterValue> {
     const fmBlock = this.extractFrontmatter(content);
     if (!fmBlock) return {};
 
-    const fm: Record<string, any> = {};
+    const fm: Record<string, FrontmatterValue> = {};
     const lines = fmBlock.split('\n');
     
     for (const line of lines) {
       const colonIndex = line.indexOf(':');
       if (colonIndex > 0) {
         const key = line.substring(0, colonIndex).trim();
-        let value: any = line.substring(colonIndex + 1).trim();
+        const rawValue = line.substring(colonIndex + 1).trim();
+        let value: FrontmatterValue = rawValue;
         
         // Handle arrays
-        if (value.startsWith('[') && value.endsWith(']')) {
-          value = value.slice(1, -1).split(',').map((v: string) => v.trim()).filter((v: string) => v);
+        if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
+          value = rawValue.slice(1, -1).split(',').map((v) => v.trim()).filter((v) => v);
         }
         
         fm[key] = value;
@@ -1978,6 +3059,14 @@ ${outline}
     }
     
     return fm;
+  }
+
+  private getFrontmatterText(value: FrontmatterValue | undefined): string {
+    if (typeof value === 'string') return value.trim();
+    if (Array.isArray(value)) {
+      return value.map((entry) => entry.trim()).filter(Boolean).join(', ');
+    }
+    return '';
   }
 
   async findCharacterFile(name: string): Promise<TFile | null> {
@@ -2022,165 +3111,74 @@ ${outline}
     if (this.isCursorInFrontmatter(editor)) return;
     const cursor = editor.getCursor();
     const line = editor.getLine(cursor.line);
-    
-    let modified = false;
-    let newLine = line;
-    let cursorAdjustment = 0;
+    const result = this.applyAutoReplacement(line, cursor.ch);
+    if (!result) return;
 
+    editor.setLine(cursor.line, result.line);
+    editor.setCursor({ line: cursor.line, ch: result.cursorCh });
+  }
+
+  private applyAutoReplacement(line: string, cursorCh: number): { line: string; cursorCh: number } | null {
     for (const pair of this.settings.autoReplacements) {
-      if (!pair.start) continue;
+      if (!pair.start || !pair.startReplace) continue;
+      const startToken = pair.start;
+      const endToken = pair.end || pair.start;
+      const startReplace = pair.startReplace;
+      const endReplace = pair.endReplace || pair.startReplace;
 
-      if (pair.start === pair.end && this.isSmartQuoteToken(pair.start)) {
-        const skip = this.skipOverExistingCloser(newLine, cursor.ch + (newLine.length - line.length) + cursorAdjustment, pair);
-        if (skip.handled) {
-          newLine = skip.line;
-          cursorAdjustment += skip.cursorAdjustment;
-          modified = true;
-          continue;
-        }
-
-        const smartQuotedLine = this.applySmartQuotePair(newLine, pair);
-        if (smartQuotedLine !== newLine) {
-          newLine = smartQuotedLine;
-          modified = true;
-        }
-
-        const close = pair.endReplace;
-        if (close) {
-          const collapse = this.collapseDuplicateCloser(newLine, cursor.ch + (newLine.length - line.length) + cursorAdjustment, close);
-          if (collapse.changed) {
-            newLine = collapse.line;
-            cursorAdjustment += collapse.cursorAdjustment;
-            modified = true;
+      if (this.endsWithToken(line, cursorCh, startToken)) {
+        if (startToken === endToken) {
+          if (startReplace === endReplace) {
+            return this.replaceAtCursor(line, cursorCh, startToken, startReplace);
           }
+          const prefix = line.slice(0, cursorCh - startToken.length);
+          const openCount = this.countOccurrences(prefix, startReplace);
+          const closeCount = this.countOccurrences(prefix, endReplace);
+          const useStart = openCount <= closeCount;
+          const replacement = useStart ? startReplace : endReplace;
+          return this.replaceAtCursor(line, cursorCh, startToken, replacement);
         }
-        continue;
+
+        return this.replaceAtCursor(line, cursorCh, startToken, startReplace);
       }
 
-      if (pair.start === pair.end) {
-        if (newLine.includes(pair.start)) {
-          const replacement = pair.startReplace || pair.endReplace;
-          if (replacement) {
-            newLine = newLine.split(pair.start).join(replacement);
-            modified = true;
-          }
-        }
-        continue;
-      }
-
-      if (pair.start && pair.startReplace && newLine.includes(pair.start)) {
-        newLine = newLine.split(pair.start).join(pair.startReplace);
-        modified = true;
-      }
-
-      if (pair.end && pair.endReplace && newLine.includes(pair.end)) {
-        newLine = newLine.split(pair.end).join(pair.endReplace);
-        modified = true;
+      if (endToken && this.endsWithToken(line, cursorCh, endToken)) {
+        return this.replaceAtCursor(line, cursorCh, endToken, endReplace);
       }
     }
 
-    if (modified) {
-      editor.setLine(cursor.line, newLine);
-      // Restore cursor position
-      const diff = newLine.length - line.length;
-      editor.setCursor({ line: cursor.line, ch: cursor.ch + diff + cursorAdjustment });
-    }
+    return null;
   }
 
-  private applySmartQuotePair(line: string, pair: AutoReplacementPair): string {
-    if (pair.start !== pair.end || pair.start.length !== 1) return line;
-    const token = pair.start;
-    const openQuote = pair.startReplace;
-    const closeQuote = pair.endReplace;
-    if (!openQuote || !closeQuote || !line.includes(token)) return line;
-
-    let result = '';
-    let expectingOpen = true;
-
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch !== token) {
-        result += ch;
-        continue;
-      }
-
-      const prev = i > 0 ? line[i - 1] : '';
-      const next = i + 1 < line.length ? line[i + 1] : '';
-      const prevIsWord = this.isWordChar(prev);
-      const nextIsWord = this.isWordChar(next);
-
-      // Keep apostrophes inside words unchanged
-      if (prevIsWord && nextIsWord) {
-        result += ch;
-        continue;
-      }
-
-      const prevIsSpace = prev === '' || /\s/.test(prev);
-      const nextIsSpace = next === '' || /\s/.test(next);
-      const prevIsOpenPunct = /[([{«„‚›<]/.test(prev) || prevIsSpace;
-      const nextIsClosePunct = /[)\]}»“’›>,.:;!?]/.test(next) || nextIsSpace;
-      const prevIsDash = /[—–-]/.test(prev);
-
-      let useOpen: boolean | null = null;
-
-      if ((prevIsOpenPunct || prevIsDash) && nextIsWord) {
-        useOpen = true;
-      } else if (prevIsWord && nextIsClosePunct) {
-        useOpen = false;
-      } else if (!prevIsWord && nextIsWord) {
-        useOpen = true;
-      } else if (prevIsWord && !nextIsWord) {
-        useOpen = false;
-      }
-
-      if (useOpen === null) {
-        useOpen = expectingOpen;
-      }
-
-      result += useOpen ? openQuote : closeQuote;
-      expectingOpen = !useOpen;
-    }
-
-    return result;
+  private endsWithToken(line: string, cursorCh: number, token: string): boolean {
+    if (!token) return false;
+    if (cursorCh < token.length) return false;
+    return line.slice(cursorCh - token.length, cursorCh) === token;
   }
 
-  private isSmartQuoteToken(token: string): boolean {
-    return token === "'" || token === '"';
-  }
-
-  private collapseDuplicateCloser(
+  private replaceAtCursor(
     line: string,
     cursorCh: number,
-    close: string
-  ): { line: string; cursorAdjustment: number; changed: boolean } {
-    const len = close.length;
-    if (len === 0) return { line, cursorAdjustment: 0, changed: false };
-    if (cursorCh < len || cursorCh + len > line.length) return { line, cursorAdjustment: 0, changed: false };
-
-    const before = line.slice(cursorCh - len, cursorCh);
-    const after = line.slice(cursorCh, cursorCh + len);
-    if (before !== close || after !== close) return { line, cursorAdjustment: 0, changed: false };
-
-    const updated = line.slice(0, cursorCh - len) + line.slice(cursorCh);
-    return { line: updated, cursorAdjustment: len, changed: true };
+    token: string,
+    replacement: string
+  ): { line: string; cursorCh: number } {
+    const startIndex = cursorCh - token.length;
+    const updated = `${line.slice(0, startIndex)}${replacement}${line.slice(cursorCh)}`;
+    const nextCursor = startIndex + replacement.length;
+    return { line: updated, cursorCh: nextCursor };
   }
 
-  private skipOverExistingCloser(
-    line: string,
-    cursorCh: number,
-    pair: AutoReplacementPair
-  ): { line: string; cursorAdjustment: number; handled: boolean } {
-    const token = pair.start;
-    const close = pair.endReplace;
-    if (!token || !close) return { line, cursorAdjustment: 0, handled: false };
-    if (cursorCh <= 0) return { line, cursorAdjustment: 0, handled: false };
-
-    const typed = line.slice(cursorCh - token.length, cursorCh);
-    const ahead = line.slice(cursorCh, cursorCh + close.length);
-    if (typed !== token || ahead !== close) return { line, cursorAdjustment: 0, handled: false };
-
-    const updated = line.slice(0, cursorCh - token.length) + line.slice(cursorCh);
-    return { line: updated, cursorAdjustment: close.length, handled: true };
+  private countOccurrences(text: string, search: string): number {
+    if (!search) return 0;
+    let count = 0;
+    let index = 0;
+    while (true) {
+      const next = text.indexOf(search, index);
+      if (next === -1) break;
+      count += 1;
+      index = next + search.length;
+    }
+    return count;
   }
 
   private isCursorInFrontmatter(editor: Editor): boolean {
@@ -2212,26 +3210,45 @@ ${outline}
 
     const charFiles = this.app.vault.getFiles().filter(f => f.path.startsWith(charFolder) && !this.isTemplateFile(f));
     const locFiles = this.app.vault.getFiles().filter(f => f.path.startsWith(locFolder) && !this.isTemplateFile(f));
+    
+    // Scan for relationship keys
+    const relationshipKeys = new Set<string>();
 
     for (const charFile of charFiles) {
       try {
         const data = await this.parseCharacterFile(charFile);
+        
+        // Use parsing logic to find keys in General Information
+        const content = await this.app.vault.read(charFile);
+        const generalLines = this.getSectionLines(content, 'General Information');
+        for (const line of generalLines) {
+           const match = line.match(/^\s*[-*]\s*\*\*(.+?)\*\*([:]?)/);
+           if (match) {
+             const key = match[1].trim();
+             // Clean trait key from trailing colon if present
+             const cleanKey = key.endsWith(':') ? key.slice(0, -1).trim() : key;
+             if (cleanKey) relationshipKeys.add(cleanKey);
+           }
+        }
+        
         const fullName = `${data.name} ${data.surname}`.trim();
         if (fullName) index.set(fullName.toLowerCase(), { path: charFile.path, display: fullName });
         if (data.name) index.set(data.name.toLowerCase(), { path: charFile.path, display: data.name });
         if (data.surname) index.set(data.surname.toLowerCase(), { path: charFile.path, display: data.surname });
         if (charFile.basename) index.set(charFile.basename.toLowerCase(), { path: charFile.path, display: fullName || charFile.basename });
-      } catch (e) {
+      } catch {
         // ignore parse errors
       }
     }
+    
+    this.knownRelationshipKeys = relationshipKeys;
 
     for (const locFile of locFiles) {
       try {
         const data = await this.parseLocationFile(locFile);
         if (data.name) index.set(data.name.toLowerCase(), { path: locFile.path, display: data.name });
         if (locFile.basename) index.set(locFile.basename.toLowerCase(), { path: locFile.path, display: data.name || locFile.basename });
-      } catch (e) {
+      } catch {
         // ignore parse errors
       }
     }
@@ -2255,7 +3272,7 @@ ${outline}
   }
 
   private isWordChar(ch: string | undefined) {
-    return !!ch && /[\p{L}\p{N}_]/u.test(ch);
+    return !!ch && /[A-Za-z0-9_]/.test(ch);
   }
 
   private getWordAtCursor(editor: Editor): string | null {
@@ -2304,7 +3321,7 @@ ${outline}
   }
 
   private getPosAtCoords(editor: Editor, x: number, y: number): { lineText: string; ch: number } | null {
-    const cm = (editor as any)?.cm;
+    const cm = (editor as EditorWithCodeMirror).cm;
     if (!cm?.posAtCoords || !cm?.state?.doc) return null;
     const pos = cm.posAtCoords({ x, y });
     if (pos == null) return null;
@@ -2342,11 +3359,11 @@ ${outline}
   }
 
   stripChapterRelevantSection(content: string): string {
-    return content.replace(/(?:^|\n)[\t ]*[-*]?\s*## Chapter Relevant Information\s+[\s\S]*?(?=##|$)/, '').trim();
+    return content.replace(/## Chapter Relevant Information\s+[\s\S]*?(?=##|$)/, '').trim();
   }
 
   stripImagesSection(content: string): string {
-    return content.replace(/\s*## Images\s+[\s\S]*?(?=##|$)/, '').trim();
+    return content.replace(/## Images\s+[\s\S]*?(?=##|$)/, '').trim();
   }
 
   extractTitle(content: string): string | null {
@@ -2359,80 +3376,34 @@ ${outline}
   }
 
   applyCharacterOverridesToBody(content: string, overrides: Record<string, string>): string {
-    const filteredOverrides = Object.fromEntries(
-      Object.entries(overrides || {}).filter(([key]) => !['images', 'info', 'further_info'].includes(key))
-    );
-
-    if (!filteredOverrides || Object.keys(filteredOverrides).length === 0) {
-      void this.logMerge('No chapter overrides found; skipping merge.');
+    if (!overrides || Object.keys(overrides).length === 0) {
       return content;
     }
 
-    void this.logMerge(
-      `Merging chapter overrides into character body. Overrides: ${JSON.stringify(filteredOverrides)}`
-    );
-
-    return content.replace(/## General Information\s+([\s\S]*?)(?=##|$)/, (match, section) => {
-      void this.logMerge(`Input General Information section:\n${section.trim()}`);
+    return content.replace(/## General Information\s+([\s\S]*?)(?=##|$)/, (_match: string, section: string) => {
       const lines = section.split('\n');
-      const output: string[] = [];
-      const seenKeys = new Set<string>();
-
-      const normalizeKey = (raw: string) =>
-        raw
-          .trim()
-          .toLowerCase()
-          .replace(/\*\*/g, '')
-          .replace(/__/g, '')
-          .replace(/\s+/g, '_')
-          .replace(/[^a-z0-9_]/g, '');
-
-      const propPattern = /^(?:[-*+•–—]\s*)?(?:\*\*|__)?(.+?)(?:\*\*|__)?\s*:\s*(.*)$/;
-
-      for (const line of lines) {
+      const filtered = lines.filter(line => {
         const trimmed = line.trim();
-        if (!trimmed) {
-          output.push(line);
-          continue;
+        if (!trimmed) return true;
+        // Updated regex to handle loose formatting (colon inside or outside) same as Role
+        if (/^\s*[-*]\s*\*\*Age(?:[:\s]*\*\*[:\s]*|\*\*[:\s]*)/i.test(trimmed)) {
+          return overrides.age ? false : true;
         }
-
-        const matchProp = trimmed.match(propPattern);
-        if (matchProp) {
-          const rawKey = matchProp[1];
-          let baseValue = matchProp[2]?.trim() ?? '';
-          baseValue = baseValue.replace(/^\*+\s*/, '').replace(/\s*\*+$/, '').trim();
-          const key = normalizeKey(rawKey);
-          if (!key) {
-            output.push(line);
-            continue;
-          }
-          if (seenKeys.has(key)) continue;
-          seenKeys.add(key);
-
-          const overrideValueRaw = filteredOverrides[key];
-          const overrideValue = overrideValueRaw != null ? overrideValueRaw.trim() : '';
-          const value = overrideValue.length > 0 ? overrideValue : baseValue;
-          if (value) {
-            output.push(`- **${rawKey.trim()}**: ${value}`);
-          }
-          continue;
+        if (/^\s*[-*]\s*\*\*Relationship(?:[:\s]*\*\*[:\s]*|\*\*[:\s]*)/i.test(trimmed)) {
+          return overrides.relationship ? false : true;
         }
+        return true;
+      });
 
-        output.push(line);
+      if (overrides.age) {
+        filtered.push(`- **Age:** ${overrides.age}`);
       }
 
-      for (const [rawKey, rawValue] of Object.entries(filteredOverrides)) {
-        const key = normalizeKey(rawKey);
-        if (seenKeys.has(key)) continue;
-        const value = rawValue != null ? rawValue.trim() : '';
-        if (value) {
-          output.push(`- **${rawKey}**: ${value}`);
-        }
+      if (overrides.relationship) {
+        filtered.push(`- **Relationship:** ${overrides.relationship}`);
       }
 
-      const updated = output.join('\n').trim();
-      void this.logMerge(`Output General Information section:\n${updated}`);
-      void this.logMerge(`General Information section merged. Result length: ${updated.length}`);
+      const updated = filtered.join('\n').trim();
       return `## General Information\n${updated}\n`;
     });
   }
@@ -2475,24 +3446,6 @@ ${outline}
 
   private isChapterPath(path: string): boolean {
     const folder = `${this.settings.projectPath}/${this.settings.chapterFolder}`;
-    if (!path.startsWith(folder)) return false;
-    if (!path.endsWith('.md')) return false;
-    const base = path.split('/').pop() || '';
-    if (base.startsWith('_')) return false;
-    return true;
-  }
-
-  private isCharacterPath(path: string): boolean {
-    const folder = `${this.settings.projectPath}/${this.settings.characterFolder}`;
-    if (!path.startsWith(folder)) return false;
-    if (!path.endsWith('.md')) return false;
-    const base = path.split('/').pop() || '';
-    if (base.startsWith('_')) return false;
-    return true;
-  }
-
-  private isLocationPath(path: string): boolean {
-    const folder = `${this.settings.projectPath}/${this.settings.locationFolder}`;
     if (!path.startsWith(folder)) return false;
     if (!path.endsWith('.md')) return false;
     const base = path.split('/').pop() || '';
@@ -2580,10 +3533,13 @@ ${outline}
     try {
       const content = await this.app.vault.read(descFile);
       const fm = this.parseFrontmatter(content);
-      if (fm.name) title = fm.name;
-      if (fm.order) chapterNumber = fm.order;
-      if (fm.outline) description = fm.outline;
-    } catch (e) {
+      const nameText = this.getFrontmatterText(fm.name);
+      const orderText = this.getFrontmatterText(fm.order);
+      const outlineText = this.getFrontmatterText(fm.outline);
+      if (nameText) title = nameText;
+      if (orderText) chapterNumber = orderText;
+      if (outlineText) description = outlineText;
+    } catch {
       // ignore parsing errors
     }
 
@@ -2603,10 +3559,10 @@ locations: []
     try {
       await this.app.vault.create(chapterPath, chapterContent);
       new Notice(`Chapter created for ${descFile.basename}`);
-    } catch (e) {
-      const message = (e && e.message) ? e.message.toString() : '';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       if (message.toLowerCase().includes('already exists')) return;
-      new Notice('Error creating chapter file: ' + message);
+      new Notice(`Error creating chapter file: ${message}`);
     }
   }
 
@@ -2624,10 +3580,10 @@ locations: []
   }
 
   private clearFocus() {
-    if (!this.sidebarView) return;
-    if (!this.sidebarView.selectedEntity) return;
+    const sidebar = this.getSidebarView();
+    if (!sidebar || !sidebar.selectedEntity) return;
     this.lastHoverEntity = null;
-    this.sidebarView.setSelectedEntity(null, { forceFocus: false });
+    sidebar.setSelectedEntity(null, { forceFocus: false });
   }
 
   private normalizeEntityName(name: string): string {
@@ -2663,10 +3619,13 @@ locations: []
     return true;
   }
 
-  linkifyElement(el: HTMLElement) {
+  private linkifyElement(el: HTMLElement) {
     if (!this.entityRegex || this.entityIndex.size === 0) return;
 
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    const doc = globalThis.document;
+    if (!doc) return;
+
+    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
       acceptNode: (node) => {
         const parent = node.parentElement;
         if (!parent) return NodeFilter.FILTER_REJECT;
@@ -2690,7 +3649,7 @@ locations: []
       }
 
       regex.lastIndex = 0;
-      const fragment = document.createDocumentFragment();
+      const fragment = doc.createDocumentFragment();
       let lastIndex = 0;
       let match: RegExpExecArray | null;
 
@@ -2707,30 +3666,990 @@ locations: []
         }
 
         if (start > lastIndex) {
-          fragment.appendChild(document.createTextNode(text.slice(lastIndex, start)));
+          fragment.appendChild(doc.createTextNode(text.slice(lastIndex, start)));
         }
 
         const key = matchText.toLowerCase();
         const entity = this.entityIndex.get(key);
         if (entity) {
-          const link = document.createElement('a');
+          const link = doc.createElement('a');
           link.className = 'internal-link';
           link.setAttribute('data-href', entity.path);
           link.setAttribute('href', entity.path);
           link.textContent = matchText;
           fragment.appendChild(link);
         } else {
-          fragment.appendChild(document.createTextNode(matchText));
+          fragment.appendChild(doc.createTextNode(matchText));
         }
 
         lastIndex = end;
       }
 
       if (lastIndex < text.length) {
-        fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+        fragment.appendChild(doc.createTextNode(text.slice(lastIndex)));
       }
 
       node.parentNode?.replaceChild(fragment, node);
+    }
+  }
+}
+
+type CharacterRole = 'main' | 'side' | 'background';
+
+const CHARACTER_ROLE_LABELS: Record<CharacterRole, string> = {
+  main: 'Main character',
+  side: 'Side character',
+  background: 'Background character'
+};
+
+const normalizeCharacterRole = (value: string): string => {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return CHARACTER_ROLE_LABELS.side;
+  if (normalized.includes('main')) return CHARACTER_ROLE_LABELS.main;
+  if (normalized.includes('background')) return CHARACTER_ROLE_LABELS.background;
+  if (normalized.includes('side')) return CHARACTER_ROLE_LABELS.side;
+  return value.trim();
+};
+export const CHARACTER_MAP_VIEW_TYPE = 'novalist-character-map';
+
+export class CharacterMapView extends ItemView {
+  plugin: NovalistPlugin;
+
+  constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType() {
+    return CHARACTER_MAP_VIEW_TYPE;
+  }
+
+  getDisplayText() {
+    return 'Character map';
+  }
+
+  getIcon() {
+    return 'git-commit';
+  }
+
+  async onOpen() {
+    this.registerEvent(this.plugin.app.vault.on('modify', () => { void this.updateGraph(); }));
+    await this.updateGraph();
+  }
+
+  async updateGraph() {
+    const container = this.containerEl;
+    container.empty();
+    
+    const header = container.createEl('div', { 
+        cls: 'view-header',
+        attr: {
+             style: 'margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;'
+        }
+    });
+
+    // eslint-disable-next-line obsidianmd/ui/sentence-case
+    header.createEl('h4', { text: 'Character Relationship Map (Work in Progress)' });
+    
+    // Add WIP noticeable banner
+    const wipBanner = container.createDiv();
+    wipBanner.setCssStyles({
+        backgroundColor: '#5c4818',
+        color: '#f0ad4e',
+        padding: '5px 10px',
+        marginBottom: '10px',
+        borderRadius: '4px',
+        fontSize: '0.9em',
+        border: '1px solid #8a6d3b',
+        textAlign: 'center'
+    });
+    // eslint-disable-next-line obsidianmd/ui/sentence-case
+    wipBanner.createEl('strong', { text: 'NB! ' });
+    wipBanner.createSpan({ text: 'This relationship graph is currently under development. Layout and connections might be unstable.' });
+
+    const refreshBtn = header.createEl('button', { text: 'Refresh' });
+    refreshBtn.addEventListener('click', () => { void this.updateGraph(); });
+
+    const div = container.createDiv();
+    div.addClass('novalist-character-map-cy');
+    div.setCssProps({ height: 'calc(100% - 40px)', width: '100%', position: 'relative', overflow: 'hidden' });
+    
+    // Create Legend Container (absolute positioned overlay)
+    const legend = div.createDiv();
+    legend.setCssProps({
+        position: 'absolute',
+        bottom: '10px', 
+        left: '10px',
+        background: 'rgba(0,0,0,0.6)',
+        padding: '8px',
+        borderRadius: '5px',
+        zIndex: '1000',
+        pointerEvents: 'none',
+        color: '#ccc',
+        fontSize: '0.8em',
+        border: '1px solid rgba(255,255,255,0.1)'
+    });
+    // eslint-disable-next-line obsidianmd/ui/sentence-case
+    legend.createEl('div', { text: 'Scroll to Zoom • Drag to Pan' });
+    legend.createEl('div', { text: 'Drag nodes to rearrange' });
+
+
+    if (!this.plugin.settings.characterFolder) {
+        div.setText('Character folder not set in settings.');
+        return;
+    }
+
+    let folder = this.plugin.settings.characterFolder;
+    if (this.plugin.settings.projectPath) {
+        folder = `${this.plugin.settings.projectPath}/${folder}`;
+    }
+
+    const files = this.plugin.app.vault.getFiles().filter((f: TFile) => f.path.startsWith(folder));
+    if (files.length === 0) {
+        div.setText('No character files found in ' + folder);
+        return;
+    }
+    
+    // Data Preparation for Cytoscape
+    interface ElementData {
+        id?: string;
+        label?: string;
+        parent?: string;
+        source?: string;
+        target?: string;
+    }
+    
+    interface ElementWrapper {
+        data: ElementData;
+        classes?: string;
+    }
+
+    const elements: ElementWrapper[] = [];
+    const charIdMap = new Map<string, string>();
+    
+    const getId = (name: string) => {
+        if (!name) return 'unknown';
+        if (!charIdMap.has(name)) {
+            const id = 'node_' + name.replace(/[^a-zA-Z0-9]/g, '_');
+            charIdMap.set(name, id);
+        }
+        return charIdMap.get(name) || 'unknown';
+    };
+
+    interface CharData {
+      name: string;
+      surname: string;
+      relationship: string;
+      customRelationships: Record<string, string[]>;
+      role?: string;
+    }
+
+    const charDataMap = new Map<string, CharData>();
+    const fileBaseMap = new Map<string, string>();
+    const activeStats = new Set<string>();
+
+    for (const file of files) {
+         try {
+             // Access parseCharacterFile from plugin
+             const data = await this.plugin.parseCharacterFile(file);
+             if (data && data.name) {
+                 charDataMap.set(data.name, data);
+                 fileBaseMap.set(file.basename, data.name);
+             }
+         } catch (e) {
+             globalThis.console.error('Failed to parse character', file.path, e);
+         }
+    }
+    
+    // Helper to resolve link target
+    const resolveTarget = (targetName: string): string | null => {
+        // 1. Exact Name match
+        if (charDataMap.has(targetName)) return targetName;
+        // 2. Exact Filename match
+        if (fileBaseMap.has(targetName)) return fileBaseMap.get(targetName) || null;
+        
+        const lowerTarget = targetName.toLowerCase();
+        // 3. Case-insensitive Name match
+        const foundName = Array.from(charDataMap.keys()).find(k => k.toLowerCase() === lowerTarget);
+        if (foundName) return foundName;
+        
+        // 4. Case-insensitive Filename match
+        const foundBase = Array.from(fileBaseMap.keys()).find(k => k.toLowerCase() === lowerTarget);
+        if (foundBase) return fileBaseMap.get(foundBase) || null;
+        
+        return null;
+    };
+
+    // Prepare Inverse Map
+    const inverseMap = new Map<string, Set<string>>();
+    const pairs = this.plugin.settings.relationshipPairs || {};
+    for (const [k, v] of Object.entries(pairs)) {
+        const lowerK = k.toLowerCase().trim();
+        if (!inverseMap.has(lowerK)) inverseMap.set(lowerK, new Set());
+        if (Array.isArray(v)) {
+            v.forEach(val => {
+                 const lowerVal = val.toLowerCase().trim();
+                 inverseMap.get(lowerK)?.add(lowerVal);
+                 if (!inverseMap.has(lowerVal)) inverseMap.set(lowerVal, new Set());
+                 inverseMap.get(lowerVal)?.add(lowerK);
+            });
+        }
+    }
+    
+    // Track edges to avoid duplicates/inverses
+    const edgeTracker = new Map<string, Set<string>>();
+    
+    const shouldDraw = (idA: string, idB: string, roleInput: string): boolean => {
+        const key = [idA, idB].sort().join('::');
+        const role = roleInput.toLowerCase().trim();
+        
+        if (!edgeTracker.has(key)) {
+            edgeTracker.set(key, new Set([role]));
+            return true;
+        }
+        
+        const existingRoles = edgeTracker.get(key) || new Set<string>();
+        if (existingRoles.has(role)) return false; // Duplicate check
+        
+        // Strict inverse check using settings
+        // We check if the current role is a known inverse of any existing role for this pair
+        for (const existing of existingRoles) {
+             // Check generic inverse list
+             // Since we lowercased keys in inverseMap, and 'existing' is lowercase, this works
+             const inverses = inverseMap.get(existing);
+             if (inverses && inverses.has(role)) return false;
+        }
+
+        existingRoles.add(role);
+        return true;
+    };
+
+    for (const [name, data] of charDataMap) {
+        const sourceId = getId(name);
+        if (!sourceId) continue;
+        
+        // Standard relationship field
+        if (data.relationship) {
+            const links = data.relationship.match(/\[\[(.*?)\]\]/g);
+            if (links) {
+                for (const link of links) {
+                    const rawTarget = link.replace(/^\[\[|\]\]$/g, '').split('|')[0];
+                    const realTargetName = resolveTarget(rawTarget);
+                    
+                    if (!realTargetName) continue;
+
+                    const targetId = getId(realTargetName);
+                    if (targetId && sourceId !== targetId) {
+                        // Populate stats only, do not track edges yet
+                        activeStats.add(name);
+                        activeStats.add(realTargetName);
+                    }
+                }
+            }
+        }
+        
+        // Custom Relationships
+        if (data.customRelationships) {
+            for (const [role, targets] of Object.entries(data.customRelationships)) {
+                if (role && !Array.isArray(targets)) continue;
+                for (const rawTarget of targets) {
+                     const realTargetName = resolveTarget(rawTarget);
+                     
+                     if (!realTargetName) continue;
+                     
+                     const targetId = getId(realTargetName);
+                     if (targetId && sourceId !== targetId) {
+                         activeStats.add(name);
+                         activeStats.add(realTargetName);
+                     }
+                }
+            }
+        }
+    }
+    
+
+    // Grouping Logic - Ported to Cytoscape Parents
+    
+    // 1. Analyze Families (Shared Last Names)
+    const surnameCounts = new Map<string, number>();
+    for (const [key, data] of charDataMap) {
+        if (!activeStats.has(key)) continue;
+        
+        const surname = data.surname || (data.name.trim().includes(' ') ? data.name.trim().split(/\s+/).pop() : '');
+
+        if (surname && surname.length > 1 && /^[A-Z]/.test(surname)) {
+            surnameCounts.set(surname, (surnameCounts.get(surname) || 0) + 1);
+        }
+    }
+    
+    // Track assigned nodes to parents
+    const parentMap = new Map<string, string>(); // childId -> parentId
+
+    // 1. Family Groups (Surname)
+    for (const [key, data] of charDataMap) {
+       if (activeStats.has(key)) {
+         const id = getId(key);
+         
+         const surname = data.surname || (data.name.trim().includes(' ') ? data.name.trim().split(/\s+/).pop() : '');
+
+         if (surname && (surnameCounts.get(surname) || 0) >= 2) {
+             const groupId = `fam_${surname.replace(/[^a-zA-Z0-9]/g, '')}`;
+             
+             // Add Group Node if not exists
+             if (!elements.some(e => e.data.id === groupId)) {
+                 elements.push({ 
+                     data: { id: groupId, label: `${surname} Family` },
+                     classes: 'group-node'
+                 });
+             }
+             parentMap.set(id, groupId);
+         }
+       }
+    }
+    
+    // 2. Inferred Family Groups
+    const familyRelations = ['parent', 'mother', 'father', 'mom', 'dad', 'kid', 'child', 'son', 'daughter', 'sibling', 'brother', 'sister', 'spouse', 'wife', 'husband', 'partner'];
+    const familyAdjacency = new Map<string, string[]>();
+
+    const addFamilyLink = (u: string, v: string) => {
+        if (!familyAdjacency.has(u)) familyAdjacency.set(u, []);
+        if (!familyAdjacency.has(v)) familyAdjacency.set(v, []);
+        familyAdjacency.get(u)?.push(v);
+        familyAdjacency.get(v)?.push(u);
+    };
+
+    for (const [name, data] of charDataMap) {
+        // Skip if already in surname family
+        if (parentMap.has(getId(name)) || !activeStats.has(name)) continue;
+
+        if (data.customRelationships) {
+             for (const [role, targets] of Object.entries(data.customRelationships)) {
+                 if (familyRelations.some(rel => role.toLowerCase().includes(rel)) && Array.isArray(targets)) {
+                      for (const t of targets) {
+                          const targetName = resolveTarget(t);
+                          if (targetName && activeStats.has(targetName)) {
+                              // Only group if BOTH are not in a surname family (keep it simple)
+                              if (!parentMap.has(getId(name)) && !parentMap.has(getId(targetName))) {
+                                  addFamilyLink(name, targetName);
+                              }
+                          }
+                      }
+                 }
+            }
+        }
+    }
+    
+    const visitedFamily = new Set<string>();
+    let famGroupIndex = 0;
+    
+    for (const [node] of familyAdjacency) {
+        if (visitedFamily.has(node)) continue;
+        
+        const component: string[] = [];
+        const queue = [node];
+        visitedFamily.add(node);
+        
+        while (queue.length > 0) {
+           const curr = queue.shift();
+           if (!curr) continue;
+           component.push(curr);
+           
+           for (const neighbor of (familyAdjacency.get(curr) || [])) {
+               if (!visitedFamily.has(neighbor)) {
+                   visitedFamily.add(neighbor);
+                   queue.push(neighbor);
+               }
+           }
+        }
+        
+        if (component.length >= 2) {
+            famGroupIndex++;
+            
+            // Smarter Naming: Check for common surnames in the inferred group
+            const counts = new Map<string, number>();
+            
+            for (const memberName of component) {
+                const data = charDataMap.get(memberName);
+                if (data) {
+                    const surname = data.surname || (data.name.trim().includes(' ') ? data.name.trim().split(/\s+/).pop() : '');
+                    
+                    // Basic surname validation (Capitalized, length > 1)
+                    if (surname && surname.length > 1 && /^[A-Z]/.test(surname)) {
+                        counts.set(surname, (counts.get(surname) || 0) + 1);
+                    }
+                }
+            }
+            
+            let bestSurname = "";
+            let maxCount = 0;
+            
+            for (const [s, c] of counts) {
+                if (c > maxCount) {
+                    maxCount = c;
+                    bestSurname = s;
+                }
+            }
+            
+            let label = `Family Group ${famGroupIndex}`;
+            // If the best surname is shared by at least 2 members (or even 1 if the group is huge? No, 2 is safer)
+            // Or if it covers a significant portion of the group.
+            if (maxCount >= 2) {
+                label = `${bestSurname} Family`;
+            }
+
+            const groupId = `fam_inferred_${famGroupIndex}`;
+            elements.push({ 
+                data: { id: groupId, label: label },
+                classes: 'group-node'
+            });
+            for (const member of component) {
+                parentMap.set(getId(member), groupId);
+            }
+        }
+    }
+    
+    // 3. Dynamic Groups for remaining nodes
+    // Build edge list for grouping analysis
+    interface PotentialEdge { u: string; v: string; }
+    const roleEdges = new Map<string, PotentialEdge[]>();
+    
+    for (const [name, data] of charDataMap) {
+        if (!activeStats.has(name) || parentMap.has(getId(name))) continue;
+        
+        if (data.customRelationships) {
+            for (const [role, targets] of Object.entries(data.customRelationships)) {
+                 const cleanRole = role.trim();
+                 if (!cleanRole || familyRelations.some(rel => cleanRole.toLowerCase().includes(rel))) continue;
+                 
+                 if (Array.isArray(targets)) {
+                     for (const t of targets) {
+                         const targetName = resolveTarget(t);
+                         if (targetName && activeStats.has(targetName)) {
+                             if (!parentMap.has(getId(name)) && !parentMap.has(getId(targetName))) {
+                                 if (name === targetName) continue;
+                                 if (!roleEdges.has(cleanRole)) roleEdges.set(cleanRole, []);
+                                 roleEdges.get(cleanRole)?.push({ u: name, v: targetName });
+                             }
+                         }
+                     }
+                 }
+            }
+        }
+    }
+    
+    const sortedRoles = Array.from(roleEdges.keys()).sort((a, b) => {
+        return (roleEdges.get(b)?.length || 0) - (roleEdges.get(a)?.length || 0);
+    });
+
+    let groupCounter = 0;
+    
+    for (const role of sortedRoles) {
+        const edges = roleEdges.get(role) || [];
+        if (edges.length === 0) continue;
+        
+        const adjacency = new Map<string, string[]>();
+        const involved = new Set<string>();
+        
+        for (const edge of edges) {
+            if (parentMap.has(getId(edge.u)) || parentMap.has(getId(edge.v))) continue;
+            if (!adjacency.has(edge.u)) adjacency.set(edge.u, []);
+            if (!adjacency.has(edge.v)) adjacency.set(edge.v, []);
+            adjacency.get(edge.u)?.push(edge.v);
+            adjacency.get(edge.v)?.push(edge.u);
+            involved.add(edge.u);
+            involved.add(edge.v);
+        }
+        
+        const visited = new Set<string>();
+        for (const startNode of involved) {
+            if (visited.has(startNode)) continue;
+            
+            const component: string[] = [];
+            const queue = [startNode];
+            visited.add(startNode);
+            
+            while (queue.length > 0) {
+                 const curr = queue.shift();
+                 if (!curr) continue;
+                 component.push(curr);
+                 
+                 const neighbors = adjacency.get(curr) || [];
+                 for (const n of neighbors) {
+                     if (!visited.has(n)) {
+                         visited.add(n);
+                         queue.push(n);
+                     }
+                 }
+            }
+            
+            if (component.length >= 2) {
+                groupCounter++;
+                const groupId = `group_${role.replace(/[^a-zA-Z0-9]/g, '')}_${groupCounter}`;
+                const label = role.charAt(0).toUpperCase() + role.slice(1);
+                 elements.push({ 
+                    data: { id: groupId, label: label },
+                    classes: 'group-node'
+                });
+                for (const member of component) {
+                    parentMap.set(getId(member), groupId);
+                }
+            }
+        }
+    }
+
+    // 4. Sub-grouping for Shared Roles
+    // Detect if a source has multiple connections of the same role (e.g. "Parents" -> [Amy, James])
+    // If so, group Amy and James into a subgroup and link to that subgroup.
+    
+    // Map<SourceId, Map<RoleString, SubGroupId>>
+    const sourceRoleSubgroups = new Map<string, Map<string, string>>();
+    
+    for (const [name, data] of charDataMap) {
+        if (!activeStats.has(name)) continue;
+        const sourceId = getId(name);
+        
+        // Collect targets by role
+        const roleTargets = new Map<string, string[]>();
+        const addTarget = (r: string, t: string) => {
+            if (!roleTargets.has(r)) roleTargets.set(r, []);
+            roleTargets.get(r)?.push(t);
+        };
+        
+        if (data.relationship) {
+             const links = data.relationship.match(/\[\[(.*?)\]\]/g);
+             if (links) {
+                 for (const link of links) {
+                    const rawTarget = link.replace(/^\[\[|\]\]$/g, '').split('|')[0];
+                    const targetName = resolveTarget(rawTarget);
+                    // normalize "Relationship" as per activeStats logic
+                    if (targetName && activeStats.has(targetName)) {
+                        addTarget('Relationship', targetName);
+                    }
+                 }
+             }
+        }
+        
+        if (data.customRelationships) {
+             for (const [role, targets] of Object.entries(data.customRelationships)) {
+                 if (!Array.isArray(targets)) continue;
+                 for (const t of targets) {
+                     const targetName = resolveTarget(t);
+                     if (targetName && activeStats.has(targetName)) {
+                         addTarget(role, targetName);
+                     }
+                 }
+             }
+        }
+        
+        // Process collected roles
+        for (const [role, targetNames] of roleTargets) {
+            // Filter unique targets for this role
+            const uniqueTargets = [...new Set(targetNames)];
+            
+            if (uniqueTargets.length >= 2) {
+                // Determine if they share a parent group
+                const firstParent = parentMap.get(getId(uniqueTargets[0]));
+                // All targets must share the same parent structure to be grouped tightly
+                const allSameParent = uniqueTargets.every(t => parentMap.get(getId(t)) === firstParent);
+                
+                if (allSameParent) {
+                    const safeRole = role.replace(/[^a-zA-Z0-9]/g, '');
+                    // Smart Reuse: If the parent group label matches the role, reuse the parent instead of creating a subgroup
+                    // This avoids "Friends" -> "Friends" double wrapping
+                    let reuseParent = false;
+                    if (firstParent) {
+                         const parentEl = elements.find(e => e.data.id === firstParent);
+                         if (parentEl && parentEl.data.label && parentEl.data.label.toLowerCase().includes(role.toLowerCase().replace(/s$/, ''))) {
+                             reuseParent = true;
+                         }
+                    }
+
+                    if (reuseParent && firstParent) {
+                        // REUSE EXISTING GROUP
+                        if (!sourceRoleSubgroups.has(sourceId)) sourceRoleSubgroups.set(sourceId, new Map());
+                        sourceRoleSubgroups.get(sourceId)?.set(role, firstParent);
+                        // Do NOT update parentMap for children, they are already in the right place
+                    } else {
+                        // CREATE NEW SUBGROUP
+                        const subGroupId = `subgroup_${sourceId}_${safeRole}`;
+                        
+                        // Register subgroup
+                        const label = role.charAt(0).toUpperCase() + role.slice(1);
+                        const subEl: ElementWrapper = {
+                            data: { id: subGroupId, label: label },
+                            classes: 'group-node subgroup-node'
+                        };
+                        if (firstParent) {
+                            subEl.data.parent = firstParent;
+                        }
+                        elements.push(subEl);
+                        
+                        // Update parentMap for children
+                        for (const t of uniqueTargets) {
+                            parentMap.set(getId(t), subGroupId);
+                        }
+                        
+                        // Track for edge replacement
+                        if (!sourceRoleSubgroups.has(sourceId)) sourceRoleSubgroups.set(sourceId, new Map());
+                        sourceRoleSubgroups.get(sourceId)?.set(role, subGroupId);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Add Nodes
+    for (const name of activeStats) {
+        const data = charDataMap.get(name);
+        const id = getId(name);
+        const safeName = (data?.name || name).replace(/"/g, "'"); // Name only
+        
+        const nodeEntry: ElementWrapper = {
+            data: { id: id, label: safeName }
+        };
+        
+        // Add parent if exists
+        const pid = parentMap.get(id);
+        if (pid) {
+            nodeEntry.data.parent = pid;
+        }
+        
+        // Style class by role
+        // @ts-ignore
+        const role = data?.role ? normalizeCharacterRole(String(data.role)) : 'side';
+        nodeEntry.classes = role;
+        
+        elements.push(nodeEntry);
+    }
+    
+    // Add Edges
+    for (const [name, data] of charDataMap) {
+        if (!activeStats.has(name)) continue;
+        const sourceId = getId(name);
+        
+        const drawnSubgroups = new Set<string>();
+        
+        // Helper to check for subgroup edge
+        const handleEdge = (role: string, targetName: string): boolean => {
+             // Returns true if edge was handled (either via subgroup or created normally), 
+             // actually, return true if SUBGROUP handled it, false otherwise.
+             if (sourceRoleSubgroups.has(sourceId) && sourceRoleSubgroups.get(sourceId)?.has(role)) {
+                 const subGroupId = sourceRoleSubgroups.get(sourceId)?.get(role);
+                 if (subGroupId && !drawnSubgroups.has(subGroupId)) {
+                     // Draw edge to SubGroup ONCE
+                     if (sourceId !== subGroupId && shouldDraw(sourceId, subGroupId, role)) {
+                         elements.push({
+                             data: { source: sourceId, target: subGroupId, label: '' } // Empty label
+                         });
+                         drawnSubgroups.add(subGroupId);
+                     }
+                 }
+                 
+                 // CRITICAL: Register the individual relationship so inverse checks work later.
+                 // Even though we draw to the subgroup, logic must know this pair is "handled"
+                 // effectively establishing (Source -> Target) with 'Role'.
+                 const tId = getId(targetName);
+                 if (tId && tId !== sourceId) {
+                      // We don't check return value, just update tracker state
+                      shouldDraw(sourceId, tId, role);
+                 }
+                 
+                 // If targets match the subgroup list, we skip individual edge
+                 // We verified earlier that all targets in this role list are in the subgroup.
+                 return true; 
+             }
+             return false;
+        };
+        
+        // Generic Relationship
+        if (data.relationship) {
+            const links = data.relationship.match(/\[\[(.*?)\]\]/g);
+            if (links) {
+                 // Check if 'Relationship' is subgrouped
+                 const isSubgrouped = sourceRoleSubgroups.has(sourceId) && sourceRoleSubgroups.get(sourceId)?.has('Relationship');
+                 
+                 for (const link of links) {
+                    const rawTarget = link.replace(/^\[\[|\]\]$/g, '').split('|')[0];
+                    const targetName = resolveTarget(rawTarget);
+                    if (targetName && activeStats.has(targetName)) {
+                        if (isSubgrouped) {
+                            handleEdge('Relationship', targetName);
+                        } else {
+                            const targetId = getId(targetName);
+                            // REDUNDANCY CHECK: 
+                            // If I am Source, and Target groups me into a subgroup relevant to this role, Skip drawing entirely.
+                            // The target will interpret this as an "incoming" group connection and draw it themselves.
+                            // Check if Source's parent is a subgroup owned by Target
+                            const myParent = parentMap.get(sourceId);
+                            if (myParent && myParent.startsWith('subgroup_' + targetId)) {
+                                // Redundant edge, skip
+                            } else {
+                                if (sourceId !== targetId && shouldDraw(sourceId, targetId, 'Relationship')) {
+                                    elements.push({
+                                        data: { source: sourceId, target: targetId, label: 'Relationship' }
+                                    });
+                                }
+                            }
+                        }
+                    }
+                 }
+            }
+        }
+        
+        // Custom Relationships
+        if (data.customRelationships) {
+            for (const [role, targets] of Object.entries(data.customRelationships)) {
+                 if (!Array.isArray(targets)) continue;
+                 
+                 const isSubgrouped = sourceRoleSubgroups.has(sourceId) && sourceRoleSubgroups.get(sourceId)?.has(role);
+
+                 for (const t of targets) {
+                     const targetName = resolveTarget(t);
+                     if (targetName && activeStats.has(targetName)) {
+                         if (isSubgrouped) {
+                             handleEdge(role, targetName);
+                         } else {
+                             const targetId = getId(targetName);
+                             const safeRole = role.replace(/[^a-zA-Z0-9 ]/g, '');
+                             
+                             // REDUNDANCY CHECK: Skip if Target owns source in a subgroup
+                             const myParent = parentMap.get(sourceId);
+                             // Simple check: Is my parent a subgroup created by Target?
+                             if (myParent && myParent.startsWith('subgroup_' + targetId)) {
+                                 // Skip
+                                 // Do we need to register shouldDraw for inverse blocking? 
+                                 // Probably not, because the Target's group-edge already covers us visually.
+                                 // And we shouldn't draw an invisible line either.
+                             } else {
+                                 // Check 2: Did Target decide to REUSE a parent group to group me?
+                                 // If so, Target has `sourceRoleSubgroups(targetId, role) === myParent`
+                                 // We need to check if Target claims ownership of my Parent Group for this role.
+                                 // This is expensive to check every time unless we have a map.
+                                 // But checking `sourceRoleSubgroups` map is fast if we have access.
+                                 // `sourceRoleSubgroups` is defined in scope.
+                                 
+                                 // Note: Roles might differ? "Friends" == "Friends".
+                                 // If Target grouped me as "Friends", and I see Target as "Friends", I should skip.
+                                 let targetClaimsParent = false;
+                                 if (sourceRoleSubgroups.has(targetId)) {
+                                     // We iterate roles of target to find if any points to myParent?
+                                     // Ideally we match roles.
+                                     const targetGroups = sourceRoleSubgroups.get(targetId);
+                                     if (targetGroups && myParent) {
+                                         // Check strict role match first? Or just if *any* role maps to my parent?
+                                         // Strict role match is safer.
+                                         if (targetGroups.get(role) === myParent) {
+                                             targetClaimsParent = true;
+                                         }
+                                         // Also check inverse role if we knew it "Parent"/"Child".
+                                         // For "Friends", role is same.
+                                     }
+                                 }
+
+                                 if (!targetClaimsParent && sourceId !== targetId && shouldDraw(sourceId, targetId, safeRole)) {
+                                     elements.push({
+                                        data: { source: sourceId, target: targetId, label: safeRole }
+                                     });
+                                 }
+                             }
+                         }
+                     }
+                 }
+            }
+        }
+    }
+
+    // Post-processing: Filter redundant edge labels
+    // If an edge is inside a group and its label matches the group label, hide it.
+    const groupLabelMap = new Map<string, string>();
+    for (const el of elements) {
+        if (el.classes === 'group-node' && el.data.id && el.data.label) {
+            groupLabelMap.set(el.data.id, el.data.label);
+        }
+    }
+
+    for (const el of elements) {
+        if (el.data.source && el.data.target && el.data.label) {
+            const parent = parentMap.get(el.data.source);
+            // Check if both nodes are in the same group
+            if (parent && parent === parentMap.get(el.data.target)) {
+                const gLabel = groupLabelMap.get(parent);
+                if (gLabel && gLabel.toLowerCase() === el.data.label.toLowerCase()) {
+                    el.data.label = '';
+                }
+            }
+        }
+    }
+
+    // Classification of edges for layout
+    // English + German common terms
+    const verticalRoles = [
+        'parent', 'mother', 'father', 'mom', 'dad', 'kid', 'child', 'son', 'daughter',
+        'eltern', 'mutter', 'vater', 'kind', 'sohn', 'tochter'
+    ];
+    
+    for (const el of elements) {
+        if (el.data.source && el.data.target) {
+            let isVertical = false;
+            // Structural edges (subgroups) are vertical
+            if (!el.data.label) isVertical = true;
+            else {
+                // If it HAS a parent-related label, it is vertical.
+                // Otherwise it is horizontal (friends, enemies, love, etc.)
+                const lower = el.data.label.toLowerCase();
+                 if (verticalRoles.some(r => lower.includes(r))) isVertical = true;
+            }
+            
+            // Layout only supports vertical edges to keep hierarchy clean
+            if (isVertical) {
+                el.classes = (el.classes ? el.classes + ' ' : '') + 'layout-vertical';
+            } else {
+                el.classes = (el.classes ? el.classes + ' ' : '') + 'layout-horizontal';
+            }
+        }
+    }
+
+    try {
+        const cy = cytoscape({
+            container: div,
+            wheelSensitivity: 0.2,
+            // Ensure compound nodes are drawn behind children/edges
+            // @ts-ignore - zCompoundDepth is valid but might be missing in types
+            zCompoundDepth: 'bottom', 
+            elements: elements,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'label': 'data(label)',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'background-color': '#666',
+                        'color': '#fff',
+                        'text-outline-width': 2,
+                        'text-outline-color': '#666',
+                        'width': 'label',
+                        'height': 'label',
+                        'padding': '10px',
+                        'shape': 'round-rectangle',
+                        'z-index': 10
+                    }
+                },
+                {
+                    selector: 'node.main',
+                    style: {
+                        'background-color': '#6c4eb0', // Main Purple
+                        'text-outline-color': '#6c4eb0',
+                        'font-weight': 'bold',
+                        'font-size': 20
+                    }
+                },
+                {
+                    selector: 'node.side',
+                    style: {
+                        'background-color': '#4a6f8a',
+                        'text-outline-color': '#4a6f8a'
+                    }
+                },
+                {
+                    selector: '.group-node',
+                    style: {
+                        'color': '#aaa',
+                        'text-valign': 'top',
+                        'text-halign': 'center',
+                        'background-color': 'rgba(255, 255, 255, 0.05)',
+                        'border-width': 2,
+                        'border-color': 'rgba(255, 255, 255, 0.4)',
+                        'padding': '10px',
+                        'z-index': 0
+                    }
+                },
+                {
+                    selector: '.subgroup-node',
+                    style: {
+                        'text-valign': 'top',
+                        'text-halign': 'center',
+                        'color': '#ccc',
+                        'border-style': 'solid',
+                        'border-color': '#444', // Dark border for visibility
+                        'background-color': 'rgba(0, 0, 0, 0.05)', // Slight darkness to distinguish from parent
+                        'border-width': 2,
+                        'padding-top': '25px',
+                        'padding-bottom': '10px',
+                        'padding-left': '10px',
+                        'padding-right': '10px',
+                        'z-index': 1
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 2,
+                        'line-color': '#555',
+                        'target-arrow-shape': 'none',
+                        'curve-style': 'bezier',
+                        'label': 'data(label)',
+                        'font-size': 10,
+                        'color': '#ccc',
+                        'text-background-opacity': 1,
+                        'text-background-color': '#333',
+                        'text-background-shape': 'roundrectangle',
+                        'text-background-padding': '3px',
+                        'text-rotation': 'autorotate',
+                        'z-index': 999
+                    }
+                },
+                {
+                    selector: 'edge.layout-vertical',
+                    style: {
+                        'curve-style': 'bezier'
+                    }
+                },
+                {
+                    selector: 'edge.layout-horizontal',
+                    style: {
+                        'curve-style': 'bezier',
+                        'line-color': '#d4a017', // Gold/Dark Yellow for visibility
+                        'line-style': 'dashed',
+                        'width': 3,
+                        'target-arrow-shape': 'none',
+                        'opacity': 1, // Force visibility
+                        'z-index': 9999
+                    }
+                }
+            ],
+            layout: { name: 'preset' }
+        });
+        
+        // Optimize: Separate layout for groups?
+        // No, Dagre handles compound graphs well if configured correctly.
+        // We run dagre ONLY on the hierarchy-defining edges/nodes.
+        // Other edges will just be drawn between the resulting positions.
+        
+        const layoutElements = cy.elements().nodes().union(cy.elements('edge.layout-vertical'));
+        
+        layoutElements.layout({
+            name: 'dagre',
+            // @ts-ignore
+            rankDir: 'TB',
+            // @ts-ignore
+            nodeSep: 80, // Increase separation to fit horizontal arrows better
+            // @ts-ignore
+            rankSep: 80, 
+            padding: 20,
+            spacingFactor: 1.2,
+            animate: false,
+            // @ts-ignore
+            align: 'UL', // Align up-left to keep structure tight? Default is better usually.
+            stop: () => {
+                cy.fit(undefined, 20); // Ensure graph is visible after layout
+            }
+        } as cytoscape.LayoutOptions).run();
+        
+    } catch (e) {
+        // eslint-disable-next-line obsidianmd/ui/sentence-case
+        div.setText('Error rendering Cytoscape graph.');
+        globalThis.console.error(e);
     }
   }
 }
