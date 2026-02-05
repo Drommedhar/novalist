@@ -28,6 +28,7 @@ interface NovalistSettings {
   autoReplacements: Record<string, string>;
   enableHoverPreview: boolean;
   enableSidebarView: boolean;
+  enableMergeLog: boolean;
   characterFolder: string;
   locationFolder: string;
   chapterDescFolder: string;
@@ -44,6 +45,7 @@ const DEFAULT_SETTINGS: NovalistSettings = {
   },
   enableHoverPreview: true,
   enableSidebarView: true,
+  enableMergeLog: false,
   characterFolder: 'Characters',
   locationFolder: 'Locations',
   chapterDescFolder: 'ChapterDescriptions',
@@ -167,16 +169,23 @@ class NovalistSidebarView extends ItemView {
         if (this.selectedEntity.type === 'character') {
           body = this.plugin.stripChapterRelevantSection(body);
           body = this.plugin.stripImagesSection(body);
+          const baseImages = this.plugin.parseImagesSection(content);
           if (this.currentChapterFile) {
             const charData = await this.plugin.parseCharacterFile(this.selectedEntity.file);
             const chapterKey = await this.plugin.getChapterNameForFile(this.currentChapterFile);
             const chapterInfo = charData.chapterInfos.find(ci => ci.chapter === chapterKey);
             if (chapterInfo) {
+              void this.plugin.logMerge(`Focus merge start. Character: ${this.selectedEntity.file.path}, Chapter: ${this.currentChapterFile.path}, ChapterKey: ${chapterKey}`);
+              void this.plugin.logMerge(`Chapter overrides input: ${JSON.stringify(chapterInfo.overrides)} | Info: ${chapterInfo.info}`);
               body = this.plugin.applyCharacterOverridesToBody(body, chapterInfo.overrides);
+              void this.plugin.logMerge(`Focus merge complete. Body length: ${body.length}`);
             }
           }
 
-          const images = this.plugin.parseImagesSection(content);
+          const chapterOverrideImages = this.currentChapterFile
+            ? await this.plugin.getChapterOverrideImages(this.selectedEntity.file, this.currentChapterFile)
+            : null;
+          const images = chapterOverrideImages ?? baseImages;
           if (images.length > 0) {
             const imageRow = details.createDiv('novalist-image-row');
             imageRow.createEl('span', { text: 'Images', cls: 'novalist-image-label' });
@@ -203,7 +212,14 @@ class NovalistSidebarView extends ItemView {
               }
 
               const src = this.plugin.app.vault.getResourcePath(file);
-              imageContainer.createEl('img', { attr: { src, alt: img.name } });
+              const imgEl = imageContainer.createEl('img', {
+                attr: { src, alt: img.name },
+                cls: 'novalist-image'
+              });
+              imgEl.addEventListener('click', () => {
+                const leaf = this.plugin.app.workspace.getLeaf(true);
+                void leaf.openFile(file);
+              });
             };
 
             dropdown.onChange((val) => {
@@ -229,6 +245,24 @@ class NovalistSidebarView extends ItemView {
 
         const md = details.createDiv('novalist-markdown');
         await MarkdownRenderer.renderMarkdown(body, md, '', this);
+
+        const logSnapshot = this.plugin.getMergeLogSnapshot();
+        if (this.plugin.settings.enableMergeLog && logSnapshot) {
+          const logSection = details.createDiv('novalist-section');
+          logSection.createEl('h4', { text: 'Merge Log (latest)', cls: 'novalist-section-title' });
+          const logActions = logSection.createDiv('novalist-merge-log-actions');
+          new ButtonComponent(logActions)
+            .setButtonText('Copy Log')
+            .onClick(() => {
+              void navigator.clipboard?.writeText(logSnapshot);
+              new Notice('Merge log copied.');
+            });
+          const logArea = logSection.createEl('textarea', { cls: 'novalist-merge-log' });
+          logArea.value = logSnapshot;
+          logArea.setAttr('readonly', 'true');
+          logArea.setAttr('rows', '10');
+          logArea.setAttr('wrap', 'off');
+        }
       }
 
       return;
@@ -619,6 +653,16 @@ class NovalistSettingTab extends PluginSettingTab {
           this.plugin.settings.enableSidebarView = value;
           await this.plugin.saveSettings();
         }));
+
+    new Setting(containerEl)
+      .setName('Show Merge Log')
+      .setDesc('Display merge logs in the Focus sidebar')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.enableMergeLog)
+        .onChange(async (value) => {
+          this.plugin.settings.enableMergeLog = value;
+          await this.plugin.saveSettings();
+        }));
   }
 
   addReplacementSetting(container: HTMLElement, key: string, value: string) {
@@ -660,9 +704,17 @@ export default class NovalistPlugin extends Plugin {
   private lastHoverEntity: string | null = null;
   private hoverTimer: number | null = null;
   private caretTimer: number | null = null;
+  private mergeLogPath: string | null = null;
+  private mergeLogBuffer: string[] = [];
+  private mergeLogBufferLimit = 200;
 
   async onload() {
     await this.loadSettings();
+
+    this.mergeLogPath = this.getMergeLogPath();
+    if (this.mergeLogPath) {
+      void this.logMerge('Merge logging initialized.');
+    }
 
     await this.refreshEntityIndex();
     await this.syncAllCharactersChapterInfos();
@@ -873,6 +925,67 @@ export default class NovalistPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  private resolveConfigPath(configDir: string, basePath: string): string {
+    const normalized = configDir.replace(/\\/g, '/');
+    if (/^[A-Za-z]:\//.test(normalized) || normalized.startsWith('/')) return normalized;
+    return `${basePath}/${normalized}`;
+  }
+
+  private getMergeLogPath(): string | null {
+    try {
+      const configDir = (this.app.vault as any)?.configDir || '.obsidian';
+      const adapter = this.app.vault.adapter as any;
+      const basePath = typeof adapter?.getBasePath === 'function' ? adapter.getBasePath() : '';
+      if (!configDir || !this.manifest?.id || !basePath) return null;
+      const configPath = this.resolveConfigPath(configDir, basePath);
+      return `${configPath}/plugins/${this.manifest.id}/merge-log.txt`;
+    } catch {
+      return null;
+    }
+  }
+
+  async logMerge(message: string): Promise<void> {
+    const stamp = new Date().toISOString();
+    const entry = `[${stamp}] ${message}`;
+    this.mergeLogBuffer.push(entry);
+    if (this.mergeLogBuffer.length > this.mergeLogBufferLimit) {
+      this.mergeLogBuffer = this.mergeLogBuffer.slice(-this.mergeLogBufferLimit);
+    }
+    if (!this.mergeLogPath) return;
+    try {
+      const adapter = this.app.vault.adapter;
+      const entryWithNewline = `${entry}\n`;
+
+      const writeToPath = async (path: string | null) => {
+        if (!path) return;
+        const dir = path.split('/').slice(0, -1).join('/');
+        try {
+          const exists = await adapter.exists(dir);
+          if (!exists) {
+            await adapter.mkdir(dir);
+          }
+        } catch {
+          // ignore dir creation errors
+        }
+        let existing = '';
+        try {
+          existing = await adapter.read(path);
+        } catch {
+          existing = '';
+        }
+        await adapter.write(path, existing + entryWithNewline);
+      };
+
+      await writeToPath(this.mergeLogPath);
+    } catch {
+      // ignore logging errors
+    }
+  }
+
+  getMergeLogSnapshot(): string {
+    return this.mergeLogBuffer.join('\n');
   }
 
   async activateView() {
@@ -1185,7 +1298,7 @@ ${outline}
   }
 
   parseImagesSection(content: string): Array<{ name: string; path: string }> {
-    const match = content.match(/## Images\s+([\s\S]*?)(?=##|$)/);
+    const match = content.match(/\s*## Images\s+([\s\S]*?)(?=##|$)/);
     if (!match) return [];
 
     const lines = match[1].split('\n').map(l => l.trim()).filter(l => l.startsWith('-'));
@@ -1198,10 +1311,39 @@ ${outline}
       const parts = cleaned.split(':');
       if (parts.length >= 2) {
         const name = parts.shift()!.trim();
-        const path = parts.join(':').trim();
-        if (name && path) images.push({ name, path });
+        let path = parts.join(':').trim();
+        path = path.replace(/^!\[\[/, '').replace(/\]\]$/, '').trim();
+        if (name) images.push({ name, path });
       } else {
-        images.push({ name: cleaned, path: cleaned });
+        const nameOnly = cleaned.replace(/^!\[\[/, '').replace(/\]\]$/, '').trim();
+        images.push({ name: nameOnly, path: '' });
+      }
+    }
+
+    return images;
+  }
+
+  private parseImageOverrideValue(value: string): Array<{ name: string; path: string }> {
+    const lines = value
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
+
+    const images: Array<{ name: string; path: string }> = [];
+
+    for (const line of lines) {
+      const cleaned = line.replace(/^[-*]\s*/, '').trim();
+      if (!cleaned) continue;
+
+      const parts = cleaned.split(':');
+      if (parts.length >= 2) {
+        const name = parts.shift()!.trim();
+        let path = parts.join(':').trim();
+        path = path.replace(/^!\[\[/, '').replace(/\]\]$/, '').trim();
+        if (name) images.push({ name, path });
+      } else {
+        const nameOnly = cleaned.replace(/^!\[\[/, '').replace(/\]\]$/, '').trim();
+        images.push({ name: nameOnly, path: '' });
       }
     }
 
@@ -1249,7 +1391,7 @@ ${outline}
   }
 
   parseChapterOverrides(content: string): Array<{ chapter: string; info: string; overrides: Record<string, string> }> {
-    const section = content.match(/## Chapter Relevant Information\s+([\s\S]*?)(?=##|$)/);
+    const section = content.match(/(?:^|\n)[\t ]*[-*]?\s*## Chapter Relevant Information\s+([\s\S]*?)(?=##|$)/);
     if (!section) return [];
 
     const lines = section[1].split('\n');
@@ -1257,6 +1399,7 @@ ${outline}
 
     let current: { chapter: string; info: string; overrides: Record<string, string> } | null = null;
     let currentKey: string | null = null;
+    let currentIndent: number | null = null;
 
     for (const raw of lines) {
       const line = raw.trim();
@@ -1265,28 +1408,34 @@ ${outline}
         if (current) results.push(current);
         current = { chapter: chapterMatch[1].trim(), info: '', overrides: {} };
         currentKey = null;
+        currentIndent = null;
         continue;
       }
 
       if (!current) continue;
 
-      const kvMatch = line.match(/^[-*]\s*([^:]+):\s*(.*)$/);
-      if (kvMatch) {
-        const key = kvMatch[1].trim();
-        const value = kvMatch[2].trim();
-        currentKey = key.toLowerCase();
-        if (currentKey === 'info') {
-          current.info = value;
-        } else {
-          current.overrides[currentKey] = value;
-        }
-      } else if (/^\s{2,}\S/.test(raw) && currentKey) {
+      const rawIndent = raw.length - raw.trimStart().length;
+      if (currentKey && currentIndent != null && rawIndent > currentIndent) {
         const continuation = raw.trimEnd();
         if (currentKey === 'info') {
           current.info = current.info ? `${current.info}\n${continuation.trim()}` : continuation.trim();
         } else {
           const prev = current.overrides[currentKey] || '';
           current.overrides[currentKey] = prev ? `${prev}\n${continuation.trim()}` : continuation.trim();
+        }
+        continue;
+      }
+
+      const kvMatch = line.match(/^[-*]\s*([^:]+):\s*(.*)$/);
+      if (kvMatch) {
+        const key = kvMatch[1].trim();
+        const value = kvMatch[2].trim();
+        currentKey = key.toLowerCase();
+        currentIndent = rawIndent;
+        if (currentKey === 'info') {
+          current.info = value;
+        } else {
+          current.overrides[currentKey] = value;
         }
       } else if (line.length > 0) {
         current.info = current.info ? `${current.info}\n${line}` : line;
@@ -1306,6 +1455,41 @@ ${outline}
     return direct instanceof TFile ? direct : null;
   }
 
+  async getChapterOverrideImages(charFile: TFile, chapterFile: TFile): Promise<Array<{ name: string; path: string }> | null> {
+    const charData = await this.parseCharacterFile(charFile);
+    const chapterKey = await this.getChapterNameForFile(chapterFile);
+    const chapterInfo = charData.chapterInfos.find(ci => ci.chapter === chapterKey);
+    const raw = chapterInfo?.overrides?.images;
+    if (!raw || raw.trim().length === 0) return null;
+
+    const content = await this.app.vault.read(charFile);
+    const baseImages = this.parseImagesSection(content);
+    const baseByName = new Map(baseImages.map(img => [img.name.toLowerCase(), img]));
+
+    const overrides = this.parseImageOverrideValue(raw);
+    const used = new Set<string>();
+    const merged: Array<{ name: string; path: string }> = [];
+
+    for (const item of overrides) {
+      const key = item.name.toLowerCase();
+      const base = baseByName.get(key);
+      const overridePath = item.path?.trim() ?? '';
+      if (!overridePath && base) {
+        merged.push({ name: base.name, path: base.path });
+      } else {
+        merged.push({ name: item.name, path: overridePath });
+      }
+      used.add(key);
+    }
+
+    for (const base of baseImages) {
+      const key = base.name.toLowerCase();
+      if (!used.has(key)) merged.push(base);
+    }
+
+    return merged.length ? merged : null;
+  }
+
   private async syncAllCharactersChapterInfos() {
     const folder = `${this.settings.projectPath}/${this.settings.characterFolder}`;
     const files = this.app.vault.getFiles().filter(f => f.path.startsWith(folder) && !this.isTemplateFile(f));
@@ -1321,10 +1505,11 @@ ${outline}
   }
 
   private async ensureCharacterChapterInfos(charFile: TFile) {
-    const activeFile = this.app.workspace.getActiveFile();
-    if (activeFile && activeFile.path === charFile.path) return;
-
     const content = await this.app.vault.read(charFile);
+    const baseImages = this.parseImagesSection(content);
+    const baseImageTags = baseImages.length
+      ? baseImages.map(img => `- ${img.name}:`).join('\n')
+      : '';
     const chapters = await this.getChapterDescriptions();
     if (chapters.length === 0) return;
 
@@ -1344,22 +1529,36 @@ ${outline}
         const age = prev?.overrides?.age ?? '';
         const relationship = prev?.overrides?.relationship ?? '';
         const furtherInfo = prev?.overrides?.further_info ?? '';
+        const imagesRaw = prev?.overrides?.images ?? '';
+        const images = imagesRaw.trim().length > 0 ? imagesRaw : baseImageTags;
         const info = prev?.info ?? '';
 
-        return `- **${c.name}**${c.order ? ` (Order: ${c.order})` : ''}:\n` +
+        const knownKeys = new Set(['age', 'relationship', 'further_info', 'images']);
+        const extraOverrides = Object.entries(prev?.overrides ?? {})
+          .filter(([key]) => !knownKeys.has(key))
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, value]) => `  - ${key}:${formatValue(value)}`)
+          .join('\n');
+
+        const baseBlock = `- **${c.name}**${c.order ? ` (Order: ${c.order})` : ''}:\n` +
           `  - age:${formatValue(age)}\n` +
           `  - relationship:${formatValue(relationship)}\n` +
           `  - further_info:${formatValue(furtherInfo)}\n` +
+          `  - images:${formatValue(images)}\n` +
           `  - info:${formatValue(info)}`;
+
+        return extraOverrides ? `${baseBlock}\n${extraOverrides}` : baseBlock;
       })
       .join('\n');
 
-    const section = content.match(/## Chapter Relevant Information\s+([\s\S]*?)(?=##|$)/);
+    const section = content.match(/(?:^|\n)[\t ]*[-*]?\s*## Chapter Relevant Information\s+([\s\S]*?)(?=##|$)/);
     const newSection = `## Chapter Relevant Information\n${entries}\n`;
+
+    const normalized = content.replace(/(\S)\s*## Chapter Relevant Information/g, '$1\n\n## Chapter Relevant Information');
 
     if (!section) {
       const append = `\n${newSection}`;
-      const updated = `${content.trim()}\n\n${append}`;
+      const updated = `${normalized.trim()}\n\n${append}`;
       if (updated !== content) {
         await this.app.vault.modify(charFile, updated);
       }
@@ -1368,7 +1567,7 @@ ${outline}
 
     if (section[0] === newSection) return;
 
-    const updated = content.replace(section[0], newSection);
+    const updated = normalized.replace(section[0], `\n\n${newSection}`);
     if (updated !== content) {
       await this.app.vault.modify(charFile, updated);
     }
@@ -1704,11 +1903,11 @@ ${outline}
   }
 
   stripChapterRelevantSection(content: string): string {
-    return content.replace(/## Chapter Relevant Information\s+[\s\S]*?(?=##|$)/, '').trim();
+    return content.replace(/(?:^|\n)[\t ]*[-*]?\s*## Chapter Relevant Information\s+[\s\S]*?(?=##|$)/, '').trim();
   }
 
   stripImagesSection(content: string): string {
-    return content.replace(/## Images\s+[\s\S]*?(?=##|$)/, '').trim();
+    return content.replace(/\s*## Images\s+[\s\S]*?(?=##|$)/, '').trim();
   }
 
   extractTitle(content: string): string | null {
@@ -1721,27 +1920,80 @@ ${outline}
   }
 
   applyCharacterOverridesToBody(content: string, overrides: Record<string, string>): string {
-    if (!overrides || Object.keys(overrides).length === 0) return content;
+    const filteredOverrides = Object.fromEntries(
+      Object.entries(overrides || {}).filter(([key]) => !['images', 'info', 'further_info'].includes(key))
+    );
+
+    if (!filteredOverrides || Object.keys(filteredOverrides).length === 0) {
+      void this.logMerge('No chapter overrides found; skipping merge.');
+      return content;
+    }
+
+    void this.logMerge(
+      `Merging chapter overrides into character body. Overrides: ${JSON.stringify(filteredOverrides)}`
+    );
 
     return content.replace(/## General Information\s+([\s\S]*?)(?=##|$)/, (match, section) => {
+      void this.logMerge(`Input General Information section:\n${section.trim()}`);
       const lines = section.split('\n');
-      const filtered = lines.filter(line => {
+      const output: string[] = [];
+      const seenKeys = new Set<string>();
+
+      const normalizeKey = (raw: string) =>
+        raw
+          .trim()
+          .toLowerCase()
+          .replace(/\*\*/g, '')
+          .replace(/__/g, '')
+          .replace(/\s+/g, '_')
+          .replace(/[^a-z0-9_]/g, '');
+
+      const propPattern = /^(?:[-*+•–—]\s*)?(?:\*\*|__)?(.+?)(?:\*\*|__)?\s*:\s*(.*)$/;
+
+      for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed) return true;
-        if (/\*\*Age\*\*:/i.test(trimmed)) return false;
-        if (/\*\*Relationship\*\*:/i.test(trimmed)) return false;
-        return true;
-      });
+        if (!trimmed) {
+          output.push(line);
+          continue;
+        }
 
-      if (overrides.age) {
-        filtered.push(`- **Age:** ${overrides.age}`);
+        const matchProp = trimmed.match(propPattern);
+        if (matchProp) {
+          const rawKey = matchProp[1];
+          let baseValue = matchProp[2]?.trim() ?? '';
+          baseValue = baseValue.replace(/^\*+\s*/, '').replace(/\s*\*+$/, '').trim();
+          const key = normalizeKey(rawKey);
+          if (!key) {
+            output.push(line);
+            continue;
+          }
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
+
+          const overrideValueRaw = filteredOverrides[key];
+          const overrideValue = overrideValueRaw != null ? overrideValueRaw.trim() : '';
+          const value = overrideValue.length > 0 ? overrideValue : baseValue;
+          if (value) {
+            output.push(`- **${rawKey.trim()}**: ${value}`);
+          }
+          continue;
+        }
+
+        output.push(line);
       }
 
-      if (overrides.relationship) {
-        filtered.push(`- **Relationship:** ${overrides.relationship}`);
+      for (const [rawKey, rawValue] of Object.entries(filteredOverrides)) {
+        const key = normalizeKey(rawKey);
+        if (seenKeys.has(key)) continue;
+        const value = rawValue != null ? rawValue.trim() : '';
+        if (value) {
+          output.push(`- **${rawKey}**: ${value}`);
+        }
       }
 
-      const updated = filtered.join('\n').trim();
+      const updated = output.join('\n').trim();
+      void this.logMerge(`Output General Information section:\n${updated}`);
+      void this.logMerge(`General Information section merged. Result length: ${updated.length}`);
       return `## General Information\n${updated}\n`;
     });
   }

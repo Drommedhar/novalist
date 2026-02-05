@@ -1,0 +1,16 @@
+{
+  "projectPath": "NovelProject",
+  "autoReplacements": {
+    "'": "«",
+    "''": "»",
+    "--": "—",
+    "...": "…"
+  },
+  "enableHoverPreview": true,
+  "enableSidebarView": true,
+  "enableMergeLog": false,
+  "characterFolder": "Characters",
+  "locationFolder": "Locations",
+  "chapterDescFolder": "ChapterDescriptions",
+  "chapterFolder": "Chapters"
+}

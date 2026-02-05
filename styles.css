@@ -172,6 +172,20 @@
   display: block;
   width: 100%;
   height: auto;
+  max-height: 220px;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+.novalist-image-preview img.novalist-image {
+  background: var(--background-primary);
 }
 
 .novalist-markdown h1,
