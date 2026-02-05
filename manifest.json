@@ -1,0 +1,11 @@
+{
+  "id": "novalist",
+  "name": "Novalist",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "A comprehensive novel writing environment with project structure, character/location management, and intelligent linking.",
+  "author": "Your Name",
+  "authorUrl": "",
+  "fundingUrl": "",
+  "isDesktopOnly": false
+}

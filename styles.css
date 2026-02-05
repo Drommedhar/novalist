@@ -1,0 +1,251 @@
+/* Novalist Plugin Styles */
+
+.novalist-sidebar {
+  padding: 10px;
+  font-size: 14px;
+}
+
+.novalist-sidebar-header {
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.novalist-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  background: var(--background-secondary);
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.novalist-tab {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.novalist-tab.is-active {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.novalist-tab:hover {
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+}
+
+.novalist-section {
+  margin-bottom: 20px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.novalist-selected-entity {
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.novalist-section-title {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: var(--text-accent);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.novalist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.novalist-item {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.novalist-item:hover {
+  border-color: var(--interactive-accent);
+  transform: translateX(3px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.novalist-item-header {
+  font-size: 15px;
+  margin-bottom: 5px;
+  color: var(--text-normal);
+}
+
+.novalist-item-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.novalist-tag {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.novalist-chapter-info {
+  font-size: 13px;
+  color: var(--text-muted);
+  border-top: 1px dashed var(--background-modifier-border);
+  padding-top: 5px;
+  margin-top: 5px;
+}
+
+.novalist-chapter-info em {
+  color: var(--text-accent);
+  display: block;
+  margin-bottom: 3px;
+}
+
+.novalist-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 10px;
+}
+
+.novalist-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.novalist-actions button {
+  flex: 1;
+  min-width: 100px;
+  font-weight: 600;
+}
+
+.novalist-markdown {
+  line-height: 1.55;
+}
+
+.novalist-image-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.novalist-image-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.novalist-image-preview {
+  margin-bottom: 12px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.novalist-image-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.novalist-markdown h1,
+.novalist-markdown h2,
+.novalist-markdown h3,
+.novalist-markdown h4 {
+  margin: 0.5em 0 0.25em;
+}
+
+.novalist-markdown p,
+.novalist-markdown ul,
+.novalist-markdown ol {
+  margin: 0.4em 0;
+}
+
+.novalist-markdown ul,
+.novalist-markdown ol {
+  padding-left: 1.2em;
+}
+
+.novalist-sidebar a.internal-link,
+.novalist-sidebar a {
+  color: var(--text-accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.novalist-sidebar a.internal-link:hover,
+.novalist-sidebar a:hover {
+  color: var(--interactive-accent);
+}
+
+/* Modal Styles */
+.modal-button-container {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.novalist-replacements .setting-item {
+  border: 1px solid var(--background-modifier-border);
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+}
+
+/* Hover Preview Enhancement */
+.novalist-hover-popover {
+  max-width: 400px;
+  padding: 15px;
+}
+
+.novalist-hover-popover h4 {
+  margin-top: 0;
+  color: var(--text-accent);
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 5px;
+}
+
+/* Character/Location Links in Editor */
+.novalist-character-link {
+  color: var(--text-accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.novalist-location-link {
+  color: var(--text-success);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}

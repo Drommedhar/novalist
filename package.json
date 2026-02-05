@@ -1,0 +1,17 @@
+{
+  "name": "novalist",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "dev": "tsc -p . -w"
+  },
+  "dependencies": {
+    "obsidian": "^1.11.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.3"
+  }
+}
