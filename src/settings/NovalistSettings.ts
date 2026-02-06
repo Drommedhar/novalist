@@ -83,5 +83,6 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   locationFolder: 'Locations',
   chapterDescFolder: 'ChapterDescriptions',
   chapterFolder: 'Chapters',
-  relationshipPairs: {}
+  relationshipPairs: {},
+  startupWizardShown: false
 };

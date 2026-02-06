@@ -28,6 +28,7 @@ import { RelationshipKeySuggester } from './suggesters/RelationshipKeySuggester'
 import { CharacterModal } from './modals/CharacterModal';
 import { LocationModal } from './modals/LocationModal';
 import { ChapterDescriptionModal } from './modals/ChapterDescriptionModal';
+import { StartupWizardModal } from './modals/StartupWizardModal';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { CHARACTER_ROLE_LABELS, CharacterRole, normalizeCharacterRole } from './utils/characterUtils';
 
@@ -49,6 +50,10 @@ export default class NovalistPlugin extends Plugin {
     await this.migrateCharacterRoles();
     this.app.workspace.onLayoutReady(() => {
       void this.syncAllCharactersChapterInfos();
+
+      if (!this.settings.startupWizardShown || !this.app.vault.getAbstractFileByPath(this.settings.projectPath)) {
+        new StartupWizardModal(this.app, this).open();
+      }
     });
     
     // Register Editor Suggester
@@ -83,7 +88,7 @@ export default class NovalistPlugin extends Plugin {
       id: 'initialize-novel-project',
       name: 'Initialize novel project structure',
       callback: () => {
-        void this.initializeProjectStructure();
+        new StartupWizardModal(this.app, this).open();
       }
     });
 

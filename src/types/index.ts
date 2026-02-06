@@ -12,6 +12,7 @@
   chapterDescFolder: string;
   chapterFolder: string;
   relationshipPairs: Record<string, string[]>;
+  startupWizardShown: boolean;
 }
 
 export interface AutoReplacementPair {
