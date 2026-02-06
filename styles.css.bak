@@ -1,0 +1,554 @@
+/* Novalist Plugin Styles */
+
+.novalist-sidebar {
+  padding: 10px;
+  font-size: 14px;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.novalist-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--background-primary);
+  padding: 10px 10px 8px;
+  margin: -10px -10px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.novalist-sidebar-header {
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.novalist-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  background: var(--background-secondary);
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.novalist-tab {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.novalist-tab.is-active {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.novalist-tab:hover {
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+}
+
+.novalist-section {
+  margin-bottom: 20px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.novalist-selected-entity {
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  flex: 1 1 auto;
+  width: calc(100% + 20px);
+  max-width: none;
+  box-sizing: border-box;
+  margin-bottom: 0;
+  margin-left: -10px;
+  margin-right: -10px;
+  border-radius: 0 0 8px 8px;
+}
+
+.novalist-section-title {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: var(--text-accent);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.novalist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.novalist-item {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.novalist-item:hover {
+  border-color: var(--interactive-accent);
+  transform: translateX(3px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.novalist-item-header {
+  font-size: 15px;
+  margin-bottom: 5px;
+  color: var(--text-normal);
+}
+
+.novalist-item-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.novalist-tag {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.novalist-chapter-info {
+  font-size: 13px;
+  color: var(--text-muted);
+  border-top: 1px dashed var(--background-modifier-border);
+  padding-top: 5px;
+  margin-top: 5px;
+}
+
+.novalist-chapter-info em {
+  color: var(--text-accent);
+  display: block;
+  margin-bottom: 3px;
+}
+
+.novalist-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 10px;
+}
+
+.novalist-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.novalist-actions button {
+  flex: 1;
+  min-width: 100px;
+  font-weight: 600;
+}
+
+.novalist-markdown {
+  line-height: 1.55;
+}
+
+.novalist-image-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.novalist-image-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.novalist-image-preview {
+  margin-bottom: 12px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
+.novalist-image-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+.novalist-image-preview img.novalist-image {
+  background: var(--background-primary);
+}
+
+.novalist-markdown h1,
+.novalist-markdown h2,
+.novalist-markdown h3,
+.novalist-markdown h4 {
+  margin: 0.5em 0 0.25em;
+}
+
+.novalist-markdown p,
+.novalist-markdown ul,
+.novalist-markdown ol {
+  margin: 0.4em 0;
+}
+
+.novalist-markdown ul,
+.novalist-markdown ol {
+  padding-left: 1.2em;
+}
+
+.novalist-sidebar a.internal-link,
+.novalist-sidebar a {
+  color: var(--text-accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.novalist-sidebar a.internal-link:hover,
+.novalist-sidebar a:hover {
+  color: var(--interactive-accent);
+}
+
+/* Modal Styles */
+.modal-button-container {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.novalist-replacements .setting-item {
+  border: 1px solid var(--background-modifier-border);
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+}
+
+.novalist-settings-section {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.novalist-settings-section h3 {
+  margin-top: 0;
+}
+
+.novalist-replacements {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.novalist-replacement-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr auto;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 2px 6px 2px;
+}
+
+.novalist-replacement-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.novalist-replacement-row input {
+  width: 100%;
+  min-width: 0;
+}
+
+.novalist-replacement-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.novalist-explorer {
+  padding: 10px;
+  font-size: 14px;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.novalist-explorer-header {
+  margin: 0 0 6px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.novalist-explorer-tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--background-secondary);
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.novalist-explorer-tab {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.novalist-explorer-tab.is-active {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.novalist-explorer-tab:hover {
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+}
+
+.novalist-explorer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.novalist-explorer-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.novalist-explorer-item:hover {
+  border-color: var(--interactive-accent);
+  transform: translateX(3px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.novalist-explorer-item.is-selected {
+  background-color: var(--background-modifier-selection);
+  border-color: var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.novalist-explorer-item.is-drop-target {
+  border-color: var(--interactive-accent);
+  background: var(--background-primary-alt);
+}
+
+.novalist-explorer-item.is-dragging {
+  opacity: 0.6;
+}
+
+.novalist-explorer-label {
+  color: var(--text-normal);
+}
+
+/* Hover Preview Enhancement */
+.novalist-hover-popover {
+  max-width: 400px;
+  padding: 15px;
+}
+
+.novalist-hover-popover h4 {
+  margin-top: 0;
+  color: var(--text-accent);
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 5px;
+}
+
+/* Character/Location Links in Editor */
+.novalist-character-link {
+  color: var(--text-accent);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.novalist-location-link {
+  color: var(--text-success);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.novalist-input-group {
+    margin-bottom: 15px;
+}
+.novalist-suggestions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.novalist-chip {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    border-radius: 12px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-secondary);
+    cursor: pointer;
+}
+
+.novalist-chip:hover {
+    background-color: var(--background-secondary-alt);
+}
+/* Explorer Badge */
+.novalist-explorer-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.novalist-explorer-badge {
+    font-size: 0.75em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background-color: var(--background-modifier-border);
+    color: var(--text-muted);
+    margin-left: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60px;
+}
+
+.novalist-wizard-actions {
+  margin-top: 20px;
+  text-align: right;
+}
+
+.novalist-wizard-actions-between {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.novalist-wizard-hero {
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 20px;
+  background-color: var(--background-secondary);
+  border-radius: 8px;
+}
+
+.novalist-wizard-icon {
+  margin-bottom: 15px;
+}
+
+.novalist-wizard-icon svg {
+  width: 48px;
+  height: 48px;
+  color: var(--text-accent);
+}
+
+.novalist-wizard-hero h2 {
+  margin-top: 5px;
+  margin-bottom: 10px;
+}
+
+.novalist-wizard-hero p {
+  color: var(--text-muted);
+  max-width: 80%;
+  margin: 0 auto;
+}
+
+.novalist-wizard-features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+.novalist-feature-card {
+  padding: 15px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background-color: var(--background-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+.novalist-feature-title {
+  font-weight: 600;
+  color: var(--text-normal);
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.novalist-feature-desc {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.novalist-tutorial-list {
+  background-color: var(--background-secondary);
+  padding: 20px 20px 20px 40px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.novalist-tutorial-list li {
+  margin-bottom: 8px;
+  color: var(--text-normal);
+}
+
+.novalist-tutorial-final-msg {
+  text-align: center;
+  font-style: italic;
+  color: var(--text-accent);
+  margin-top: 20px;
+}
+

@@ -1,0 +1,27 @@
+{
+  "name": "novalist",
+  "version": "1.0.4",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "build": "node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "lint": "eslint .",
+    "verify": "npm run build && npm run lint"
+  },
+  "dependencies": {
+    "cytoscape": "^3.33.1",
+    "cytoscape-dagre": "^2.5.0",
+    "obsidian": "^1.11.4"
+  },
+    "eslint-plugin-eslint-comments": "^3.2.0",
+  "devDependencies": {
+    "@types/cytoscape": "^3.21.9",
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.27.3",
+    "eslint": "^9.39.2",
+    "eslint-plugin-eslint-comments": "^3.2.0",
+    "eslint-plugin-obsidianmd": "^0.1.9",
+    "typescript": "^5.7.3"
+  }
+}
