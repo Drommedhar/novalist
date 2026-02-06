@@ -49,6 +49,13 @@ export default defineConfig([
     languageOptions: {
       parser: tsparser,
       parserOptions: { project: "./tsconfig.json" },
+      globals: {
+        document: "readonly",
+        window: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        activeWindow: "readonly",
+      },
     },
 
     // You can add your own configuration to override or add rules
