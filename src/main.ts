@@ -4,8 +4,7 @@
   MarkdownView,
   Editor,
   Notice,
-  EditorPosition,
-  TFolder
+  EditorPosition
 } from 'obsidian';
 import {
   NovalistSettings,
@@ -716,7 +715,7 @@ ${outline}
     return {
       name: file.basename.split(' ')[0],
       surname: file.basename.split(' ').slice(1).join(' '),
-      role: frontmatter.role || 'Side',
+      role: this.detectCharacterRole(content, frontmatter),
       gender: frontmatter.gender || '',
       age: frontmatter.age || '',
       relationship: frontmatter.relationship || '',
@@ -740,9 +739,13 @@ ${outline}
     const images: Array<{ name: string; path: string }> = [];
 
     for (const line of lines) {
-      const match = line.match(/^[-*]\s*\*\*(.+?)\*\*[:]?\s*(.*)$/);
+      if (!line.trim()) continue;
+      // Support **Key** (optional colon) OR Key: (mandatory colon)
+      const match = line.match(/^[-*]\s*(?:(?:\*\*(.+?)\*\*[:]?)|([^:]+[:]))\s*(.*)$/);
       if (match) {
-        images.push({ name: match[1], path: match[2].trim() });
+        let name = match[1] || match[2];
+        if (name.endsWith(':')) name = name.substring(0, name.length - 1);
+        images.push({ name: name.trim(), path: match[3].trim() });
       }
     }
 
@@ -783,10 +786,13 @@ ${outline}
     const infoLines: string[] = [];
 
     for (const line of lines) {
-      const match = line.match(/^[-*]\s*\*\*(.+?)\*\*[:]?\s*(.*)$/);
+      if (!line.trim()) continue;
+      // Support **Key** (optional colon) OR Key: (mandatory colon)
+      const match = line.match(/^[-*]?\s*(?:(?:\*\*(.+?)\*\*[:]?)|([^:]+[:]))\s*(.*)$/);
       if (match) {
-        const key = match[1].toLowerCase().replace(/\s+/g, '_');
-        overrides[key] = match[2].trim();
+        let key = match[1] || match[2];
+        if (key.endsWith(':')) key = key.substring(0, key.length - 1);
+        overrides[key.trim().toLowerCase().replace(/\s+/g, '_')] = match[3].trim();
       } else {
         infoLines.push(line);
       }
@@ -854,7 +860,7 @@ ${outline}
     let roleIdx = -1;
     for (let i = genInfoIdx + 1; i < lines.length; i++) {
         if (lines[i].startsWith('## ')) break;
-        if (lines[i].match(/^[-*]\s*\*\*Role\*\*/)) {
+        if (lines[i].match(/^[-*]\s*\*\*(?:Character\s+)?Role(?:\s*:)?\*\*/i)) {
             roleIdx = i;
             break;
         }
@@ -965,6 +971,16 @@ ${outline}
     }
   }
 
+  detectCharacterRole(content: string, frontmatter: Record<string, string>): string {
+      let role = frontmatter.role;
+      if (!role) {
+         // Consistent regex for role detection
+         const match = content.match(/^[-*]\s*\*\*(?:Character\s+)?Role(?:\s*:)?\*\*(?:\s*:)?\s*([^\n\r]*)/im);
+         if (match) role = match[1].trim();
+      }
+      return normalizeCharacterRole(role || 'Side');
+  }
+
   async getCharacterList(): Promise<CharacterListData[]> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.characterFolder}`;
@@ -975,13 +991,8 @@ ${outline}
       const content = await this.app.vault.read(file);
       const { frontmatter } = this.extractFrontmatterAndBody(content);
       
-      let role = frontmatter.role;
+      const role = this.detectCharacterRole(content, frontmatter);
       let gender = frontmatter.gender;
-
-      if (!role) {
-         const match = content.match(/^[-*]\s*\*\*Role\*\*:[ \t]*([^\n\r]*)/im);
-         if (match) role = match[1].trim();
-      }
 
       if (!gender) {
          const match = content.match(/^[-*]\s*\*\*Gender\*\*:[ \t]*([^\n\r]*)/im);
@@ -991,7 +1002,7 @@ ${outline}
       chars.push({
         name: file.basename,
         file,
-        role: normalizeCharacterRole(role || 'Side'),
+        role,
         gender: gender || ''
       });
     }
@@ -1011,7 +1022,7 @@ ${outline}
     
     // Update "General Information" section in body
     const lines = body.split('\n');
-    const roleIdx = lines.findIndex(l => l.match(/^[-*]\s*\*\*Role\*\*/));
+    const roleIdx = lines.findIndex(l => l.match(/^[-*]\s*\*\*(?:Character\s+)?Role(?:\s*:)?\*\*/i));
     if (roleIdx !== -1) {
         lines[roleIdx] = `- **Role**: ${roleLabel}`;
     }
@@ -1070,21 +1081,35 @@ ${outline}
         const descContent = await this.app.vault.read(descFile);
         const notes = this.getSectionLines(descContent, 'Chapter notes');
         for (const line of notes) {
-            const match = line.match(/^[-*]\s*\*\*(.+?)\*\*[:]?\s*(.*)$/);
+            // Updated regex to support non-bold keys
+            const match = line.match(/^[-*]?\s*(?:(?:\*\*(.+?)\*\*[:]?)|([^:]+[:]))\s*(.*)$/);
             if (match) {
-                const key = match[1].toLowerCase();
-                const values = match[2].split(',').map(v => v.trim()).filter(Boolean);
+                const rawKey = match[1] || match[2];
+                let key = rawKey.toLowerCase().trim();
+                if (key.endsWith(':')) key = key.slice(0, -1).trim();
+                
+                const values = match[3].split(',').map(v => v.trim()).filter(Boolean);
                 if (key === 'characters') charList = values;
                 if (key === 'locations') locList = values;
             }
         }
     }
 
-    if (charList.length === 0 || locList.length === 0) {
-        const mentions = this.scanMentions(body);
-        if (charList.length === 0) charList = mentions.characters;
-        if (locList.length === 0) locList = mentions.locations;
-    }
+    // Always scan for mentions to supplement the explicit list
+    const mentions = this.scanMentions(body);
+    
+    // Merge explicit lists with scanned mentions, ensuring uniqueness
+    // Case-insensitive de-duplication can be complex, but here we assume names match the entityIndex keys mostly.
+    
+    // Helper to merge arrays uniquely
+    const mergeUnique = (base: string[], added: string[]) => {
+        const set = new Set(base);
+        added.forEach(a => set.add(a));
+        return Array.from(set);
+    };
+
+    charList = mergeUnique(charList, mentions.characters);
+    locList = mergeUnique(locList, mentions.locations);
 
     return {
       characters: charList,
@@ -1093,17 +1118,39 @@ ${outline}
   }
 
   scanMentions(content: string): { characters: string[]; locations: string[] } {
-    const characters: string[] = [];
-    const locations: string[] = [];
+    const characters: Set<string> = new Set();
+    const locations: Set<string> = new Set();
+    // contentLower removed as we use regex 'i' flag
 
     for (const [name, info] of this.entityIndex.entries()) {
-      if (content.includes(name)) {
-        if (info.path.includes(this.settings.characterFolder)) characters.push(name);
-        if (info.path.includes(this.settings.locationFolder)) locations.push(name);
+      const nameParts = name.split(' ');
+      // Check full name or first name
+      const variations = [name];
+      if (nameParts.length > 1) {
+          variations.push(nameParts[0]);
+      }
+      
+      let found = false;
+      for (const v of variations) {
+          if (v.length < 2) continue;
+          // Simple case-insensitive check
+          // Note: This matches "Amy" in "Tammy" potentially. 
+          // For better accuracy we would use regex boundaries, but for now strict includes on lowercase is a good step up.
+          // Using boundaries:
+          const regex = new RegExp(`\\b${this.escapeRegex(v)}\\b`, 'i');
+          if (regex.test(content)) {
+              found = true;
+              break;
+          }
+      }
+
+      if (found) {
+        if (info.path.includes(this.settings.characterFolder)) characters.add(name);
+        if (info.path.includes(this.settings.locationFolder)) locations.add(name);
       }
     }
 
-    return { characters, locations };
+    return { characters: Array.from(characters), locations: Array.from(locations) };
   }
 
   parseFrontmatter(content: string): Record<string, string> {
@@ -1127,21 +1174,37 @@ ${outline}
   }
 
   findCharacterFile(name: string): TFile | null {
-    const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.characterFolder}`;
-    
     let cleanName = name.replace(/^\[{2}/, '').replace(/\]{2}$/, '');
     cleanName = cleanName.split('|')[0].trim();
     
+    // First try the entity index to support subfolders or varied paths
+    const info = this.entityIndex.get(cleanName);
+    if (info && info.path.includes(this.settings.characterFolder)) {
+        const file = this.app.vault.getAbstractFileByPath(info.path);
+        if (file instanceof TFile) return file;
+    }
+
+    // Fallback for non-indexed files (e.g. newly created)
+    const root = this.settings.projectPath;
+    const folder = `${root}/${this.settings.characterFolder}`;
     const path = `${folder}/${cleanName}.md`;
     const file = this.app.vault.getAbstractFileByPath(path);
     return file instanceof TFile ? file : null;
   }
 
   findLocationFile(name: string): TFile | null {
+    let cleanName = name.replace(/^\[{2}/, '').replace(/\]{2}$/, '').split('|')[0].trim();
+    
+    // First try the entity index
+    const info = this.entityIndex.get(cleanName);
+    if (info && info.path.includes(this.settings.locationFolder)) {
+        const file = this.app.vault.getAbstractFileByPath(info.path);
+        if (file instanceof TFile) return file;
+    }
+
+    // Fallback
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.locationFolder}`;
-    const cleanName = name.replace(/^\[{2}/, '').replace(/\]{2}$/, '').split('|')[0].trim();
     const path = `${folder}/${cleanName}.md`;
     const file = this.app.vault.getAbstractFileByPath(path);
     return file instanceof TFile ? file : null;
@@ -1266,24 +1329,23 @@ ${outline}
     const root = this.settings.projectPath;
     if (!root) return;
 
-    const folders = [
-      `${root}/${this.settings.characterFolder}`,
-      `${root}/${this.settings.locationFolder}`
-    ];
+    const charFolder = `${root}/${this.settings.characterFolder}`;
+    const locFolder = `${root}/${this.settings.locationFolder}`;
 
-    for (const folder of folders) {
-      const abstractFolder = this.app.vault.getAbstractFileByPath(folder);
-      if (abstractFolder instanceof TFolder) {
-        const children = abstractFolder.children;
-        for (const child of children) {
-          if (child instanceof TFile && child.extension === 'md') {
-            this.entityIndex.set(child.basename, {
-              path: child.path,
-              display: child.basename
+    const files = this.app.vault.getFiles();
+    
+    for (const file of files) {
+        const isChar = file.path.startsWith(charFolder);
+        const isLoc = file.path.startsWith(locFolder);
+
+        if (isChar || isLoc) {
+            this.entityIndex.set(file.basename, {
+                path: file.path,
+                display: file.basename
             });
-            
-            if (folder.includes(this.settings.characterFolder)) {
-                const content = await this.app.vault.read(child);
+
+            if (isChar) {
+                const content = await this.app.vault.read(file);
                 const relationshipLines = this.getSectionLines(content, 'Relationships');
                 for (const line of relationshipLines) {
                     const match = line.match(/^(\s*[-*]\s*\*\*(.+?)\*\*([:]?)\s*)/);
@@ -1294,9 +1356,7 @@ ${outline}
                     }
                 }
             }
-          }
         }
-      }
     }
 
     const names = Array.from(this.entityIndex.keys());
@@ -1370,19 +1430,48 @@ ${outline}
   }
 
   findEntityAtPosition(lineText: string, ch: number): { path: string; display: string } | null {
-    if (!this.entityRegex) return null;
-
-    let match: RegExpExecArray | null;
-    this.entityRegex.lastIndex = 0;
-    while ((match = this.entityRegex.exec(lineText)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (ch >= start && ch <= end) {
-        const name = match[0];
-        const info = this.entityIndex.get(name);
-        return info || null;
-      }
+    // 1. Try strict entity regex (full names)
+    if (this.entityRegex) {
+        let match: RegExpExecArray | null;
+        this.entityRegex.lastIndex = 0;
+        while ((match = this.entityRegex.exec(lineText)) !== null) {
+          const start = match.index;
+          const end = start + match[0].length;
+          if (ch >= start && ch <= end) {
+            const name = match[0];
+            const info = this.entityIndex.get(name);
+            return info || null;
+          }
+        }
     }
+
+    // 2. Fallback: Get word at cursor and try partial match
+    // Simple word boundary check
+    let start = ch;
+    let end = ch;
+    while (start > 0 && this.isWordChar(lineText[start - 1])) start--;
+    while (end < lineText.length && this.isWordChar(lineText[end])) end++;
+    
+    const word = lineText.substring(start, end);
+    if (word && word.length >= 2) {
+        // Try to find entity starting with this word (e.g. "Amy" -> "Amy Calder")
+        const target = word.toLowerCase();
+        // Prefer exact first name match if possible to avoid "Al" -> "Alan" false positives?
+        // But startWith is consistent with the "focus" logic.
+        const entry = Array.from(this.entityIndex.entries()).find(([key]) => {
+             const lowerKey = key.toLowerCase();
+             return lowerKey === target || lowerKey.startsWith(target + ' ');
+        });
+
+        if (entry) return entry[1];
+        
+        // Fallback to simple startsWith for other cases
+        const potentialMatch = Array.from(this.entityIndex.entries())
+            .find(([key]) => key.toLowerCase().startsWith(target));
+            
+        if (potentialMatch) return potentialMatch[1];
+    }
+
     return null;
   }
 
@@ -1391,7 +1480,9 @@ ${outline}
   }
 
   stripChapterRelevantSection(content: string): string {
-    return content.replace(/## Chapter:[\s\S]*?(?=\n## |$)/, '');
+    let stripped = content.replace(/## Chapter:[\s\S]*?(?=\n## |$)/g, '');
+    stripped = stripped.replace(/## Chapter Relevant Information[\s\S]*?(?=\n## |$)/, '');
+    return stripped;
   }
 
   stripImagesSection(content: string): string {
@@ -1505,8 +1596,29 @@ ${outline}
   }
 
   focusEntityByName(name: string, reveal: boolean): boolean {
-    const cleanName = name.replace(/^\[{2}/, '').replace(/\]{2}$/, '').split('|')[0].trim();
-    const info = this.entityIndex.get(cleanName);
+    let cleanName = name.replace(/^\[{2}/, '').replace(/\]{2}$/, '').split('|')[0].trim();
+    // Remove extension if present in the link/path
+    if (cleanName.toLowerCase().endsWith('.md')) {
+        cleanName = cleanName.substring(0, cleanName.length - 3);
+    }
+    
+    if (!cleanName) return false;
+
+    // Try exact match first
+    let info = this.entityIndex.get(cleanName);
+    
+    // If not found, try to find a partial match (starts with) - useful for names like "Liam" -> "Liam Calder"
+    if (!info) {
+        // Case insensitive search for keys that start with the cleanName
+        const target = cleanName.toLowerCase();
+        const potentialMatch = Array.from(this.entityIndex.entries())
+            .find(([key]) => key.toLowerCase().startsWith(target));
+        
+        if (potentialMatch) {
+            info = potentialMatch[1];
+        }
+    }
+
     if (info) {
       const file = this.app.vault.getAbstractFileByPath(info.path);
       if (file instanceof TFile) {
