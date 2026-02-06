@@ -54,7 +54,6 @@ export default defineConfig([
     // You can add your own configuration to override or add rules
     rules: {
       "@typescript-eslint/require-await": "error",
-      "@typescript-eslint/no-unsafe-argument": "off",
     },
   },
 ]);

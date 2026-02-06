@@ -17,15 +17,14 @@ import {
   EditorSuggest,
   EditorPosition,
   EditorSuggestContext,
-  EditorSuggestTriggerInfo,
-  Menu
+  EditorSuggestTriggerInfo
 } from 'obsidian';
 import cytoscape from 'cytoscape';
 // @ts-ignore
 import dagre from 'cytoscape-dagre';
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any
-cytoscape.use(dagre as any);
+const dagreExtension = dagre as cytoscape.Ext;
+cytoscape.use(dagreExtension);
 
 // ==========================================
 // INTERFACES
@@ -209,7 +208,7 @@ class NovalistSidebarView extends ItemView {
     return 'book-open';
   }
 
-  async onOpen() {
+  onOpen() {
     this.containerEl.empty();
     void this.render();
     
@@ -297,7 +296,7 @@ class NovalistSidebarView extends ItemView {
         }
 
         const images = this.plugin.parseImagesSection(content);
-        const renderImages = async () => {
+        const renderImages = () => {
           if (images.length === 0) return;
           const imageRow = details.createDiv('novalist-image-row');
           imageRow.createEl('span', { text: 'Images', cls: 'novalist-image-label' });
@@ -312,7 +311,7 @@ class NovalistSidebarView extends ItemView {
           dropdown.setValue(selected);
 
           const imageContainer = details.createDiv('novalist-image-preview');
-          const renderImage = async (name: string) => {
+          const renderImage = (name: string) => {
             const img = images.find(i => i.name === name) || images[0];
             this.selectedImageByPath.set(key, img.name);
             imageContainer.empty();
@@ -328,10 +327,10 @@ class NovalistSidebarView extends ItemView {
           };
 
           dropdown.onChange((val) => {
-            void renderImage(val);
+            renderImage(val);
           });
 
-          await renderImage(selected);
+          renderImage(selected);
         };
 
         if (selectedEntity.type === 'character') {
@@ -345,12 +344,12 @@ class NovalistSidebarView extends ItemView {
               body = this.plugin.applyCharacterOverridesToBody(body, chapterInfo.overrides);
             }
           }
-          await renderImages();
+          renderImages();
         }
 
         if (selectedEntity.type === 'location') {
           body = this.plugin.stripImagesSection(body);
-          await renderImages();
+          renderImages();
         }
 
         if (selectedEntity.type === 'character' && this.currentChapterFile) {
@@ -557,7 +556,7 @@ class NovalistExplorerView extends ItemView {
     return 'folder';
   }
 
-  async onOpen() {
+  onOpen() {
     this.containerEl.empty();
     void this.render();
 
@@ -3748,8 +3747,7 @@ export class CharacterMapView extends ItemView {
         }
     });
 
-    // eslint-disable-next-line obsidianmd/ui/sentence-case
-    header.createEl('h4', { text: 'Character Relationship Map (Work in Progress)' });
+    header.createEl('h4', { text: 'Character relationship map (work in progress)' });
     
     // Add WIP noticeable banner
     const wipBanner = container.createDiv();
@@ -3763,8 +3761,7 @@ export class CharacterMapView extends ItemView {
         border: '1px solid #8a6d3b',
         textAlign: 'center'
     });
-    // eslint-disable-next-line obsidianmd/ui/sentence-case
-    wipBanner.createEl('strong', { text: 'NB! ' });
+    wipBanner.createEl('strong', { text: 'Note: ' });
     wipBanner.createSpan({ text: 'This relationship graph is currently under development. Layout and connections might be unstable.' });
 
     const refreshBtn = header.createEl('button', { text: 'Refresh' });
@@ -3789,8 +3786,7 @@ export class CharacterMapView extends ItemView {
         fontSize: '0.8em',
         border: '1px solid rgba(255,255,255,0.1)'
     });
-    // eslint-disable-next-line obsidianmd/ui/sentence-case
-    legend.createEl('div', { text: 'Scroll to Zoom • Drag to Pan' });
+    legend.createEl('div', { text: 'Scroll to zoom • drag to pan' });
     legend.createEl('div', { text: 'Drag nodes to rearrange' });
 
 
@@ -4647,9 +4643,8 @@ export class CharacterMapView extends ItemView {
         } as cytoscape.LayoutOptions).run();
         
     } catch (e) {
-        // eslint-disable-next-line obsidianmd/ui/sentence-case
-        div.setText('Error rendering Cytoscape graph.');
-        globalThis.console.error(e);
+      div.setText('Error rendering cytoscape graph.');
+      globalThis.console.error(e);
     }
   }
 }
