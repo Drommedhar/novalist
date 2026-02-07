@@ -8,6 +8,7 @@ import type {
  * The format stores data in a human-readable markdown format with markers
  */
 export function parseCharacterSheet(content: string): CharacterSheetData {
+  const normalized = content.replace(/\r\n/g, '\n');
   const data: CharacterSheetData = {
     name: '',
     surname: '',
@@ -23,7 +24,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
   };
 
   // Extract name from title (first # heading)
-  const titleMatch = content.match(/^#\s+(.+)$/m);
+  const titleMatch = normalized.match(/^#\s+(.+)$/m);
   if (titleMatch) {
     const fullName = titleMatch[1].trim();
     const nameParts = fullName.split(' ');
@@ -31,7 +32,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
     data.surname = nameParts.slice(1).join(' ') || '';
   }
 
-  const sheetContent = getSheetSection(content, 'CharacterSheet');
+  const sheetContent = getSheetSection(normalized, 'CharacterSheet');
   
   if (sheetContent) {
     
@@ -253,7 +254,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
     }
   } else {
     // Fallback: try to parse from legacy format (General Information section)
-    parseLegacyFormat(content, data);
+    parseLegacyFormat(normalized, data);
   }
 
   return data;

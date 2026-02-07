@@ -49,11 +49,7 @@ export default class NovalistPlugin extends Plugin {
     await this.loadSettings();
 
     await this.refreshEntityIndex();
-    await this.syncAllCharactersChapterInfos();
-    await this.migrateCharacterRoles();
     this.app.workspace.onLayoutReady(() => {
-      void this.syncAllCharactersChapterInfos();
-
       if (!this.settings.startupWizardShown || !this.app.vault.getAbstractFileByPath(this.settings.projectPath)) {
         new StartupWizardModal(this.app, this).open();
       }
@@ -1338,11 +1334,9 @@ order: ${orderValue}
     for (const file of files) {
       const content = await this.app.vault.read(file);
       const { frontmatter, body } = this.extractFrontmatterAndBody(content);
-      const { guid, updated } = this.ensureChapterGuid(frontmatter, body, file);
-      if (updated) {
-        const nextFrontmatter = this.serializeFrontmatter(frontmatter);
-        await this.app.vault.modify(file, nextFrontmatter + body);
-      }
+      const guid = typeof frontmatter.guid === 'string' && frontmatter.guid.trim()
+        ? frontmatter.guid.trim()
+        : file.basename;
       const title = this.extractTitle(body) || file.basename;
       chapters.push({
         id: guid,

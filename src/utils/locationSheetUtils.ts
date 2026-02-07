@@ -6,6 +6,7 @@ import type {
  * Parse a location markdown file into structured LocationSheetData
  */
 export function parseLocationSheet(content: string): LocationSheetData {
+  const normalized = content.replace(/\r\n/g, '\n');
   const data: LocationSheetData = {
     name: '',
     type: '',
@@ -17,12 +18,12 @@ export function parseLocationSheet(content: string): LocationSheetData {
   };
 
   // Extract name from title (first # heading)
-  const titleMatch = content.match(/^#\s+(.+)$/m);
+  const titleMatch = normalized.match(/^#\s+(.+)$/m);
   if (titleMatch) {
     data.name = titleMatch[1].trim();
   }
 
-  const sheetContent = getSheetSection(content, 'LocationSheet');
+  const sheetContent = getSheetSection(normalized, 'LocationSheet');
   
   if (sheetContent) {
     
@@ -170,7 +171,7 @@ export function parseLocationSheet(content: string): LocationSheetData {
     // Fallback? Assuming new files, or simple fallback
     // Try to parse basic Description from body if no Sheet block
     // Look for ## Description
-    const descMatch = content.match(/^##\s+Description\s*\n([\s\S]*?)(?=\n##|$)/m);
+    const descMatch = normalized.match(/^##\s+Description\s*\n([\s\S]*?)(?=\n##|$)/m);
     if (descMatch) {
         data.description = descMatch[1].trim();
     }
