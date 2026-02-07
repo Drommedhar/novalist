@@ -317,7 +317,9 @@ export class CharacterSheetView extends TextFileView {
     // Full width sections below
     this.renderRelationshipsSection(this.contentContainer);
     this.renderCustomPropertiesSection(this.contentContainer);
-    this.renderSectionsArea(this.contentContainer);
+    if (!this.enableOverrides) {
+      this.renderSectionsArea(this.contentContainer);
+    }
     this.renderChapterOverridesSection(this.contentContainer);
 
   }
@@ -1095,7 +1097,7 @@ export class CharacterSheetView extends TextFileView {
 
   private getEffectiveRelationships(): CharacterRelationship[] {
     if (this.enableOverrides && this.currentChapter) {
-      const override = this.data.chapterOverrides.find(o => o.chapter === this.currentChapter);
+      const override = this.getOverrideForCurrentChapter();
       if (override?.relationships !== undefined) {
         return [...override.relationships];
       }
@@ -1105,7 +1107,7 @@ export class CharacterSheetView extends TextFileView {
 
   private setEffectiveRelationships(relationships: CharacterRelationship[]): void {
     if (this.enableOverrides && this.currentChapter) {
-      let override = this.data.chapterOverrides.find(o => o.chapter === this.currentChapter);
+      let override = this.getOverrideForCurrentChapter();
       if (!override) {
         override = { chapter: this.currentChapter };
         this.data.chapterOverrides.push(override);
