@@ -1,5 +1,7 @@
 # Novalist for Obsidian
 
+<img src="images/novalist.png" alt="Novalist Logo" width="400"/>
+
 Turn Obsidian into a dedicated novel-writing environment. **Novalist** helps you organize characters, manage locations, and keep track of your plot without leaving your text editor.
 
 ## Key Features
