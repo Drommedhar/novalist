@@ -4,7 +4,8 @@
   MarkdownView,
   Editor,
   Notice,
-  EditorPosition
+  EditorPosition,
+  WorkspaceLeaf
 } from 'obsidian';
 import {
   NovalistSettings,
@@ -102,7 +103,8 @@ export default class NovalistPlugin extends Plugin {
         const canRun = file instanceof TFile && this.isCharacterFile(file);
         if (checking) return canRun;
         if (canRun && file) {
-          void this.openCharacterSheet(file);
+          const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+          void this.openCharacterSheet(file, activeView?.leaf);
         }
       }
     });
@@ -116,7 +118,8 @@ export default class NovalistPlugin extends Plugin {
         const canRun = file instanceof TFile && this.isLocationFile(file);
         if (checking) return canRun;
         if (canRun && file) {
-          void this.openLocationSheet(file);
+          const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+          void this.openLocationSheet(file, activeView?.leaf);
         }
       }
     });
@@ -396,13 +399,14 @@ export default class NovalistPlugin extends Plugin {
       // Check if current active view is a markdown view
       const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (!activeView) return;
+      const activeLeaf = activeView.leaf;
       
       processedFiles.add(file.path);
       setTimeout(() => {
         if (isChar) {
-            void this.openCharacterSheet(file);
+            void this.openCharacterSheet(file, activeLeaf);
         } else {
-            void this.openLocationSheet(file);
+            void this.openLocationSheet(file, activeLeaf);
         }
         // Remove from processed after a delay
         setTimeout(() => processedFiles.delete(file.path), 500);
@@ -2034,7 +2038,7 @@ order: ${orderValue}
     return file.path.startsWith(folder) && file.extension === 'md';
   }
 
-  async openCharacterSheet(file: TFile): Promise<void> {
+  async openCharacterSheet(file: TFile, targetLeaf?: WorkspaceLeaf): Promise<void> {
     const existingLeaf = this.app.workspace.getLeavesOfType(CHARACTER_SHEET_VIEW_TYPE)
       .find((leaf) => leaf.view instanceof CharacterSheetView && leaf.view.file?.path === file.path);
 
@@ -2043,7 +2047,7 @@ order: ${orderValue}
       return;
     }
 
-    const leaf = this.app.workspace.getLeaf('tab');
+    const leaf = targetLeaf ?? this.app.workspace.getLeaf('tab');
     await leaf.setViewState({
       type: CHARACTER_SHEET_VIEW_TYPE,
       state: { file: file.path }
@@ -2051,7 +2055,7 @@ order: ${orderValue}
     void this.app.workspace.revealLeaf(leaf);
   }
 
-  async openLocationSheet(file: TFile): Promise<void> {
+  async openLocationSheet(file: TFile, targetLeaf?: WorkspaceLeaf): Promise<void> {
     const existingLeaf = this.app.workspace.getLeavesOfType(LOCATION_SHEET_VIEW_TYPE)
       .find((leaf) => leaf.view instanceof LocationSheetView && leaf.view.file?.path === file.path);
 
@@ -2060,7 +2064,7 @@ order: ${orderValue}
       return;
     }
 
-    const leaf = this.app.workspace.getLeaf('tab');
+    const leaf = targetLeaf ?? this.app.workspace.getLeaf('tab');
     await leaf.setViewState({
       type: LOCATION_SHEET_VIEW_TYPE,
       state: { file: file.path }

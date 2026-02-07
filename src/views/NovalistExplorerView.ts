@@ -435,6 +435,18 @@ export class NovalistExplorerView extends ItemView {
   }
 
   private async openFileInExplorer(file: TFile): Promise<void> {
+    const targetLeaf = this.app.workspace.getLeaf(false);
+
+    if (this.plugin.isCharacterFile(file)) {
+      await this.plugin.openCharacterSheet(file, targetLeaf);
+      return;
+    }
+
+    if (this.plugin.isLocationFile(file)) {
+      await this.plugin.openLocationSheet(file, targetLeaf);
+      return;
+    }
+
     const existingLeaf = this.app.workspace.getLeavesOfType('markdown')
       .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
 
