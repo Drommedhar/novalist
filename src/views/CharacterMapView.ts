@@ -5,12 +5,36 @@
   TFolder
 } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { parseCharacterSheet } from '../utils/characterSheetUtils';
 import cytoscape from 'cytoscape';
 // @ts-ignore
-import dagre from 'cytoscape-dagre';
+import fcose from 'cytoscape-fcose';
 
-const dagreExtension = dagre as cytoscape.Ext;
-cytoscape.use(dagreExtension);
+const fcoseExtension = fcose as cytoscape.Ext;
+cytoscape.use(fcoseExtension);
+
+class UnionFind {
+    parent: Map<string, string>;
+    constructor() {
+        this.parent = new Map();
+    }
+    
+    find(i: string): string {
+        if (!this.parent.has(i)) this.parent.set(i, i);
+        if (this.parent.get(i) !== i) {
+            this.parent.set(i, this.find(this.parent.get(i)));
+        }
+        return this.parent.get(i);
+    }
+    
+    union(i: string, j: string) {
+        const rootI = this.find(i);
+        const rootJ = this.find(j);
+        if (rootI !== rootJ) {
+            this.parent.set(rootI, rootJ);
+        }
+    }
+}
 
 export const CHARACTER_MAP_VIEW_TYPE = 'novalist-character-map';
 
@@ -146,6 +170,7 @@ export class CharacterMapView extends ItemView {
             public file: TFile,
             public role: string,
             public gender: string,
+            public surname: string = '',
             public family: Set<string> = new Set(),
             public connections: Map<string, string[]> = new Map() 
         ) {}
@@ -160,12 +185,13 @@ export class CharacterMapView extends ItemView {
         charFiles.set(id, file);
         
         const content = await this.plugin.app.vault.read(file);
-        const { frontmatter } = this.plugin.extractFrontmatterAndBody(content);
+        const sheetData = parseCharacterSheet(content);
         
-        const role = frontmatter.role || 'Side';
-        const gender = frontmatter.gender || '';
+        const role = sheetData.role || 'Side';
+        const gender = sheetData.gender || '';
+        const surname = sheetData.surname || '';
         
-        allCharData.set(id, new CharData(id, file.basename, file, role, gender));
+        allCharData.set(id, new CharData(id, file.basename, file, role, gender, surname));
     }
 
     const resolveTarget = (targetName: string): string | null => {
@@ -181,77 +207,184 @@ export class CharacterMapView extends ItemView {
         return null;
     };
 
-    // Pass 2: Parse relationships
+    // Helper to store directed edges temporarily
+    const rawEdges: { source: string; target: string; role: string }[] = [];
+
+    // Pass 2: Parse relationships (reuse sheetData from Pass 1 by re-reading)
     for (const char of allCharData.values()) {
         const content = await this.plugin.app.vault.read(char.file);
-        const relationshipLines = this.plugin.getSectionLines(content, 'Relationships');
+        const sheetData = parseCharacterSheet(content);
         
-        for (const line of relationshipLines) {
-            const match = line.match(/^(\s*[-*]\s*\*\*(.+?)\*\*([:]?)\s*)(.*)$/);
-            if (!match) continue;
+        for (const rel of sheetData.relationships) {
+            const roleLabel = rel.role;
             
-            let roleLabel = match[2].trim();
-            if (roleLabel.endsWith(':')) roleLabel = roleLabel.slice(0, -1).trim();
-            const targetsStr = match[4].trim();
+            // Split comma-separated targets (e.g. "[[Finn Drent]], [[Liam Calder]]")
+            const targetNames = rel.character.split(/,(?=\s*\[\[)/).map(s => s.trim()).filter(Boolean);
+            // Fallback: if no wikilinks, just split by comma
+            const targets = targetNames.length > 0 ? targetNames : [rel.character];
             
-            const targets = targetsStr.split(',').map(s => s.trim()).filter(Boolean);
-            for (const t of targets) {
-                const targetId = resolveTarget(t);
+            for (const targetName of targets) {
+                const targetId = resolveTarget(targetName);
                 if (targetId && targetId !== char.id) {
                     if (!char.connections.has(targetId)) char.connections.set(targetId, []);
                     char.connections.get(targetId)?.push(roleLabel);
                     
-                    const isFamily = roleLabel.toLowerCase().includes('child') || 
-                                     roleLabel.toLowerCase().includes('father') || 
-                                     roleLabel.toLowerCase().includes('mother') || 
-                                     roleLabel.toLowerCase().includes('parent') || 
-                                     roleLabel.toLowerCase().includes('sibling') || 
-                                     roleLabel.toLowerCase().includes('sister') || 
-                                     roleLabel.toLowerCase().includes('brother') || 
-                                     roleLabel.toLowerCase().includes('husband') || 
-                                     roleLabel.toLowerCase().includes('wife') || 
-                                     roleLabel.toLowerCase().includes('son') || 
-                                     roleLabel.toLowerCase().includes('daughter');
-                    if (isFamily) {
-                        char.family.add(targetId);
-                    }
+                    rawEdges.push({ source: char.id, target: targetId, role: roleLabel });
                 }
             }
         }
     }
 
-    // Pass 3: Create familial clusters/compounds if possible
-    const handledFamily = new Set<string>();
-    for (const char of allCharData.values()) {
-        if (handledFamily.has(char.id)) continue;
-        if (char.family.size > 0) {
-            const cluster = new Set<string>([char.id]);
-            const stack = [char.id];
-            while(stack.length > 0) {
-                const current = stack.pop();
-                if (!current) continue;
-                const data = allCharData.get(current);
-                if (!data) continue;
-                for(const f of data.family) {
-                    if (!cluster.has(f)) {
-                        cluster.add(f);
-                        stack.push(f);
-                    }
+    // Process Edges: Group Mutuals & Apply Relationship Model
+    const mutualUFs = new Map<string, UnionFind>(); // Role -> UnionFind
+    
+    // Build adjacency for quick lookup: Source -> Target -> Roles[]
+    const adjacency = new Map<string, Map<string, Set<string>>>();
+    for (const edge of rawEdges) {
+        if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Map());
+        if (!adjacency.get(edge.source).has(edge.target)) adjacency.get(edge.source).set(edge.target, new Set());
+        adjacency.get(edge.source).get(edge.target).add(edge.role);
+    }
+
+    // Merged edge collector for deduplication
+    const mergedEdges = new Map<string, { source: string; target: string; roles: Set<string> }>();
+
+    // Build role groups: for each role, collect all (source -> targets) 
+    const roleGroups = new Map<string, Map<string, Set<string>>>();
+    for (const edge of rawEdges) {
+        if (!roleGroups.has(edge.role)) roleGroups.set(edge.role, new Map());
+        const group = roleGroups.get(edge.role);
+        if (!group.has(edge.source)) group.set(edge.source, new Set());
+        group.get(edge.source).add(edge.target);
+    }
+
+    // Detect mutual roles: a role is mutual if every target also lists
+    // the source under that same role (all connections are bidirectional)
+    const mutualRoles = new Set<string>();
+    for (const [role, sources] of roleGroups.entries()) {
+        let allMutual = true;
+        for (const [src, targets] of sources.entries()) {
+            for (const tgt of targets) {
+                if (!sources.get(tgt)?.has(src)) {
+                    allMutual = false;
+                    break;
                 }
             }
-            
-            if (cluster.size > 1) {
-                const parentId = `family-${char.id}`;
-                elements.push({ data: { id: parentId, label: 'Family Group' }, classes: 'family-group' });
-                for(const cid of cluster) {
-                    const c = allCharData.get(cid);
-                    if (c) {
-                        elements.push({ 
-                            data: { id: c.id, label: c.name, parent: parentId }, 
-                            classes: `character-node role-${c.role.toLowerCase().replace(/\s+/g, '-')}` 
-                        });
-                        handledFamily.add(cid);
-                    }
+            if (!allMutual) break;
+        }
+        if (allMutual) mutualRoles.add(role);
+    }
+
+    const processedPairs = new Set<string>();
+    const simpleEdges: { source: string; target: string; role: string; mutual: boolean }[] = [];
+
+    // Identify Mutual Pairs
+    for (const edge of rawEdges) {
+        const u = edge.source;
+        const v = edge.target;
+        const roleU = edge.role;
+        
+        const pairKey = [u, v].sort().join('--');
+        if (processedPairs.has(pairKey + '--' + roleU)) continue;
+        
+        if (mutualRoles.has(roleU)) {
+             if (!mutualUFs.has(roleU)) mutualUFs.set(roleU, new UnionFind());
+             mutualUFs.get(roleU).union(u, v);
+             processedPairs.add(pairKey + '--' + roleU);
+        } else {
+             simpleEdges.push({ source: u, target: v, role: roleU, mutual: false });
+        }
+    }
+
+    // Generate Hubs for Components > 2
+    for (const [role, uf] of mutualUFs.entries()) {
+        const components = new Map<string, string[]>();
+        // Gather components
+        // Iterate all nodes involved in this role (we need to track them or just iterate all chars)
+        // Optimization: track nodes in the UF logic?
+        // We'll iterate allCharData.
+        
+        for (const charId of allCharData.keys()) {
+            if (uf.parent.has(charId)) {
+                const root = uf.find(charId);
+                if (!components.has(root)) components.set(root, []);
+                components.get(root).push(charId);
+            }
+        }
+
+        for (const [root, members] of components.entries()) {
+            if (members.length > 2) {
+                // Create Hub
+                const hubId = `hub-${role}-${root}`;
+                elements.push({ 
+                    data: { id: hubId, label: role }, 
+                    classes: 'hub-node' 
+                });
+                for (const member of members) {
+                     elements.push({
+                        data: { source: member, target: hubId, label: '' },
+                        classes: 'hub-edge'
+                     });
+                }
+            } else {
+                // Size 2: Just draw edge (approximate as single edge)
+                // We need to ensure we don't draw duplicates.
+                if (members.length === 2) {
+                    const [a, b] = members;
+                    const pairKey = [a, b].sort().join('--');
+                    if (!mergedEdges.has(pairKey)) mergedEdges.set(pairKey, { source: a, target: b, roles: new Set() });
+                    mergedEdges.get(pairKey).roles.add(role);
+                }
+            }
+        }
+    }
+
+    // Merge simple edges: combine all roles between same pair into one edge with "/"
+    for (const edge of simpleEdges) {
+        const pairKey = [edge.source, edge.target].sort().join('--');
+        if (!mergedEdges.has(pairKey)) mergedEdges.set(pairKey, { source: edge.source, target: edge.target, roles: new Set() });
+        mergedEdges.get(pairKey).roles.add(edge.role);
+    }
+
+    // Emit merged edges
+    for (const edge of mergedEdges.values()) {
+        const label = Array.from(edge.roles).join(' / ');
+        elements.push({
+            data: { source: edge.source, target: edge.target, label },
+            classes: 'relationship-edge'
+        });
+    }
+
+    // Pass 3: Group by surname
+    const connectedIds = new Set<string>();
+    for (const edge of rawEdges) {
+        connectedIds.add(edge.source);
+        connectedIds.add(edge.target);
+    }
+
+    const surnameGroups = new Map<string, string[]>();
+    for (const char of allCharData.values()) {
+        if (!connectedIds.has(char.id)) continue;
+        const key = char.surname.trim();
+        if (key) {
+            if (!surnameGroups.has(key)) surnameGroups.set(key, []);
+            surnameGroups.get(key).push(char.id);
+        }
+    }
+
+    const handledFamily = new Set<string>();
+    for (const [surname, members] of surnameGroups.entries()) {
+        if (members.length > 1) {
+            const parentId = `family-${surname.toLowerCase().replace(/\s+/g, '-')}`;
+            elements.push({ data: { id: parentId, label: surname }, classes: 'family-group' });
+            for (const cid of members) {
+                const c = allCharData.get(cid);
+                if (c) {
+                    elements.push({
+                        data: { id: c.id, label: c.name, parent: parentId },
+                        classes: `character-node role-${c.role.toLowerCase().replace(/\s+/g, '-')}`
+                    });
+                    handledFamily.add(cid);
                 }
             }
         }
@@ -259,55 +392,15 @@ export class CharacterMapView extends ItemView {
 
     for (const char of allCharData.values()) {
         if (!handledFamily.has(char.id)) {
-            elements.push({ 
-                data: { id: char.id, label: char.name }, 
-                classes: `character-node role-${char.role.toLowerCase().replace(/\s+/g, '-')}` 
-            });
-        }
-    }
-
-    const shouldDraw = (idA: string, idB: string, roleInput: string): boolean => {
-        const a = allCharData.get(idA);
-        const b = allCharData.get(idB);
-        if (!a || !b) return true;
-
-        const role = roleInput.toLowerCase();
-        
-        if (role.includes('parent') || role.includes('mother') || role.includes('father')) {
-             const bRoles = b.connections.get(idA)?.map(r => r.toLowerCase()) || [];
-             if (bRoles.some(r => r.includes('child') || r.includes('son') || r.includes('daughter'))) return idA < idB; 
-        }
-        
-        if (role.includes('sibling') || role.includes('sister') || role.includes('brother')) {
-             const bRoles = b.connections.get(idA)?.map(r => r.toLowerCase()) || [];
-             if (bRoles.some(r => r.includes('sibling') || r.includes('sister') || r.includes('brother'))) return idA < idB;
-        }
-
-        if (role.includes('husband') || role.includes('wife') || role.includes('spouse') || role.includes('partner')) {
-            const bRoles = b.connections.get(idA)?.map(r => r.toLowerCase()) || [];
-            if (bRoles.some(r => r.includes('husband') || r.includes('wife') || r.includes('spouse') || r.includes('partner'))) return idA < idB;
-        }
-        
-        return true;
-    };
-
-    const addedEdges = new Set<string>();
-    for (const char of allCharData.values()) {
-        for (const [targetId, roles] of char.connections.entries()) {
-            for (const role of roles) {
-                if (!shouldDraw(char.id, targetId, role)) continue;
-                
-                const edgeId = [char.id, targetId, role].sort().join('-edge-');
-                if (addedEdges.has(edgeId)) continue;
-                addedEdges.add(edgeId);
-
-                elements.push({
-                    data: { source: char.id, target: targetId, label: role },
-                    classes: 'relationship-edge'
+            if (connectedIds.has(char.id)) {
+                elements.push({ 
+                    data: { id: char.id, label: char.name }, 
+                    classes: `character-node role-${char.role.toLowerCase().replace(/\s+/g, '-')}` 
                 });
             }
         }
     }
+
 
     const cy = cytoscape({
         container: div,
@@ -371,8 +464,38 @@ export class CharacterMapView extends ItemView {
                     'border-width': '1px',
                     'border-color': '#555',
                     'border-style': 'dashed',
-                    'label': '',
+                    'label': 'data(label)',
+                    'color': '#888',
+                    'font-size': '9px',
+                    'text-valign': 'top',
+                    'text-halign': 'center',
+                    'text-margin-y': 5,
                     'shape': 'round-rectangle'
+                }
+            },
+            {
+                selector: '.hub-node',
+                style: {
+                    'background-color': '#e1f5fe',
+                    'border-color': '#01579b',
+                    'border-style': 'dashed',
+                    'width': '30px',
+                    'height': '30px',
+                    'label': 'data(label)',
+                    'font-size': '8px',
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'color': '#01579b'
+                }
+            },
+            {
+                selector: '.hub-edge',
+                style: {
+                    'width': 1,
+                    'line-color': '#01579b',
+                    'line-style': 'dashed',
+                    'curve-style': 'bezier',
+                    'opacity': 0.6
                 }
             },
             {
@@ -380,8 +503,7 @@ export class CharacterMapView extends ItemView {
                 style: {
                     'width': 2,
                     'line-color': '#666',
-                    'target-arrow-color': '#666',
-                    'target-arrow-shape': 'triangle',
+                    'target-arrow-shape': 'none',
                     'curve-style': 'bezier',
                     'label': 'data(label)',
                     'font-size': '8px',
@@ -393,12 +515,25 @@ export class CharacterMapView extends ItemView {
             }
         ],
         layout: {
-            name: 'dagre',
+            name: 'fcose',
             // @ts-ignore
-            nodeSep: 100,
-            edgeSep: 100,
-            rankSep: 200,
-            rankDir: 'LR'
+            quality: 'proof',
+            animate: false,
+            nodeDimensionsIncludeLabels: true,
+            uniformNodeDimensions: false,
+            packComponents: true,
+            nodeRepulsion: 8000,
+            idealEdgeLength: 120,
+            edgeElasticity: 0.45,
+            nestingFactor: 0.1,
+            gravity: 0.25,
+            gravityRange: 3.8,
+            gravityCompound: 1.5,
+            gravityRangeCompound: 2.0,
+            numIter: 5000,
+            tile: true,
+            tilingPaddingVertical: 20,
+            tilingPaddingHorizontal: 20
         }
     });
 
