@@ -72,10 +72,10 @@ export class LocationSheetView extends TextFileView {
   }
   
   protected async onOpen(): Promise<void> {
-      // Setup
+    // Setup
   }
 
-  protected onClose(): void {
+  protected async onClose(): Promise<void> {
     // Cleanup
   }
 

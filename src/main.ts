@@ -1866,23 +1866,14 @@ order: ${orderValue}
   }
 
   getWordAtPoint(x: number, y: number): string {
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- caretRangeFromPoint is needed for cross-browser compatibility
-    const range = document.caretRangeFromPoint?.(x, y) || 
-                  (document as unknown as { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }).caretPositionFromPoint?.(x, y);
-    if (!range) return '';
-    
-    let textNode: Node;
-    let offset: number;
-    
-    if ('startContainer' in range) {
-      textNode = range.startContainer;
-      offset = range.startOffset;
-    } else if (range) {
-      textNode = (range as { offsetNode: Node }).offsetNode;
-      offset = (range as { offset: number }).offset;
-    } else {
-      return '';
-    }
+    const caretPositionFromPoint = (document as unknown as {
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+    }).caretPositionFromPoint;
+    const caretPosition = caretPositionFromPoint?.(x, y);
+    if (!caretPosition) return '';
+
+    const textNode = caretPosition.offsetNode;
+    const offset = caretPosition.offset;
     
     if (textNode.nodeType !== Node.TEXT_NODE) return '';
     

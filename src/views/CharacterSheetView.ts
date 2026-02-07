@@ -230,11 +230,11 @@ export class CharacterSheetView extends TextFileView {
     this.contentEl.empty();
   }
 
-  protected onOpen(): void {
+  protected async onOpen(): Promise<void> {
     // Override to handle onOpen
   }
 
-  protected onClose(): void {
+  protected async onClose(): Promise<void> {
     // Override to handle onClose
   }
 
