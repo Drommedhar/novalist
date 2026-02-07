@@ -1346,7 +1346,11 @@ order: ${orderValue}
       });
     }
 
-    return chapters.sort((a, b) => a.order - b.order);
+    return chapters.sort((a, b) => {
+      const orderDiff = a.order - b.order;
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
+    });
   }
 
   getChapterList(): ChapterListData[] {
@@ -1376,7 +1380,11 @@ order: ${orderValue}
       });
     }
 
-    return chapters.sort((a, b) => a.order - b.order);
+    return chapters.sort((a, b) => {
+      const orderDiff = a.order - b.order;
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
+    });
   }
 
   async updateChapterOrder(chapterFiles: TFile[]): Promise<void> {
@@ -1578,7 +1586,8 @@ order: ${orderValue}
   }
 
   parseFrontmatter(content: string): Record<string, string> {
-    const match = content.match(/^---\n([\s\S]+?)\n---/);
+    const normalized = content.replace(/\r\n/g, '\n');
+    const match = normalized.match(/^---\n([\s\S]+?)\n---/);
     if (!match) return {};
 
     const fm: Record<string, string> = {};
@@ -1951,7 +1960,8 @@ order: ${orderValue}
   }
 
   stripFrontmatter(content: string): string {
-    return content.replace(/^---\n[\s\S]*?\n---\n?/, '');
+    const normalized = content.replace(/\r\n/g, '\n');
+    return normalized.replace(/^---\n[\s\S]*?\n---\n?/, '');
   }
 
   stripChapterRelevantSection(content: string): string {
@@ -1991,7 +2001,8 @@ order: ${orderValue}
   }
 
   extractFrontmatter(content: string): string {
-    const match = content.match(/^---\n[\s\S]*?\n---\n?/);
+    const normalized = content.replace(/\r\n/g, '\n');
+    const match = normalized.match(/^---\n[\s\S]*?\n---\n?/);
     return match ? match[0] : '';
   }
 
