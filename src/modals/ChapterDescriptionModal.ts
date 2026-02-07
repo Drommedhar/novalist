@@ -10,7 +10,6 @@ export class ChapterDescriptionModal extends Modal {
   plugin: NovalistPlugin;
   name: string = '';
   order: string = '';
-  outline: string = '';
 
   constructor(app: App, plugin: NovalistPlugin) {
     super(app);
@@ -21,7 +20,7 @@ export class ChapterDescriptionModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
 
-    contentEl.createEl('h2', { text: 'Create chapter description' });
+    contentEl.createEl('h2', { text: 'Create chapter' });
 
     new Setting(contentEl)
       .setName('Name')
@@ -30,12 +29,6 @@ export class ChapterDescriptionModal extends Modal {
     new Setting(contentEl)
       .setName('Order')
       .addText(text => text.onChange(value => this.order = value));
-
-    new Setting(contentEl)
-      .setName('Outline')
-      .addTextArea(text => text
-        .setPlaceholder('Supports Markdown')
-        .onChange(value => this.outline = value));
 
     const buttonDiv = contentEl.createDiv('modal-button-container');
 
@@ -47,7 +40,7 @@ export class ChapterDescriptionModal extends Modal {
       .setButtonText('Create')
       .setCta()
       .onClick(async () => {
-        await this.plugin.createChapterDescription(this.name, this.order, this.outline);
+        await this.plugin.createChapter(this.name, this.order);
         this.close();
       });
   }

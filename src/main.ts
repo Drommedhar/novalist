@@ -22,6 +22,8 @@ import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS } from './se
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
 import { NovalistExplorerView, NOVELIST_EXPLORER_VIEW_TYPE } from './views/NovalistExplorerView';
 import { CharacterMapView, CHARACTER_MAP_VIEW_TYPE } from './views/CharacterMapView';
+import { LocationSheetView, LOCATION_SHEET_VIEW_TYPE } from './views/LocationSheetView';
+import { CharacterSheetView, CHARACTER_SHEET_VIEW_TYPE } from './views/CharacterSheetView';
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
 import { RelationshipKeySuggester } from './suggesters/RelationshipKeySuggester';
 import { ImageSuggester } from './suggesters/ImageSuggester';
@@ -78,6 +80,46 @@ export default class NovalistPlugin extends Plugin {
       CHARACTER_MAP_VIEW_TYPE,
       (leaf) => new CharacterMapView(leaf, this)
     );
+
+    // Register character sheet view
+    this.registerView(
+      CHARACTER_SHEET_VIEW_TYPE,
+      (leaf) => new CharacterSheetView(leaf, this)
+    );
+
+    // Register location sheet view
+    this.registerView(
+      LOCATION_SHEET_VIEW_TYPE,
+      (leaf) => new LocationSheetView(leaf, this)
+    );
+
+    // Command to open current character file in sheet view
+    this.addCommand({
+      id: 'open-character-sheet',
+      name: 'Open character sheet view',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isCharacterFile(file);
+        if (checking) return canRun;
+        if (canRun && file) {
+          void this.openCharacterSheet(file);
+        }
+      }
+    });
+
+    // Command to open current location file in sheet view
+    this.addCommand({
+      id: 'open-location-sheet',
+      name: 'Open location sheet view',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isLocationFile(file);
+        if (checking) return canRun;
+        if (canRun && file) {
+          void this.openLocationSheet(file);
+        }
+      }
+    });
 
     // Add ribbon icon
     this.addRibbonIcon('book-open', 'Novalist', () => {
@@ -146,10 +188,10 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
-    // Add new chapter description command
+    // Add new chapter command
     this.addCommand({
       id: 'add-chapter-description',
-      name: 'Add new chapter description',
+      name: 'Add new chapter',
       callback: () => {
         this.openChapterDescriptionModal();
       }
@@ -175,19 +217,113 @@ export default class NovalistPlugin extends Plugin {
       })
     );
 
+    // Track cursor position for focus view
+    let lastCursorEntity: string | null = null;
+    const trackedEditors = new Set<HTMLElement>();
+    
+    const checkCursorPosition = () => {
+      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (!activeView) return;
+      
+      const entity = this.getEntityAtCursor(activeView.editor);
+      if (entity) {
+        if (lastCursorEntity !== entity.display) {
+          lastCursorEntity = entity.display;
+          this.lastHoverEntity = entity.display;
+          void this.openEntityInSidebar(entity.display, { forceFocus: false });
+        }
+      } else {
+        if (lastCursorEntity !== null) {
+          lastCursorEntity = null;
+          this.lastHoverEntity = null;
+          this.clearFocus();
+        }
+      }
+    };
+    
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', () => {
+        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!activeView) return;
+        
+        // Access CodeMirror instance for cursor tracking
+        const cm = (activeView.editor as EditorWithCodeMirror).cm;
+        if (!cm) return;
+        
+        // Only track each editor once
+        if (trackedEditors.has(cm.dom)) return;
+        trackedEditors.add(cm.dom);
+        
+        // Listen to CodeMirror events
+        cm.dom.addEventListener('mouseup', () => setTimeout(checkCursorPosition, 10));
+        cm.dom.addEventListener('keyup', (evt: KeyboardEvent) => {
+          // Check on arrow keys and other navigation keys
+          const navKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
+          if (navKeys.includes(evt.key)) {
+            setTimeout(checkCursorPosition, 10);
+          }
+        });
+      })
+    );
+
     // Handle hover preview
     this.registerDomEvent(document, 'mousemove', (evt: MouseEvent) => {
       if (!this.settings.enableHoverPreview) return;
       
+      // Check if we're in a text editor or markdown view
       const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!activeView || activeView.getMode() !== 'source') return;
-
-      const editor = activeView.editor as EditorWithCodeMirror;
-      const pos = this.getPosAtCoords(editor, evt.clientX, evt.clientY);
-      if (pos === null) return;
-
-      const lineText = editor.getLine(pos.line);
-      const entity = this.findEntityAtPosition(lineText, pos.ch);
+      const activeFile = this.app.workspace.getActiveFile();
+      
+      // Try to get editor position - works in both source and preview modes
+      let entity: { path: string; display: string } | null = null;
+      
+      if (activeView) {
+        try {
+          const editor = activeView.editor as EditorWithCodeMirror;
+          const pos = this.getPosAtCoords(editor, evt.clientX, evt.clientY);
+          if (pos !== null) {
+            const lineText = editor.getLine(pos.line);
+            entity = this.findEntityAtPosition(lineText, pos.ch);
+          }
+        } catch {
+          // If editor methods fail (e.g., in preview mode), try getting word at cursor
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const word = range.toString().trim();
+            if (word) {
+              entity = this.entityIndex.get(word) || null;
+              // Try partial match
+              if (!entity) {
+                for (const [name, info] of this.entityIndex.entries()) {
+                  if (name.toLowerCase().startsWith(word.toLowerCase())) {
+                    entity = info;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else if (activeFile && this.isChapterFile(activeFile)) {
+        // In chapter files (even in character sheet view), check for entity under cursor
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          const word = range.toString().trim() || this.getWordAtPoint(evt.clientX, evt.clientY);
+          if (word) {
+            entity = this.entityIndex.get(word) || null;
+            if (!entity) {
+              for (const [name, info] of this.entityIndex.entries()) {
+                if (name.toLowerCase().startsWith(word.toLowerCase())) {
+                  entity = info;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
 
       if (entity) {
         if (this.lastHoverEntity !== entity.display) {
@@ -198,8 +334,20 @@ export default class NovalistPlugin extends Plugin {
           }, 300) as unknown as number);
         }
       } else {
-        this.lastHoverEntity = null;
-        if (this.hoverTimer) clearTimeout(this.hoverTimer);
+        if (this.lastHoverEntity !== null) {
+          // Check if caret is still on the focus target before clearing
+          const caretEntity = activeView ? this.getEntityAtCursor(activeView.editor) : null;
+          if (caretEntity?.display === this.lastHoverEntity) {
+            // Caret is on focus target, don't clear
+            this.lastHoverEntity = null;
+            if (this.hoverTimer) clearTimeout(this.hoverTimer);
+          } else {
+            // Caret is not on focus target, clear it
+            this.lastHoverEntity = null;
+            if (this.hoverTimer) clearTimeout(this.hoverTimer);
+            this.clearFocus();
+          }
+        }
       }
     });
 
@@ -232,34 +380,51 @@ export default class NovalistPlugin extends Plugin {
         }
     }));
 
+    // Auto-open character and location files in sheet view
+    const processedFiles = new Set<string>();
+    this.registerEvent(this.app.workspace.on('file-open', (file: TFile | null) => {
+      if (!file) return;
+      
+      const isChar = this.isCharacterFile(file);
+      const isLoc = this.isLocationFile(file);
+      
+      if (!isChar && !isLoc) return;
+      
+      // Skip if we already processed this file recently (avoid loops)
+      if (processedFiles.has(file.path)) return;
+      
+      // Check if current active view is a markdown view
+      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (!activeView) return;
+      
+      processedFiles.add(file.path);
+      setTimeout(() => {
+        if (isChar) {
+            void this.openCharacterSheet(file);
+        } else {
+            void this.openLocationSheet(file);
+        }
+        // Remove from processed after a delay
+        setTimeout(() => processedFiles.delete(file.path), 500);
+      }, 50);
+    }));
+
     // Index update triggers
     this.registerEvent(this.app.vault.on('create', () => { void this.refreshEntityIndex(); }));
     this.registerEvent(this.app.vault.on('delete', () => { void this.refreshEntityIndex(); }));
     this.registerEvent(this.app.vault.on('rename', () => { void this.refreshEntityIndex(); }));
     this.registerEvent(this.app.vault.on('modify', () => { void this.refreshEntityIndex(); }));
 
-    // Auto-sync when editing a chapter file
-    this.registerEvent(this.app.vault.on('modify', (file) => {
-        if (file instanceof TFile && this.isChapterFile(file)) {
-            void this.syncChapterDescriptionFromChapter(file);
-        }
-    }));
-    this.registerEvent(this.app.vault.on('modify', (file) => {
-        if (file instanceof TFile && this.isChapterDescriptionFile(file)) {
-            void this.ensureChapterFileForDesc(file);
-        }
-    }));
-    
     // Refresh explorer on creation
     this.registerEvent(this.app.vault.on('create', (file) => {
-        if (file instanceof TFile && (this.isChapterFile(file) || this.isChapterDescriptionFile(file))) {
-             void this.refreshEntityIndex();
-        }
+      if (file instanceof TFile && this.isChapterFile(file)) {
+         void this.refreshEntityIndex();
+      }
     }));
     this.registerEvent(this.app.vault.on('delete', (file) => {
-        if (file instanceof TFile && (this.isChapterFile(file) || this.isChapterDescriptionFile(file))) {
-             void this.refreshEntityIndex();
-        }
+      if (file instanceof TFile && this.isChapterFile(file)) {
+         void this.refreshEntityIndex();
+      }
     }));
 
     // Move uploaded images to image folder if they are added within the project context
@@ -420,13 +585,9 @@ export default class NovalistPlugin extends Plugin {
     if (rightLeaf) {
         await rightLeaf.setViewState({
             type: NOVELIST_SIDEBAR_VIEW_TYPE,
-            active: true
+            active: false,
+            state: { focus: false }
         });
-
-        const leaves = this.app.workspace.getLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE);
-        if (leaves.length > 0) {
-            void this.app.workspace.revealLeaf(leaves[0]);
-        }
     }
   }
 
@@ -492,7 +653,6 @@ export default class NovalistPlugin extends Plugin {
       root,
       `${root}/${this.settings.characterFolder}`,
       `${root}/${this.settings.locationFolder}`,
-      `${root}/${this.settings.chapterDescFolder}`,
       `${root}/${this.settings.chapterFolder}`,
       `${root}/${this.settings.imageFolder}`,
       `${root}/Templates`
@@ -553,24 +713,16 @@ export default class NovalistPlugin extends Plugin {
 - **Main**: `
       },
       {
-        name: 'Chapter Description Template.md',
-        content: `# Chapter Name
-
-- **Order**: 1
-
-## Outline
-(Bullet points of what happens)
-
-## Chapter notes
-- **Characters**: 
-- **Locations**: `
-      },
-      {
         name: 'Chapter Template.md',
-        content: `# Chapter Name
+        content: `---
+      guid: 
+      order: 1
+    ---
 
-(Write your story here)
-`
+    # Chapter Name
+
+    (Write your story here)
+    `
       }
     ];
 
@@ -582,7 +734,7 @@ export default class NovalistPlugin extends Plugin {
     }
   }
 
-  async createCharacter(name: string, surname: string, age: string, gender: string, relationship: string, role: string, furtherInfo: string): Promise<void> {
+  async createCharacter(name: string, surname: string): Promise<void> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.characterFolder}`;
     const fileName = `${name} ${surname}`.trim();
@@ -593,24 +745,27 @@ export default class NovalistPlugin extends Plugin {
       return;
     }
 
-    const content = `# ${fileName}
-
-## General Information
-- **Role**: ${role}
-- **Gender**: ${gender}
-- **Age**: ${age}
-- **Relationship**: ${relationship}
-
-${furtherInfo ? `## Further Information\n${furtherInfo}\n` : ''}
-## Appearance
-
-## Personality
-
-## Relationships
-
-## Images
-- **Main**: 
-`;
+    const content = [
+      `# ${fileName}`,
+      '',
+      '## CharacterSheet',
+      `Name: ${name}`,
+      `Surname: ${surname}`,
+      'Gender: ',
+      'Age: ',
+      'Role: ',
+      'FaceShot: ',
+      '',
+      'Relationships:',
+      '',
+      'Images:',
+      '',
+      'CustomProperties:',
+      '',
+      'Sections:',
+      '',
+      'ChapterOverrides:'
+    ].join('\n');
 
     await this.app.vault.create(path, content);
     new Notice(`Character ${fileName} created.`);
@@ -641,30 +796,35 @@ ${description}
     new Notice(`Location ${name} created.`);
   }
 
-  async createChapterDescription(name: string, order: string, outline: string): Promise<void> {
+  async createChapter(name: string, order: string): Promise<void> {
     const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.chapterDescFolder}`;
+    const folder = `${root}/${this.settings.chapterFolder}`;
     const path = `${folder}/${name}.md`;
 
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new Notice('Chapter description already exists.');
+      new Notice('Chapter already exists.');
       return;
     }
 
-    const content = `# ${name}
+    const chapters = await this.getChapterDescriptions();
+    const maxOrder = chapters.reduce((max, chapter) => Math.max(max, chapter.order || 0), 0);
+    const requestedOrder = Number(order.trim());
+    const orderValue = Number.isFinite(requestedOrder) && requestedOrder > 0
+      ? requestedOrder
+      : Math.max(1, maxOrder + 1);
+    const guid = this.generateGuid();
+    const content = `---
+guid: ${guid}
+order: ${orderValue}
+---
 
-- **Order**: ${order}
+# ${name}
 
-## Outline
-${outline}
-
-## Chapter notes
-- **Characters**: 
-- **Locations**: 
+(Write your story here)
 `;
 
     await this.app.vault.create(path, content);
-    new Notice(`Chapter description ${name} created.`);
+    new Notice(`Chapter ${name} created.`);
   }
 
   openCharacterModal(): void {
@@ -682,6 +842,9 @@ ${outline}
   async parseCharacterFile(file: TFile): Promise<CharacterData> {
     const content = await this.app.vault.read(file);
     const { frontmatter, body } = this.extractFrontmatterAndBody(content);
+    
+    // Try to get data from new CharacterSheet format first
+    const sheetData = this.parseCharacterSheetForSidebar(content);
     
     // Parse Chapter notes from Character files
     const chapterInfos: CharacterChapterInfo[] = [];
@@ -712,6 +875,38 @@ ${outline}
         chapterInfos.push({ chapter: currentChapter.chapter, info, overrides });
     }
 
+    // Use CharacterSheet data if available, otherwise fall back to legacy parsing
+    if (sheetData) {
+      // Also get chapter overrides from CharacterSheet format
+      const sheetChapterOverrides = this.parseCharacterSheetChapterOverrides(content);
+      
+      // Merge with legacy chapter infos (sheet overrides take precedence)
+      const mergedChapterInfos = [...chapterInfos];
+      for (const sheetOverride of sheetChapterOverrides) {
+        const existingIdx = mergedChapterInfos.findIndex(ci => ci.chapter === sheetOverride.chapter);
+        if (existingIdx >= 0) {
+          mergedChapterInfos[existingIdx] = {
+            ...mergedChapterInfos[existingIdx],
+            overrides: { ...mergedChapterInfos[existingIdx].overrides, ...sheetOverride.overrides },
+            customProperties: sheetOverride.customProperties
+          };
+        } else {
+          mergedChapterInfos.push(sheetOverride);
+        }
+      }
+      
+      return {
+        name: sheetData.name || file.basename.split(' ')[0],
+        surname: sheetData.surname || file.basename.split(' ').slice(1).join(' '),
+        role: sheetData.role,
+        gender: sheetData.gender,
+        age: sheetData.age,
+        relationship: '', // No longer used in new format
+        customProperties: sheetData.customProperties,
+        chapterInfos: mergedChapterInfos
+      };
+    }
+
     return {
       name: file.basename.split(' ')[0],
       surname: file.basename.split(' ').slice(1).join(' '),
@@ -719,8 +914,200 @@ ${outline}
       gender: frontmatter.gender || '',
       age: frontmatter.age || '',
       relationship: frontmatter.relationship || '',
+      customProperties: {},
       chapterInfos
     };
+  }
+
+  parseCharacterSheetForSidebar(content: string): { name: string; surname: string; gender: string; age: string; role: string; customProperties: Record<string, string> } | null {
+    const sheetLines = this.getSectionLines(content, 'CharacterSheet');
+    if (sheetLines.length === 0) return null;
+    
+    const sheetContent = sheetLines.join('\n');
+    
+    const parseField = (fieldName: string): string => {
+      const pattern = new RegExp(`^\\s*${fieldName}:\\s*(.*?)$`, 'm');
+      const match = sheetContent.match(pattern);
+      if (!match) return '';
+      const value = match[1].trim();
+      // Check for corrupted data
+      // Images: is a section, not a field.
+      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'FaceShot:', 'Relationships:', 'Images:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:'];
+      for (const field of knownFields) {
+        if (value.includes(field)) return '';
+      }
+      return value;
+    };
+
+    const customProperties: Record<string, string> = {};
+    const customPropsMatch = sheetContent.match(/\nCustomProperties:\n/);
+    if (customPropsMatch && customPropsMatch.index !== undefined) {
+      const startIdx = customPropsMatch.index + customPropsMatch[0].length;
+      let endIdx = sheetContent.length;
+      const nextSections = ['Sections:', 'ChapterOverrides:'];
+      for (const nextSec of nextSections) {
+        const nextMatch = sheetContent.indexOf('\n' + nextSec, startIdx);
+        if (nextMatch !== -1 && nextMatch < endIdx) {
+          endIdx = nextMatch;
+        }
+      }
+      const propsContent = sheetContent.substring(startIdx, endIdx).trim();
+      const lines = propsContent.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const match = trimmed.match(/^[-*]\s*(.+?)\s*:\s*(.+)$/);
+        if (match) {
+          customProperties[match[1].trim()] = match[2].trim();
+        }
+      }
+    }
+    
+    return {
+      name: parseField('Name'),
+      surname: parseField('Surname'),
+      gender: parseField('Gender'),
+      age: parseField('Age'),
+      role: parseField('Role'),
+      customProperties
+    };
+  }
+
+  parseCharacterSheetChapterOverrides(content: string): Array<{ chapter: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> {
+    const sheetLines = this.getSectionLines(content, 'CharacterSheet');
+    if (sheetLines.length === 0) return [];
+    
+    const sheetContent = sheetLines.join('\n');
+    const chapterOverridesIdx = sheetContent.indexOf('\nChapterOverrides:');
+    if (chapterOverridesIdx === -1) return [];
+    
+    const chapterText = sheetContent.substring(chapterOverridesIdx + '\nChapterOverrides:'.length);
+    const results: Array<{ chapter: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> = [];
+    
+    // Split by "Chapter: " to get individual chapter blocks
+    const chapterBlocks = chapterText.split(/\nChapter:\s*/).filter(Boolean);
+    
+    for (const block of chapterBlocks) {
+      const lines = block.split('\n');
+      const chapter = lines[0].trim();
+      const overrides: Record<string, string> = {};
+      const customProperties: Record<string, string> = {};
+      
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Check for simple property lines: - Property: value
+        const simpleMatch = line.match(/^[-*]\s*(.+?)\s*:\s*(.*)$/);
+        if (simpleMatch) {
+          const key = simpleMatch[1].trim().toLowerCase();
+          const value = simpleMatch[2].trim();
+          
+          // Skip nested list items (they have more indentation or are section headers)
+          if (key === 'images' || key === 'relationships') {
+            // These are sections with nested items, skip for now
+            for (let j = i + 1; j < lines.length; j++) {
+              if (j >= lines.length) break;
+              const nextLine = lines[j];
+              // Check for indentation
+              if (!nextLine.match(/^\s+[-*]/)) {
+                i = j - 1;
+                break;
+              }
+              i = j;
+            }
+            continue;
+          }
+          
+          if (key === 'customproperties') {
+             // Parse custom properties
+             for (let j = i + 1; j < lines.length; j++) {
+                 if (j >= lines.length) break;
+                 const nextLine = lines[j];
+                 // Check for "  - Key: Value"
+                 const cpMatch = nextLine.match(/^\s+[-*]\s*(.+?)\s*:\s*(.+)$/);
+                 if (cpMatch) {
+                     customProperties[cpMatch[1].trim()] = cpMatch[2].trim();
+                     i = j;
+                 } else if (!nextLine.match(/^\s+/)) {
+                     // End of indented block
+                     i = j - 1;
+                     break;
+                 } else {
+                     // Empty line or something else, consume
+                     i = j;
+                 }
+             }
+             continue;
+          }
+          
+          overrides[key] = value;
+        }
+      }
+      
+
+      if (chapter) {
+        results.push({ chapter, overrides, info: '', customProperties });
+      }
+    }
+    
+    return results;
+  }
+
+  parseCharacterSheetChapterImages(
+    content: string,
+    chapterId: string,
+    chapterName?: string
+  ): Array<{ name: string; path: string }> | null {
+    const sheetLines = this.getSectionLines(content, 'CharacterSheet');
+    if (sheetLines.length === 0) return null;
+    
+    const sheetContent = sheetLines.join('\n');
+    const chapterOverridesIdx = sheetContent.indexOf('\nChapterOverrides:');
+    if (chapterOverridesIdx === -1) return null;
+    
+    const chapterText = sheetContent.substring(chapterOverridesIdx + '\nChapterOverrides:'.length);
+    
+    // Find the specific chapter block
+    const chapterPattern = new RegExp(`\\nChapter:\\s*${this.escapeRegex(chapterId)}\\n`, 'i');
+    let chapterMatch = chapterText.match(chapterPattern);
+    if ((!chapterMatch || chapterMatch.index === undefined) && chapterName) {
+      const fallbackPattern = new RegExp(`\\nChapter:\\s*${this.escapeRegex(chapterName)}\\n`, 'i');
+      chapterMatch = chapterText.match(fallbackPattern);
+    }
+    if (!chapterMatch || chapterMatch.index === undefined) return null;
+    
+    const startIdx = chapterMatch.index + chapterMatch[0].length;
+    let endIdx = chapterText.length;
+    const nextChapterMatch = chapterText.substring(startIdx).match(/\nChapter:\s*/);
+    if (nextChapterMatch && nextChapterMatch.index !== undefined) {
+      endIdx = startIdx + nextChapterMatch.index;
+    }
+    
+    const chapterBlock = chapterText.substring(startIdx, endIdx);
+    
+    // Find Images section within this chapter block
+    const imagesMatch = chapterBlock.match(/\n\s*[-*]\s*Images:\s*\n/);
+    if (!imagesMatch || imagesMatch.index === undefined) return null;
+    
+    const imagesStartIdx = imagesMatch.index + imagesMatch[0].length;
+    const imagesLines = chapterBlock.substring(imagesStartIdx).split('\n');
+    const images: Array<{ name: string; path: string }> = [];
+    
+    for (const line of imagesLines) {
+      // Stop when we hit a non-indented line (end of images section)
+      if (!line.match(/^\s+[-*]/)) break;
+      
+      const imgMatch = line.match(/^\s+[-*]\s*(.+?)\s*:\s*(.+)$/);
+      if (imgMatch) {
+        images.push({
+          name: imgMatch[1].trim(),
+          path: imgMatch[2].trim()
+        });
+      }
+    }
+    
+    return images.length > 0 ? images : null;
   }
 
   async parseLocationFile(file: TFile): Promise<LocationData> {
@@ -749,6 +1136,40 @@ ${outline}
       }
     }
 
+    return images;
+  }
+
+  parseCharacterSheetImages(content: string): Array<{ name: string; path: string }> {
+    const sheetLines = this.getSectionLines(content, 'CharacterSheet');
+    if (sheetLines.length === 0) return [];
+    
+    const sheetContent = sheetLines.join('\n');
+    const imagesSectionMatch = sheetContent.match(/\nImages:\n/);
+    if (!imagesSectionMatch || imagesSectionMatch.index === undefined) return [];
+    
+    const startIdx = imagesSectionMatch.index + imagesSectionMatch[0].length;
+    let endIdx = sheetContent.length;
+    const nextSections = ['CustomProperties:', 'Sections:', 'ChapterOverrides:'];
+    for (const nextSec of nextSections) {
+      const nextMatch = sheetContent.indexOf('\n' + nextSec, startIdx);
+      if (nextMatch !== -1 && nextMatch < endIdx) {
+        endIdx = nextMatch;
+      }
+    }
+    
+    const imagesContent = sheetContent.substring(startIdx, endIdx).trim();
+    const images: Array<{ name: string; path: string }> = [];
+    const lines = imagesContent.split('\n');
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const match = trimmed.match(/^[-*]\s*(.+?)\s*:\s*(.+)$/);
+      if (match) {
+        images.push({ name: match[1].trim(), path: match[2].trim() });
+      }
+    }
+    
     return images;
   }
 
@@ -880,7 +1301,7 @@ ${outline}
     let changed = false;
 
     for (const desc of descs) {
-      const chapterKey = desc.name;
+      const chapterKey = desc.id;
       const chapterSectionHeader = `## Chapter: ${chapterKey}`;
       
       if (!body.includes(chapterSectionHeader)) {
@@ -904,63 +1325,65 @@ ${outline}
     }
   }
 
-  async getChapterDescriptions(): Promise<Array<{ name: string; order: number; file: TFile }>> {
-    const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.chapterDescFolder}`;
-    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder));
-
-    const descs: Array<{ name: string; order: number; file: TFile }> = [];
-    for (const file of files) {
-      const content = await this.app.vault.read(file);
-      const { frontmatter } = this.extractFrontmatterAndBody(content);
-      descs.push({
-        name: file.basename,
-        order: Number(frontmatter.order) || 999,
-        file
-      });
-    }
-
-    return descs.sort((a, b) => a.order - b.order);
-  }
-
-  getChapterList(): ChapterListData[] {
-    const descs = this.getChapterDescriptionsSync();
+  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; file: TFile }>> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder));
 
-    return descs.map((desc) => {
-      const chapterFile = files.find((f) => f.basename === desc.name || f.basename.endsWith(desc.name));
-      return {
-        name: desc.name,
-        file: chapterFile,
-        descFile: desc.file
-      };
-    }).filter((d): d is ChapterListData & { file: TFile } => !!d.file);
-  }
-
-  getChapterDescriptionsSync(): Array<{ name: string; order: number; file: TFile }> {
-    const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.chapterDescFolder}`;
-    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder));
-
-    const descs: Array<{ name: string; order: number; file: TFile }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; file: TFile }> = [];
     for (const file of files) {
-      const cache = this.app.metadataCache.getFileCache(file);
-      const frontmatter = cache?.frontmatter || {};
-      descs.push({
-        name: file.basename,
+      const content = await this.app.vault.read(file);
+      const { frontmatter, body } = this.extractFrontmatterAndBody(content);
+      const { guid, updated } = this.ensureChapterGuid(frontmatter, body, file);
+      if (updated) {
+        const nextFrontmatter = this.serializeFrontmatter(frontmatter);
+        await this.app.vault.modify(file, nextFrontmatter + body);
+      }
+      const title = this.extractTitle(body) || file.basename;
+      chapters.push({
+        id: guid,
+        name: title,
         order: Number(frontmatter.order) || 999,
         file
       });
     }
 
-    return descs.sort((a, b) => a.order - b.order);
+    return chapters.sort((a, b) => a.order - b.order);
   }
 
-  async updateChapterOrder(descFiles: TFile[]): Promise<void> {
-    for (let i = 0; i < descFiles.length; i++) {
-      const file = descFiles[i];
+  getChapterList(): ChapterListData[] {
+    const chapters = this.getChapterDescriptionsSync();
+    return chapters.map((chapter) => ({
+      name: chapter.name,
+      order: chapter.order,
+      file: chapter.file
+    }));
+  }
+
+  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; file: TFile }> {
+    const root = this.settings.projectPath;
+    const folder = `${root}/${this.settings.chapterFolder}`;
+    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder));
+
+    const chapters: Array<{ id: string; name: string; order: number; file: TFile }> = [];
+    for (const file of files) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const frontmatter = cache?.frontmatter || {};
+      const heading = cache?.headings?.find(h => h.level === 1)?.heading;
+      chapters.push({
+        id: typeof frontmatter.guid === 'string' && frontmatter.guid.trim() ? frontmatter.guid.trim() : file.basename,
+        name: heading || file.basename,
+        order: Number(frontmatter.order) || 999,
+        file
+      });
+    }
+
+    return chapters.sort((a, b) => a.order - b.order);
+  }
+
+  async updateChapterOrder(chapterFiles: TFile[]): Promise<void> {
+    for (let i = 0; i < chapterFiles.length; i++) {
+      const file = chapterFiles[i];
       const content = await this.app.vault.read(file);
       const { frontmatter, body } = this.extractFrontmatterAndBody(content);
       
@@ -974,11 +1397,15 @@ ${outline}
   detectCharacterRole(content: string, frontmatter: Record<string, string>): string {
       let role = frontmatter.role;
       if (!role) {
-         // Consistent regex for role detection
-         const match = content.match(/^[-*]\s*\*\*(?:Character\s+)?Role(?:\s*:)?\*\*(?:\s*:)?\s*([^\n\r]*)/im);
-         if (match) role = match[1].trim();
+         const sheetLines = this.getSectionLines(content, 'CharacterSheet');
+         if (sheetLines.length > 0) {
+           const sheetContent = sheetLines.join('\n');
+           const match = sheetContent.match(/^\s*Role:\s*(.*?)$/m);
+           if (match) role = match[1].trim();
+         }
       }
-      return normalizeCharacterRole(role || 'Side');
+      if (!role) return '';
+      return normalizeCharacterRole(role);
   }
 
   async getCharacterList(): Promise<CharacterListData[]> {
@@ -990,20 +1417,16 @@ ${outline}
     for (const file of files) {
       const content = await this.app.vault.read(file);
       const { frontmatter } = this.extractFrontmatterAndBody(content);
-      
-      const role = this.detectCharacterRole(content, frontmatter);
-      let gender = frontmatter.gender;
 
-      if (!gender) {
-         const match = content.match(/^[-*]\s*\*\*Gender\*\*:[ \t]*([^\n\r]*)/im);
-         if (match) gender = match[1].trim();
-      }
+      const sheetData = this.parseCharacterSheetForSidebar(content);
+      const role = sheetData?.role || this.detectCharacterRole(content, frontmatter);
+      const gender = sheetData?.gender || frontmatter.gender || '';
 
       chars.push({
         name: file.basename,
         file,
         role,
-        gender: gender || ''
+        gender
       });
     }
 
@@ -1044,6 +1467,38 @@ ${outline}
       return `---\n${entries.join('\n')}\n---\n`;
   }
 
+  generateGuid(): string {
+    const cryptoObj = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+    if (cryptoObj && 'randomUUID' in cryptoObj) {
+      return cryptoObj.randomUUID();
+    }
+
+    const bytes = new Uint8Array(16);
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0'));
+    return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
+  }
+
+  ensureChapterGuid(
+    frontmatter: Record<string, string>,
+    _body: string,
+    _file: TFile
+  ): { guid: string; updated: boolean } {
+    const existing = frontmatter.guid;
+    if (typeof existing === 'string' && existing.trim()) {
+      return { guid: existing.trim(), updated: false };
+    }
+
+    const guid = this.generateGuid();
+    frontmatter.guid = guid;
+    return { guid, updated: true };
+  }
+
   getLocationList(): LocationListData[] {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.locationFolder}`;
@@ -1056,64 +1511,35 @@ ${outline}
   }
 
   getChapterNameForFileSync(file: TFile): string {
-    const descs = this.getChapterDescriptionsSync();
-    const desc = descs.find(d => file.basename.includes(d.name));
-    return desc ? desc.name : file.basename;
+    const cache = this.app.metadataCache.getFileCache(file);
+    const heading = cache?.headings?.find(h => h.level === 1)?.heading;
+    return heading || file.basename;
   }
 
   getChapterNameForFile(file: TFile): string {
     return this.getChapterNameForFileSync(file);
   }
 
+  getChapterIdForFileSync(file: TFile): string {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const frontmatter = cache?.frontmatter as Record<string, unknown> | undefined;
+    const guid = typeof frontmatter?.guid === 'string' ? frontmatter.guid.trim() : '';
+    return guid ? guid : file.basename;
+  }
+
+  getChapterIdForFile(file: TFile): string {
+    return this.getChapterIdForFileSync(file);
+  }
+
   async parseChapterFile(file: TFile): Promise<{ characters: string[]; locations: string[] }> {
     const content = await this.app.vault.read(file);
     const body = this.stripFrontmatter(content);
     
-    const chapterName = this.getChapterNameForFile(file);
-    const root = this.settings.projectPath;
-    const descPath = `${root}/${this.settings.chapterDescFolder}/${chapterName}.md`;
-    const descFile = this.app.vault.getAbstractFileByPath(descPath);
-    
-    let charList: string[] = [];
-    let locList: string[] = [];
-
-    if (descFile instanceof TFile) {
-        const descContent = await this.app.vault.read(descFile);
-        const notes = this.getSectionLines(descContent, 'Chapter notes');
-        for (const line of notes) {
-            // Updated regex to support non-bold keys
-            const match = line.match(/^[-*]?\s*(?:(?:\*\*(.+?)\*\*[:]?)|([^:]+[:]))\s*(.*)$/);
-            if (match) {
-                const rawKey = match[1] || match[2];
-                let key = rawKey.toLowerCase().trim();
-                if (key.endsWith(':')) key = key.slice(0, -1).trim();
-                
-                const values = match[3].split(',').map(v => v.trim()).filter(Boolean);
-                if (key === 'characters') charList = values;
-                if (key === 'locations') locList = values;
-            }
-        }
-    }
-
-    // Always scan for mentions to supplement the explicit list
     const mentions = this.scanMentions(body);
-    
-    // Merge explicit lists with scanned mentions, ensuring uniqueness
-    // Case-insensitive de-duplication can be complex, but here we assume names match the entityIndex keys mostly.
-    
-    // Helper to merge arrays uniquely
-    const mergeUnique = (base: string[], added: string[]) => {
-        const set = new Set(base);
-        added.forEach(a => set.add(a));
-        return Array.from(set);
-    };
-
-    charList = mergeUnique(charList, mentions.characters);
-    locList = mergeUnique(locList, mentions.locations);
 
     return {
-      characters: charList,
-      locations: locList
+      characters: mentions.characters,
+      locations: mentions.locations
     };
   }
 
@@ -1258,12 +1684,32 @@ ${outline}
     if (this.isCursorInFrontmatter(editor)) return;
 
     for (const pair of this.settings.autoReplacements) {
+      // Handle auto-inserted quote pairs (e.g., Obsidian inserts '' with cursor in middle)
+      if (pair.start === pair.end && pair.endReplace && pair.startReplace !== pair.endReplace) {
+        // Check if we have an auto-inserted pair: 'x' or just '' with cursor in middle
+        const beforeCursor = lineText.substring(0, cursor.ch);
+        const afterCursor = lineText.substring(cursor.ch);
+        
+        // Pattern: line ends with start token, and next char is also the end token
+        // This detects when Obsidian auto-inserted '' and cursor is between them
+        if (beforeCursor.endsWith(pair.start) && afterCursor.startsWith(pair.end)) {
+          // Replace the opening quote (before cursor)
+          this.applyAutoReplacement(cursor.ch, pair.start, pair.startReplace);
+          // Delete the closing quote (after cursor) - need to adjust position
+          this.applyAutoReplacement(cursor.ch + pair.startReplace.length, pair.end, '');
+          return;
+        }
+        
+        // Check if we're typing the closing quote (at end of line with content between)
+        if (this.endsWithToken(lineText, cursor.ch, pair.end)) {
+          this.applyAutoReplacement(cursor.ch, pair.end, pair.endReplace);
+          return;
+        }
+      }
+      
+      // Check if cursor is at end of the start token
       if (this.endsWithToken(lineText, cursor.ch, pair.start)) {
         this.applyAutoReplacement(cursor.ch, pair.start, pair.startReplace);
-        return;
-      }
-      if (pair.end && this.endsWithToken(lineText, cursor.ch, pair.end)) {
-        this.applyAutoReplacement(cursor.ch, pair.end, pair.endReplace);
         return;
       }
     }
@@ -1412,6 +1858,37 @@ ${outline}
     return line.substring(start, end);
   }
 
+  getWordAtPoint(x: number, y: number): string {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- caretRangeFromPoint is needed for cross-browser compatibility
+    const range = document.caretRangeFromPoint?.(x, y) || 
+                  (document as unknown as { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }).caretPositionFromPoint?.(x, y);
+    if (!range) return '';
+    
+    let textNode: Node;
+    let offset: number;
+    
+    if ('startContainer' in range) {
+      textNode = range.startContainer;
+      offset = range.startOffset;
+    } else if (range) {
+      textNode = (range as { offsetNode: Node }).offsetNode;
+      offset = (range as { offset: number }).offset;
+    } else {
+      return '';
+    }
+    
+    if (textNode.nodeType !== Node.TEXT_NODE) return '';
+    
+    const text = textNode.textContent || '';
+    let start = offset;
+    let end = offset;
+    
+    while (start > 0 && this.isWordChar(text[start - 1])) start--;
+    while (end < text.length && this.isWordChar(text[end])) end++;
+    
+    return text.substring(start, end);
+  }
+
   getEntityAtCoords(editor: EditorWithCodeMirror, x: number, y: number): { path: string; display: string } | null {
     const pos = this.getPosAtCoords(editor, x, y);
     if (!pos) return null;
@@ -1489,6 +1966,11 @@ ${outline}
     return content.replace(/## Images[\s\S]*?(?=\n## |$)/, '');
   }
 
+  stripSheetSection(content: string, heading: string): string {
+    const pattern = new RegExp(`##\\s+${this.escapeRegex(heading)}[\\s\\S]*?(?=\\n## |$)`, 'g');
+    return content.replace(pattern, '').trim();
+  }
+
   extractTitle(content: string): string {
     const match = content.match(/^#\s+(.*)$/m);
     return match ? match[1] : '';
@@ -1540,49 +2022,50 @@ ${outline}
     return file.path.startsWith(folder);
   }
 
-  async syncChapterDescriptionFromChapter(chapterFile: TFile): Promise<void> {
-    const content = await this.app.vault.read(chapterFile);
-    const { frontmatter } = this.extractFrontmatterAndBody(content);
-    
-    const chapterName = this.getChapterNameForFile(chapterFile);
+  isCharacterFile(file: TFile): boolean {
     const root = this.settings.projectPath;
-    const descPath = `${root}/${this.settings.chapterDescFolder}/${chapterName}.md`;
-    const descFile = this.app.vault.getAbstractFileByPath(descPath);
-    
-    if (descFile instanceof TFile) {
-        const descContent = await this.app.vault.read(descFile);
-        const { frontmatter: descFm, body: descBody } = this.extractFrontmatterAndBody(descContent);
-        
-        let changed = false;
-        if (frontmatter.order && descFm.order !== frontmatter.order) {
-            descFm.order = frontmatter.order;
-            changed = true;
-        }
-        
-        if (changed) {
-            const nextFrontmatter = this.serializeFrontmatter(descFm);
-            await this.app.vault.modify(descFile, nextFrontmatter + descBody);
-        }
+    const folder = `${root}/${this.settings.characterFolder}`;
+    return file.path.startsWith(folder) && file.extension === 'md';
+  }
+
+  isLocationFile(file: TFile): boolean {
+    const root = this.settings.projectPath;
+    const folder = `${root}/${this.settings.locationFolder}`;
+    return file.path.startsWith(folder) && file.extension === 'md';
+  }
+
+  async openCharacterSheet(file: TFile): Promise<void> {
+    const existingLeaf = this.app.workspace.getLeavesOfType(CHARACTER_SHEET_VIEW_TYPE)
+      .find((leaf) => leaf.view instanceof CharacterSheetView && leaf.view.file?.path === file.path);
+
+    if (existingLeaf) {
+      void this.app.workspace.revealLeaf(existingLeaf);
+      return;
     }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: CHARACTER_SHEET_VIEW_TYPE,
+      state: { file: file.path }
+    });
+    void this.app.workspace.revealLeaf(leaf);
   }
 
-  isChapterDescriptionFile(file: TFile): boolean {
-    const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.chapterDescFolder}`;
-    return file.path.startsWith(folder);
-  }
+  async openLocationSheet(file: TFile): Promise<void> {
+    const existingLeaf = this.app.workspace.getLeavesOfType(LOCATION_SHEET_VIEW_TYPE)
+      .find((leaf) => leaf.view instanceof LocationSheetView && leaf.view.file?.path === file.path);
 
-  async ensureChapterFileForDesc(descFile: TFile): Promise<void> {
-      const root = this.settings.projectPath;
-      const chapterFolder = `${root}/${this.settings.chapterFolder}`;
-      const chapterPath = `${chapterFolder}/${descFile.basename}.md`;
-      
-      const chapterFile = this.app.vault.getAbstractFileByPath(chapterPath);
-      if (!(chapterFile instanceof TFile)) {
-          const content = `# ${descFile.basename}\n\n(Write your story here)`;
-          await this.app.vault.create(chapterPath, content);
-          new Notice(`Created chapter file for ${descFile.basename}`);
-      }
+    if (existingLeaf) {
+      void this.app.workspace.revealLeaf(existingLeaf);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: LOCATION_SHEET_VIEW_TYPE,
+      state: { file: file.path }
+    });
+    void this.app.workspace.revealLeaf(leaf);
   }
 
   openEntityFromEditor(): void {
@@ -1639,6 +2122,7 @@ ${outline}
   clearFocus(): void {
     const sidebar = this.getSidebarView();
     if (sidebar) {
+      if (sidebar.shouldKeepFocus()) return;
       sidebar.setSelectedEntity(null);
     }
   }

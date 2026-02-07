@@ -95,16 +95,6 @@ export class NovalistSettingTab extends PluginSettingTab {
             }));
 
     new Setting(containerEl)
-        .setName('Chapter description folder')
-        .setDesc('Folder for chapter descriptions')
-        .addText(text => text
-            .setValue(this.plugin.settings.chapterDescFolder)
-            .onChange(async (value) => {
-                this.plugin.settings.chapterDescFolder = value;
-                await this.plugin.saveSettings();
-            }));
-
-    new Setting(containerEl)
         .setName('Image folder')
         .setDesc('Folder for project images')
         .addText(text => text

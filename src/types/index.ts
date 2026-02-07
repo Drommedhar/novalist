@@ -10,7 +10,6 @@
   characterFolder: string;
   locationFolder: string;
   imageFolder: string;
-  chapterDescFolder: string;
   chapterFolder: string;
   relationshipPairs: Record<string, string[]>;
   startupWizardShown: boolean;
@@ -61,6 +60,7 @@ export interface CharacterChapterInfo {
   chapter: string;
   info: string;
   overrides: Record<string, string>;
+  customProperties?: Record<string, string>;
 }
 
 export interface CharacterData {
@@ -70,6 +70,7 @@ export interface CharacterData {
   gender: string;
   age: string;
   relationship: string;
+  customProperties?: Record<string, string>;
   chapterInfos: CharacterChapterInfo[];
 }
 
@@ -80,8 +81,8 @@ export interface LocationData {
 
 export interface ChapterListData {
   name: string;
+  order: number;
   file: TFile;
-  descFile: TFile;
 }
 
 export interface CharacterListData {
@@ -94,4 +95,63 @@ export interface CharacterListData {
 export interface LocationListData {
   name: string;
   file: TFile;
+}
+
+// Character Sheet Data Structure
+export interface CharacterRelationship {
+  role: string;
+  character: string; // wikilink format [[Name]]
+}
+
+export interface CharacterSheetSection {
+  title: string;
+  content: string;
+}
+
+export interface CharacterImage {
+  name: string;
+  path: string; // wikilink format [[path/to/image.png]]
+}
+
+export interface CharacterChapterOverride {
+  chapter: string;
+  name?: string;
+  surname?: string;
+  gender?: string;
+  age?: string;
+  role?: string;
+  faceShot?: string; // deprecated
+  images?: CharacterImage[];
+  relationships?: CharacterRelationship[];
+  customProperties?: Record<string, string>;
+}
+
+export interface CharacterSheetData {
+  name: string;
+  surname: string;
+  gender: string;
+  age: string;
+  role: string;
+  faceShot: string; // wikilink to image (deprecated, kept for compatibility)
+  images: CharacterImage[]; // Multiple named images
+  relationships: CharacterRelationship[];
+  customProperties: Record<string, string>;
+  sections: CharacterSheetSection[];
+  chapterOverrides: CharacterChapterOverride[];
+}
+
+// Location Sheet Data Structure
+export interface LocationRelationship {
+  role: string;
+  target: string; // wikilink [[Name]]
+}
+
+export interface LocationSheetData {
+  name: string;
+  type: string;
+  description: string;
+  images: CharacterImage[];
+  relationships: LocationRelationship[]; // Kept for compatibility or future use, though UI removed
+  customProperties: Record<string, string>;
+  sections: CharacterSheetSection[]; // Reuse section structure
 }

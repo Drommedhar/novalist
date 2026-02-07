@@ -85,7 +85,11 @@ export class NovalistExplorerView extends ItemView {
     const list = container.createDiv('novalist-explorer-list');
 
     if (this.activeTab === 'chapters') {
-      const chapters = this.plugin.getChapterList();
+      const chapters = (await this.plugin.getChapterDescriptions()).map((chapter) => ({
+        name: chapter.name,
+        order: chapter.order,
+        file: chapter.file
+      }));
       this.renderChapterList(list, chapters, 'No chapters found.');
       return;
     }
@@ -176,7 +180,7 @@ export class NovalistExplorerView extends ItemView {
         reordered.splice(index, 0, moved);
         this.dragChapterIndex = null;
 
-        void this.plugin.updateChapterOrder(reordered.map((entry) => entry.descFile));
+        void this.plugin.updateChapterOrder(reordered.map((entry) => entry.file));
         void this.render();
       });
     });
@@ -193,6 +197,7 @@ export class NovalistExplorerView extends ItemView {
     }
 
     const groups: Record<string, CharacterListData[]> = {};
+    const unassignedLabel = 'Unassigned';
     
     // Initialize standard groups to ensure ordering
     const standardGroups = [
@@ -203,7 +208,7 @@ export class NovalistExplorerView extends ItemView {
     
     // Distribute items
     for (const item of items) {
-      const roleLabel = item.role || CHARACTER_ROLE_LABELS.side; // Default to Side if missing
+      const roleLabel = item.role || unassignedLabel;
       
       if (!groups[roleLabel]) {
         groups[roleLabel] = [];
@@ -217,8 +222,9 @@ export class NovalistExplorerView extends ItemView {
     
     // Only include standard groups if they exist in 'groups' (i.e., have items)
     const rolesToRender = [
-      ...standardGroups.filter(r => groups[r]), 
-      ...otherRoles
+      ...standardGroups.filter(r => groups[r]),
+      ...(groups[unassignedLabel] ? [unassignedLabel] : []),
+      ...otherRoles.filter(r => r !== unassignedLabel)
     ];
 
     // Create a flattened visual order list for range selection logic
@@ -264,10 +270,11 @@ export class NovalistExplorerView extends ItemView {
         }
         
         for (const path of paths) {
-             const sourceItem = items.find(i => i.file.path === path);
-             if (sourceItem && sourceItem.role !== roleLabel) {
-                 void this.plugin.updateCharacterRole(sourceItem.file, roleLabel);
-             }
+           const sourceItem = items.find(i => i.file.path === path);
+           if (sourceItem && sourceItem.role !== roleLabel) {
+             const nextRole = roleLabel === unassignedLabel ? '' : roleLabel;
+             void this.plugin.updateCharacterRole(sourceItem.file, nextRole);
+           }
         }
       });
 

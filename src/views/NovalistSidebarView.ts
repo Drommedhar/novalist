@@ -8,6 +8,8 @@
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { CharacterData, CharacterChapterInfo, LocationData } from '../types';
+import { parseCharacterSheet } from '../utils/characterSheetUtils';
+import { parseLocationSheet } from '../utils/locationSheetUtils';
 
 export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
 
@@ -19,6 +21,7 @@ export class NovalistSidebarView extends ItemView {
   private lastNonFocusTab: 'actions' | 'context' = 'context';
   private lastFocusKey: string | null = null;
   private autoFocusActive = true;
+  private focusPinned = false;
   private selectedImageByPath: Map<string, string> = new Map();
 
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
@@ -87,8 +90,9 @@ export class NovalistSidebarView extends ItemView {
     // Tabs
     const tabs = container.createDiv('novalist-tabs');
     const setTab = (tab: 'actions' | 'context' | 'focus') => {
-      this.autoFocusActive = false;
+      this.autoFocusActive = true;
       this.activeTab = tab;
+      this.focusPinned = tab === 'focus';
       if (tab !== 'focus') this.lastNonFocusTab = tab;
       void this.render();
     };
@@ -109,6 +113,7 @@ export class NovalistSidebarView extends ItemView {
 
     if (!this.selectedEntity && this.activeTab === 'focus') {
       this.activeTab = this.lastNonFocusTab;
+      this.focusPinned = false;
     }
 
     if (this.activeTab === 'focus') {
@@ -126,24 +131,39 @@ export class NovalistSidebarView extends ItemView {
           body = this.plugin.removeTitle(body);
         }
 
-        const images = this.plugin.parseImagesSection(content);
+        let images: Array<{ name: string; path: string }> = [];
+        const focusLines: string[] = [];
+        let characterSheet = null as ReturnType<typeof parseCharacterSheet> | null;
+        let locationSheet = null as ReturnType<typeof parseLocationSheet> | null;
+        
+        // Check for chapter-specific image overrides
+        let chapterImages: Array<{ name: string; path: string }> | null = null;
+        if (this.currentChapterFile) {
+          const chapterId = this.plugin.getChapterIdForFile(this.currentChapterFile);
+          const chapterName = this.plugin.getChapterNameForFile(this.currentChapterFile);
+          chapterImages = this.plugin.parseCharacterSheetChapterImages(content, chapterId, chapterName);
+        }
+        
         const renderImages = () => {
-          if (images.length === 0) return;
+          // Use chapter override images if available, otherwise use default images
+          const displayImages = chapterImages && chapterImages.length > 0 ? chapterImages : images;
+          if (displayImages.length === 0) return;
+          
           const imageRow = details.createDiv('novalist-image-row');
           imageRow.createEl('span', { text: 'Images', cls: 'novalist-image-label' });
 
           const dropdown = new DropdownComponent(imageRow);
-          for (const img of images) {
+          for (const img of displayImages) {
             dropdown.addOption(img.name, img.name);
           }
 
           const key = selectedEntity.file.path;
-          const selected = this.selectedImageByPath.get(key) || images[0].name;
+          const selected = this.selectedImageByPath.get(key) || displayImages[0].name;
           dropdown.setValue(selected);
 
           const imageContainer = details.createDiv('novalist-image-preview');
           const renderImage = (name: string) => {
-            const img = images.find(i => i.name === name) || images[0];
+            const img = displayImages.find(i => i.name === name) || displayImages[0];
             this.selectedImageByPath.set(key, img.name);
             imageContainer.empty();
 
@@ -165,39 +185,83 @@ export class NovalistSidebarView extends ItemView {
         };
 
         if (selectedEntity.type === 'character') {
-          body = this.plugin.stripChapterRelevantSection(body);
-          body = this.plugin.stripImagesSection(body);
-          if (this.currentChapterFile) {
-            const charData = await this.plugin.parseCharacterFile(selectedEntity.file);
-            const chapterKey = this.plugin.getChapterNameForFile(this.currentChapterFile);
-            const chapterInfo = charData.chapterInfos.find(ci => ci.chapter === chapterKey);
-            if (chapterInfo) {
-              body = this.plugin.applyCharacterOverridesToBody(body, chapterInfo.overrides);
+          characterSheet = parseCharacterSheet(content);
+          images = characterSheet.images;
+
+          const chapterId = this.currentChapterFile ? this.plugin.getChapterIdForFile(this.currentChapterFile) : '';
+          const chapterName = this.currentChapterFile ? this.plugin.getChapterNameForFile(this.currentChapterFile) : '';
+          const override = characterSheet.chapterOverrides.find(
+            (o) => o.chapter === chapterId || o.chapter === chapterName
+          );
+
+          const displayData = {
+            ...characterSheet,
+            ...override,
+            customProperties: override?.customProperties
+              ? { ...characterSheet.customProperties, ...override.customProperties }
+              : characterSheet.customProperties,
+            relationships: override?.relationships ?? characterSheet.relationships,
+            images: override?.images ?? characterSheet.images
+          };
+
+          if (displayData.gender) focusLines.push(`**Gender**: ${displayData.gender}`);
+          if (displayData.age) focusLines.push(`**Age**: ${displayData.age}`);
+          if (displayData.role) focusLines.push(`**Role**: ${displayData.role}`);
+
+          if (displayData.customProperties && Object.keys(displayData.customProperties).length > 0) {
+            focusLines.push('');
+            focusLines.push('**CustomProperties**');
+            for (const [key, val] of Object.entries(displayData.customProperties)) {
+              if (val) focusLines.push(`- ${key}: ${val}`);
+            }
+          }
+
+          if (displayData.relationships && displayData.relationships.length > 0) {
+            focusLines.push('');
+            focusLines.push('**Relationships**');
+            for (const rel of displayData.relationships) {
+              focusLines.push(`- ${rel.role}: ${rel.character}`);
+            }
+          }
+
+          if (displayData.sections && displayData.sections.length > 0) {
+            for (const section of displayData.sections) {
+              focusLines.push('');
+              focusLines.push(`### ${section.title}`);
+              focusLines.push(section.content);
+            }
+          }
+
+          renderImages();
+        }
+
+        if (selectedEntity.type === 'location') {
+          locationSheet = parseLocationSheet(content);
+          images = locationSheet.images;
+
+          if (locationSheet.type) focusLines.push(`**Type**: ${locationSheet.type}`);
+          if (locationSheet.description) focusLines.push(`**Description**: ${locationSheet.description}`);
+
+          if (Object.keys(locationSheet.customProperties).length > 0) {
+            focusLines.push('');
+            focusLines.push('**CustomProperties**');
+            for (const [key, val] of Object.entries(locationSheet.customProperties)) {
+              if (val) focusLines.push(`- ${key}: ${val}`);
+            }
+          }
+
+          if (locationSheet.sections.length > 0) {
+            for (const section of locationSheet.sections) {
+              focusLines.push('');
+              focusLines.push(`### ${section.title}`);
+              focusLines.push(section.content);
             }
           }
           renderImages();
         }
 
-        if (selectedEntity.type === 'location') {
-          body = this.plugin.stripImagesSection(body);
-          renderImages();
-        }
-
-        if (selectedEntity.type === 'character' && this.currentChapterFile) {
-          const charData = await this.plugin.parseCharacterFile(selectedEntity.file);
-          const chapterKey = this.plugin.getChapterNameForFile(this.currentChapterFile);
-          const chapterInfo = charData.chapterInfos.find(ci => ci.chapter === chapterKey);
-          if (chapterInfo && (chapterInfo.overrides?.further_info || chapterInfo.info)) {
-            const block = details.createDiv('novalist-section');
-            block.createEl('h4', { text: `Chapter notes: ${chapterKey}`, cls: 'novalist-section-title' });
-            const text = [chapterInfo.overrides?.further_info, chapterInfo.info].filter(Boolean).join('\n');
-            const md = block.createDiv('novalist-markdown');
-            await MarkdownRenderer.render(this.app, text, md, '', this);
-          }
-        }
-
         const md = details.createDiv('novalist-markdown');
-        await MarkdownRenderer.render(this.app, body, md, '', this);
+        await MarkdownRenderer.render(this.app, focusLines.join('\n'), md, '', this);
       }
 
       return;
@@ -218,7 +282,7 @@ export class NovalistSidebarView extends ItemView {
         .onClick(() => this.plugin.openLocationModal());
 
       new ButtonComponent(btnContainer)
-        .setButtonText('Add chapter description')
+        .setButtonText('Add chapter')
         .onClick(() => this.plugin.openChapterDescriptionModal());
 
       return;
@@ -239,13 +303,16 @@ export class NovalistSidebarView extends ItemView {
         chapterInfo: CharacterChapterInfo | undefined;
       }> = [];
 
-      const chapterKey = this.currentChapterFile ? this.plugin.getChapterNameForFileSync(this.currentChapterFile) : '';
+      const chapterId = this.currentChapterFile ? this.plugin.getChapterIdForFileSync(this.currentChapterFile) : '';
+      const chapterName = this.currentChapterFile ? this.plugin.getChapterNameForFileSync(this.currentChapterFile) : '';
 
       for (const charName of chapterData.characters) {
         const charFile = this.plugin.findCharacterFile(charName);
         if (!charFile) continue;
         const charData = await this.plugin.parseCharacterFile(charFile);
-        const chapterInfo = charData.chapterInfos.find(ci => ci.chapter === chapterKey);
+        const chapterInfo = charData.chapterInfos.find(
+          ci => ci.chapter === chapterId || ci.chapter === chapterName
+        );
         characterItems.push({ data: charData, chapterInfo });
       }
 
@@ -323,16 +390,35 @@ export class NovalistSidebarView extends ItemView {
     this.lastFocusKey = nextKey;
     this.selectedEntity = entity;
 
-    if (entity && this.autoFocusActive) {
-      this.activeTab = 'focus';
-    }
-
-    if (options?.forceFocus) {
-      this.activeTab = 'focus';
+    if (entity) {
+      // Switching to an entity - go to focus tab
+      if (this.autoFocusActive || options?.forceFocus) {
+        if (this.activeTab !== 'focus') {
+          this.lastNonFocusTab = this.activeTab;
+        }
+        this.activeTab = 'focus';
+        if (options?.forceFocus) {
+          this.focusPinned = true;
+        }
+      }
+    } else {
+      // Clearing focus - go back to last non-focus tab
+      if (this.activeTab === 'focus') {
+        this.activeTab = this.lastNonFocusTab;
+      }
+      this.focusPinned = false;
+      this.selectedEntity = null;
     }
 
     if (changed || options?.forceFocus) {
       void this.render();
+    } else if (entity === null && this.activeTab === this.lastNonFocusTab) {
+      // Only re-render when clearing focus if we actually changed tabs
+      void this.render();
     }
+  }
+
+  shouldKeepFocus(): boolean {
+    return this.activeTab === 'focus' && this.selectedEntity !== null && this.focusPinned;
   }
 }
