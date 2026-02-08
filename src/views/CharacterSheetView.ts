@@ -176,6 +176,7 @@ class ImageSuggesterModal extends SuggestModal<TFile> {
 
 export class CharacterSheetView extends TextFileView {
   plugin: NovalistPlugin;
+  private readonly suggestionId: string;
   private data: CharacterSheetData = {
     name: '',
     surname: '',
@@ -198,6 +199,7 @@ export class CharacterSheetView extends TextFileView {
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
     super(leaf);
     this.plugin = plugin;
+    this.suggestionId = Math.random().toString(36).slice(2, 10);
   }
 
   getViewType(): string {
@@ -396,13 +398,18 @@ export class CharacterSheetView extends TextFileView {
 
     // Gender and Age row
     const detailsRow1 = section.createDiv('character-sheet-row');
+    const genderListId = `novalist-gender-suggestions-${this.suggestionId}`;
+    const genderDatalist = section.createEl('datalist', { attr: { id: genderListId } });
     
     new Setting(detailsRow1)
       .setName('Gender')
       .addText(text => {
         text.setValue(this.getEffectiveValue('gender'));
+        text.inputEl.setAttr('list', genderListId);
+        void this.populateDatalist(genderDatalist, this.getKnownGenders(text.getValue()));
         text.onChange(value => {
           this.setEffectiveValue('gender', value);
+          void this.populateDatalist(genderDatalist, this.getKnownGenders(value));
         });
       });
 
@@ -417,15 +424,69 @@ export class CharacterSheetView extends TextFileView {
 
     // Role row (compact)
     const roleRow = section.createDiv('character-sheet-row character-sheet-role-row');
+    const roleListId = `novalist-role-suggestions-${this.suggestionId}`;
+    const roleDatalist = section.createEl('datalist', { attr: { id: roleListId } });
     new Setting(roleRow)
       .setName('Role')
       .addText(text => {
         text.setValue(this.getEffectiveValue('role'));
         text.setPlaceholder('Protag, love interest, etc.');
+        text.inputEl.setAttr('list', roleListId);
+        void this.populateDatalist(roleDatalist, this.getKnownRoles(text.getValue()));
         text.onChange(value => {
           this.setEffectiveValue('role', value);
+          void this.populateDatalist(roleDatalist, this.getKnownRoles(value));
         });
       });
+  }
+
+  private async populateDatalist(
+    datalist: HTMLDataListElement,
+    valuesPromise: Promise<string[]>
+  ): Promise<void> {
+    const values = await valuesPromise;
+    datalist.innerHTML = '';
+    for (const value of values) {
+      datalist.createEl('option', { attr: { value } });
+    }
+  }
+
+  private async getKnownRoles(currentValue: string): Promise<string[]> {
+    const roles = new Set<string>();
+    const trimmedCurrent = currentValue.trim();
+    if (trimmedCurrent) roles.add(trimmedCurrent);
+
+    for (const role of Object.keys(this.plugin.settings.roleColors)) {
+      const trimmed = role.trim();
+      if (trimmed) roles.add(trimmed);
+    }
+
+    const characters = await this.plugin.getCharacterList();
+    for (const character of characters) {
+      const trimmed = character.role?.trim();
+      if (trimmed) roles.add(trimmed);
+    }
+
+    return Array.from(roles).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
+
+  private async getKnownGenders(currentValue: string): Promise<string[]> {
+    const genders = new Set<string>();
+    const trimmedCurrent = currentValue.trim();
+    if (trimmedCurrent) genders.add(trimmedCurrent);
+
+    for (const gender of Object.keys(this.plugin.settings.genderColors)) {
+      const trimmed = gender.trim();
+      if (trimmed) genders.add(trimmed);
+    }
+
+    const characters = await this.plugin.getCharacterList();
+    for (const character of characters) {
+      const trimmed = character.gender?.trim();
+      if (trimmed) genders.add(trimmed);
+    }
+
+    return Array.from(genders).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }
 
   private renderImagesSection(container: HTMLElement): void {
