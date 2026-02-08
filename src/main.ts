@@ -1443,17 +1443,58 @@ order: ${orderValue}
     const content = await this.app.vault.read(file);
     let { frontmatter, body } = this.extractFrontmatterAndBody(content);
     const hasFrontmatter = Object.keys(frontmatter).length > 0;
+    const trimmedRole = roleLabel.trim();
     
     // Update frontmatter only if it existed or if we want to enforce it (but we don't anymore)
     if (frontmatter.role) {
-        frontmatter.role = roleLabel;
+        frontmatter.role = trimmedRole;
     }
-    
-    // Update "General Information" section in body
+
     const lines = body.split('\n');
-    const roleIdx = lines.findIndex(l => l.match(/^[-*]\s*\*\*(?:Character\s+)?Role(?:\s*:)?\*\*/i));
-    if (roleIdx !== -1) {
-        lines[roleIdx] = `- **Role**: ${roleLabel}`;
+    const sheetHeaderIdx = lines.findIndex((l) => l.trim() === '## CharacterSheet');
+
+    if (sheetHeaderIdx !== -1) {
+      let sheetEndIdx = lines.length;
+      for (let i = sheetHeaderIdx + 1; i < lines.length; i++) {
+        if (lines[i].trim().startsWith('## ')) {
+          sheetEndIdx = i;
+          break;
+        }
+      }
+
+      let roleLineIdx = -1;
+      for (let i = sheetHeaderIdx + 1; i < sheetEndIdx; i++) {
+        if (/^\s*Role\s*:/i.test(lines[i])) {
+          roleLineIdx = i;
+          break;
+        }
+      }
+
+      const roleLine = trimmedRole ? `Role: ${trimmedRole}` : 'Role:';
+
+      if (roleLineIdx !== -1) {
+        lines[roleLineIdx] = roleLine;
+      } else {
+        let insertIdx = sheetHeaderIdx + 1;
+        for (let i = sheetHeaderIdx + 1; i < sheetEndIdx; i++) {
+          const trimmed = lines[i].trim().toLowerCase();
+          if (
+            trimmed.startsWith('name:') ||
+            trimmed.startsWith('surname:') ||
+            trimmed.startsWith('gender:') ||
+            trimmed.startsWith('age:')
+          ) {
+            insertIdx = i + 1;
+          }
+        }
+        lines.splice(insertIdx, 0, roleLine);
+      }
+    } else {
+      // Update legacy "General Information" section in body
+      const roleIdx = lines.findIndex(l => l.match(/^[-*]\s*\*\*(?:Character\s+)?Role(?:\s*:)?\*\*/i));
+      if (roleIdx !== -1) {
+        lines[roleIdx] = `- **Role**: ${trimmedRole}`;
+      }
     }
 
     let newContent = lines.join('\n');
@@ -1465,7 +1506,7 @@ order: ${orderValue}
 
     await this.app.vault.modify(file, newContent);
     
-    new Notice(`Updated ${file.basename} role to ${roleLabel}`);
+    new Notice(`Updated ${file.basename} role to ${trimmedRole || 'Unassigned'}`);
   }
 
   serializeFrontmatter(fm: Record<string, string | number>): string {
