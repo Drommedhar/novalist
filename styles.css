@@ -351,6 +351,119 @@
   font-size: 13px;
 }
 
+/* ================================
+   Overview Tab Styles
+   ================================ */
+
+.novalist-overview-section {
+  margin-bottom: 16px;
+}
+
+.novalist-overview-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-accent);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.novalist-overview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.novalist-overview-card {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.novalist-overview-card:hover {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.novalist-overview-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.novalist-overview-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.novalist-overview-card-role {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.novalist-overview-card-props {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.novalist-overview-pill {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 5px;
+  overflow: hidden;
+  font-size: 11px;
+}
+
+.novalist-overview-pill-label {
+  padding: 1px 5px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.novalist-overview-pill-value {
+  padding: 1px 6px;
+  color: var(--text-normal);
+}
+
+.novalist-overview-card-chapter-info {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--background-modifier-border);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.novalist-overview-card-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .novalist-markdown h1,
 .novalist-markdown h2,
 .novalist-markdown h3,

@@ -360,29 +360,49 @@ export class NovalistSidebarView extends ItemView {
       }
 
       if (characterItems.length > 0) {
-        const charSection = contextContent.createDiv('novalist-section');
-        charSection.createEl('h4', { text: 'Characters', cls: 'novalist-section-title' });
+        const charSection = contextContent.createDiv('novalist-overview-section');
+        charSection.createEl('div', { text: 'Characters', cls: 'novalist-overview-section-title' });
 
-        const charList = charSection.createDiv('novalist-list');
+        const charList = charSection.createDiv('novalist-overview-list');
         for (const itemData of characterItems) {
           const { data: charData, chapterInfo } = itemData;
-          const item = charList.createDiv('novalist-item');
+          const card = charList.createDiv('novalist-overview-card');
 
-          // Header with name
-          const header = item.createDiv('novalist-item-header');
-          header.createEl('strong', { text: `${charData.name} ${charData.surname}` });
+          // Top row: name + role badge
+          const topRow = card.createDiv('novalist-overview-card-top');
+          topRow.createEl('span', { text: `${charData.name} ${charData.surname}`.trim(), cls: 'novalist-overview-card-name' });
+          if (charData.role) {
+            topRow.createEl('span', { text: charData.role, cls: 'novalist-overview-card-role' });
+          }
 
-          // Info
-          const info = item.createDiv('novalist-item-info');
+          // Properties as pills
+          const props = card.createDiv('novalist-overview-card-props');
           const age = chapterInfo?.overrides?.age || charData.age;
+          const gender = charData.gender;
           const relationship = chapterInfo?.overrides?.relationship || charData.relationship;
-          const role = charData.role;
-          if (age) info.createEl('span', { text: `Age: ${age}`, cls: 'novalist-tag' });
-          if (relationship) info.createEl('span', { text: relationship, cls: 'novalist-tag' });
-          if (role) info.createEl('span', { text: role, cls: 'novalist-tag' });
+          if (gender) {
+            const pill = props.createDiv('novalist-overview-pill');
+            pill.createEl('span', { text: 'Gender', cls: 'novalist-overview-pill-label' });
+            pill.createEl('span', { text: gender, cls: 'novalist-overview-pill-value' });
+          }
+          if (age) {
+            const pill = props.createDiv('novalist-overview-pill');
+            pill.createEl('span', { text: 'Age', cls: 'novalist-overview-pill-label' });
+            pill.createEl('span', { text: age, cls: 'novalist-overview-pill-value' });
+          }
+          if (relationship) {
+            const pill = props.createDiv('novalist-overview-pill');
+            pill.createEl('span', { text: 'Rel', cls: 'novalist-overview-pill-label' });
+            pill.createEl('span', { text: relationship, cls: 'novalist-overview-pill-value' });
+          }
 
-          // Hover/Click to open
-          item.addEventListener('click', () => {
+          // Chapter-specific info
+          if (chapterInfo?.info) {
+            const infoEl = card.createDiv('novalist-overview-card-chapter-info');
+            infoEl.createEl('span', { text: chapterInfo.info });
+          }
+
+          card.addEventListener('click', () => {
             void this.plugin.focusEntityByName(`${charData.name} ${charData.surname}`.trim(), true);
           });
         }
@@ -401,17 +421,21 @@ export class NovalistSidebarView extends ItemView {
       }
 
       if (locationItems.length > 0) {
-        const locSection = contextContent.createDiv('novalist-section');
-        locSection.createEl('h4', { text: 'Locations', cls: 'novalist-section-title' });
+        const locSection = contextContent.createDiv('novalist-overview-section');
+        locSection.createEl('div', { text: 'Locations', cls: 'novalist-overview-section-title' });
 
-        const locList = locSection.createDiv('novalist-list');
+        const locList = locSection.createDiv('novalist-overview-list');
         for (const locData of locationItems) {
-          const item = locList.createDiv('novalist-item');
-          item.createEl('strong', { text: locData.name });
+          const card = locList.createDiv('novalist-overview-card');
+
+          const topRow = card.createDiv('novalist-overview-card-top');
+          topRow.createEl('span', { text: locData.name, cls: 'novalist-overview-card-name' });
+
           if (locData.description) {
-            item.createEl('p', { text: locData.description });
+            card.createEl('p', { text: locData.description, cls: 'novalist-overview-card-desc' });
           }
-          item.addEventListener('click', () => {
+
+          card.addEventListener('click', () => {
             void this.plugin.focusEntityByName(locData.name, true);
           });
         }
