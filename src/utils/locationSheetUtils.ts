@@ -84,7 +84,8 @@ export function parseLocationSheet(content: string): LocationSheetData {
       for (const line of relLines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        const relMatch = trimmed.match(/^[-*]\s*(.+?)\s*:\s*(.+)$/);
+        // Only match list items (- or * followed by space)
+        const relMatch = trimmed.match(/^[-*]\s+(.+?)\s*:\s*(.+)$/);
         if (relMatch) {
             data.relationships.push({
                 role: relMatch[1].trim(),
@@ -111,7 +112,8 @@ export function parseLocationSheet(content: string): LocationSheetData {
       for (const line of imageLines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        const imgMatch = trimmed.match(/^[-*]\s*(.+?)\s*:\s*(.+)$/);
+        // Only match list items (- or * followed by space)
+        const imgMatch = trimmed.match(/^[-*]\s+(.+?)\s*:\s*(.+)$/);
         if (imgMatch) {
           data.images.push({
             name: imgMatch[1].trim(),
@@ -138,7 +140,8 @@ export function parseLocationSheet(content: string): LocationSheetData {
       for (const line of customLines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        const propMatch = trimmed.match(/^[-*]\s*(.+?)\s*:\s*(.*)$/);
+        // Only match list items (- or * followed by space), not markdown bold (**text**)
+        const propMatch = trimmed.match(/^[-*]\s+(.+?)\s*:\s*(.*)$/);
         if (propMatch) {
           data.customProperties[propMatch[1].trim()] = propMatch[2].trim();
         }

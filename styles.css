@@ -656,8 +656,8 @@
    ================================ */
 
 .character-sheet-view {
-  padding: 20px;
-  max-width: 1000px;
+  padding: 16px;
+  max-width: 980px;
   margin: 0 auto;
 }
 
@@ -665,8 +665,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
   border-bottom: 2px solid var(--interactive-accent);
   position: sticky;
   top: 0;
@@ -692,20 +692,20 @@
 .character-sheet-container {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
 }
 
 /* Chapter Override Selector */
 .character-sheet-chapter-selector {
   background: var(--background-secondary);
-  padding: 10px 15px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--background-modifier-border);
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .character-sheet-chapter-selector .setting-item {
@@ -746,7 +746,7 @@
 .character-sheet-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
-  gap: 20px;
+  gap: 14px;
 }
 
 @media (max-width: 768px) {
@@ -759,12 +759,12 @@
 .character-sheet-section {
   background: var(--background-secondary);
   border-radius: 8px;
-  padding: 15px;
+  padding: 12px;
   border: 1px solid var(--background-modifier-border);
 }
 
 .character-sheet-section-title {
-  margin: 0 0 15px 0;
+  margin: 0 0 10px 0;
   color: var(--text-accent);
   font-size: 16px;
   font-weight: 600;
@@ -774,8 +774,8 @@
 .character-sheet-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 15px;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 
 .character-sheet-row .setting-item {
@@ -860,18 +860,18 @@
 
 .character-sheet-image-row {
   display: flex;
-  gap: 15px;
+  gap: 12px;
   align-items: center;
   background: var(--background-primary);
-  padding: 12px 20px;
-  margin: 0 5px;
+  padding: 10px 12px;
+  margin: 0;
   border-radius: 6px;
   border: 1px solid var(--background-modifier-border);
 }
 
 .character-sheet-image-thumb {
-  width: 80px;
-  height: 80px;
+  width: 72px;
+  height: 72px;
   flex-shrink: 0;
   background: var(--background-secondary);
   border-radius: 4px;
@@ -932,8 +932,8 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 0 5px;
+  gap: 6px;
+  padding: 0;
 }
 
 .character-sheet-image-details .setting-item {
@@ -964,17 +964,17 @@
 .character-sheet-relationships-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   margin-bottom: 15px;
 }
 
 .character-sheet-relationship-row {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 10px;
-  align-items: center;
+  grid-template-columns: minmax(170px, 240px) 1fr auto;
+  gap: 6px;
+  align-items: stretch;
   background: var(--background-primary);
-  padding: 10px;
+  padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid var(--background-modifier-border);
 }
@@ -984,26 +984,76 @@
   padding: 0;
 }
 
+.character-sheet-relationship-row .setting-item-info {
+  display: none;
+}
+
+.character-sheet-relationship-row .setting-item-control {
+  margin: 0;
+}
+
+.character-sheet-relationship-row input {
+  width: 100%;
+}
+
+.character-sheet-relationship-role .setting-item-control {
+  width: 100%;
+  align-items: center;
+}
+
+.character-sheet-relationship-character .character-badges-container {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  min-height: 32px;
+  align-items: center;
+}
+
 .character-sheet-relationship-role,
 .character-sheet-relationship-character {
   flex: 1;
+}
+
+.character-sheet-relationship-role .setting-item-control,
+.character-sheet-relationship-character .setting-item-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.character-sheet-relationship-character .character-badges-container {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .character-sheet-relationship-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .character-sheet-relationship-character .setting-item-control {
+    justify-content: space-between;
+  }
 }
 
 /* Custom Properties */
 .character-sheet-custom-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   margin-bottom: 15px;
 }
 
 .character-sheet-custom-row {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
-  gap: 10px;
-  align-items: center;
+  gap: 6px;
+  align-items: stretch;
   background: var(--background-primary);
-  padding: 10px;
+  padding: 6px;
   border-radius: 6px;
   border: 1px solid var(--background-modifier-border);
 }
@@ -1011,12 +1061,49 @@
 .character-sheet-custom-row .setting-item {
   border: none;
   padding: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.character-sheet-custom-row .setting-item-info {
+  display: none;
+}
+
+.character-sheet-custom-row .setting-item-control {
+  margin: 0;
+  width: 100% !important;
+  max-width: none !important;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+}
+
+.character-sheet-custom-row .setting-item-control input,
+.character-sheet-custom-row .setting-item-control textarea {
+  width: 100% !important;
+  max-width: none !important;
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.character-sheet-custom-row .setting-item:last-child {
+  justify-self: end;
+}
+
+.character-sheet-custom-row .setting-item:last-child .setting-item-control {
+  width: auto;
+}
+
+.character-sheet-custom-row input {
+  width: 100%;
+  max-width: none;
 }
 
 /* Suggestions/Chips */
 .character-sheet-suggestions,
 .character-sheet-section-suggestions {
-  margin: 10px 0;
+  margin: 6px 0;
 }
 
 .character-sheet-suggestions small,
@@ -1028,8 +1115,8 @@
 .character-sheet-chip {
   display: inline-block;
   font-size: 12px;
-  padding: 3px 10px;
-  margin: 3px;
+  padding: 2px 8px;
+  margin: 2px;
   border-radius: 12px;
   border: 1px solid var(--background-modifier-border);
   background-color: var(--background-primary);
@@ -1047,21 +1134,21 @@
 .character-sheet-sections-area {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 10px;
 }
 
 .character-sheet-free-section {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
-  padding: 15px;
+  padding: 12px;
 }
 
 .character-sheet-free-section-header {
   display: flex;
   gap: 10px;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .character-sheet-section-title-input {
@@ -1082,7 +1169,7 @@
 
 .character-sheet-markdown-textarea {
   width: 100%;
-  min-height: 120px;
+  min-height: 100px;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
@@ -1100,7 +1187,7 @@
 
 .character-sheet-add-section {
   text-align: center;
-  padding: 20px;
+  padding: 14px;
   border: 2px dashed var(--background-modifier-border);
   border-radius: 8px;
 }
@@ -1121,7 +1208,7 @@
   align-items: center;
   gap: 10px;
   background: var(--background-primary);
-  padding: 10px 15px;
+  padding: 8px 10px;
   border-radius: 6px;
   border: 1px solid var(--background-modifier-border);
 }
@@ -1283,5 +1370,51 @@
   flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 10px;
+}
+
+/* Location Sheet Layout Alignment */
+.location-sheet-view .character-sheet-section > .setting-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.location-sheet-view .character-sheet-section > .setting-item .setting-item-info,
+.location-sheet-view .character-sheet-section > .setting-item .setting-item-control {
+  margin: 0;
+  width: 100%;
+}
+
+.location-sheet-view .character-sheet-section > .setting-item input,
+.location-sheet-view .character-sheet-section > .setting-item textarea {
+  width: 100%;
+}
+
+/* Location Sheet Custom Properties */
+.location-sheet-custom-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 15px;
+}
+
+.location-sheet-custom-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+  background: var(--background-primary);
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.location-sheet-custom-key,
+.location-sheet-custom-value {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
 }
 

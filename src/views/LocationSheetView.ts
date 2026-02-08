@@ -100,6 +100,7 @@ export class LocationSheetView extends TextFileView {
     const container = this.contentEl;
     container.empty();
     container.addClass('character-sheet-view');
+    container.addClass('location-sheet-view');
     
     const wrapper = container.createDiv('character-sheet-container');
     
@@ -112,7 +113,7 @@ export class LocationSheetView extends TextFileView {
       .setButtonText('Save')
       .setCta()
       .onClick(() => {
-        void this.save().then(() => this.render());
+        void this.save();
       });
     new ButtonComponent(headerActions)
       .setButtonText('Edit source')
@@ -178,19 +179,35 @@ export class LocationSheetView extends TextFileView {
       section.createEl('h3', { text: 'Custom properties', cls: 'character-sheet-section-title' });
       
       const props = this.data.customProperties;
-      const list = section.createDiv('character-sheet-custom-list');
+      const list = section.createDiv('location-sheet-custom-list');
       
       Object.entries(props).forEach(([key, value]) => {
-          const row = list.createDiv('character-sheet-custom-row');
-          new Setting(row)
-            .addText(t => t.setValue(key).setDisabled(true))
-            .addText(t => t.setValue(value).onChange(v => {
-                props[key] = v;
-            }))
-            .addButton(b => b.setIcon('trash').onClick(() => {
-                delete props[key];
-                this.render();
-            }));
+          const row = list.createDiv('location-sheet-custom-row');
+          
+          const keyInput = row.createEl('input', {
+            type: 'text',
+            cls: 'location-sheet-custom-key',
+            placeholder: 'Property name'
+          });
+          keyInput.value = key;
+          keyInput.disabled = true;
+
+          const valueInput = row.createEl('input', {
+            type: 'text',
+            cls: 'location-sheet-custom-value',
+            placeholder: 'Value'
+          });
+          valueInput.value = value;
+          valueInput.addEventListener('input', () => {
+            props[key] = valueInput.value;
+          });
+
+          new ButtonComponent(row)
+            .setIcon('trash')
+            .onClick(() => {
+              delete props[key];
+              this.render();
+            });
       });
       
       new ButtonComponent(section)
