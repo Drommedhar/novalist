@@ -206,6 +206,151 @@
   background: var(--background-primary);
 }
 
+/* Focus view title */
+.novalist-focus-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-normal);
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--interactive-accent);
+}
+
+/* Focus property pills */
+.novalist-focus-props {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.novalist-focus-prop {
+  display: flex;
+  align-items: center;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.novalist-focus-prop-label {
+  padding: 3px 7px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.novalist-focus-prop-value {
+  padding: 3px 8px;
+  color: var(--text-normal);
+}
+
+/* Focus groups (Relationships, Properties, Sections) */
+.novalist-focus-group {
+  margin-top: 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.novalist-focus-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-accent);
+  margin-bottom: 8px;
+}
+
+/* Key-value list (custom properties) */
+.novalist-focus-kv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.novalist-focus-kv-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  padding: 2px 0;
+  border-bottom: 1px dashed var(--background-modifier-border);
+}
+
+.novalist-focus-kv-row:last-child {
+  border-bottom: none;
+}
+
+.novalist-focus-kv-key {
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.novalist-focus-kv-value {
+  color: var(--text-normal);
+}
+
+/* Relationship list */
+.novalist-focus-rel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.novalist-focus-rel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--background-modifier-border);
+}
+
+.novalist-focus-rel-row:last-child {
+  border-bottom: none;
+}
+
+.novalist-focus-rel-role {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+
+.novalist-focus-rel-name {
+  color: var(--text-normal);
+}
+
+.novalist-focus-rel-name p {
+  margin: 0;
+  display: inline;
+}
+
+/* Focus description */
+.novalist-focus-description {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-normal);
+  line-height: 1.5;
+}
+
+/* Section markdown inside focus groups */
+.novalist-focus-group .novalist-markdown {
+  font-size: 13px;
+}
+
 .novalist-markdown h1,
 .novalist-markdown h2,
 .novalist-markdown h3,

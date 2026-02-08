@@ -132,7 +132,6 @@ export class NovalistSidebarView extends ItemView {
         }
 
         let images: Array<{ name: string; path: string }> = [];
-        const focusLines: string[] = [];
         let characterSheet = null as ReturnType<typeof parseCharacterSheet> | null;
         let locationSheet = null as ReturnType<typeof parseLocationSheet> | null;
         
@@ -184,6 +183,27 @@ export class NovalistSidebarView extends ItemView {
           renderImage(selected);
         };
 
+        // Helper to render a group of key-value properties as pills
+        const renderProps = (
+          parent: HTMLElement,
+          props: Array<{ label: string; value: string }>
+        ) => {
+          if (props.length === 0) return;
+          const row = parent.createDiv('novalist-focus-props');
+          for (const p of props) {
+            const pill = row.createDiv('novalist-focus-prop');
+            pill.createEl('span', { text: p.label, cls: 'novalist-focus-prop-label' });
+            pill.createEl('span', { text: p.value, cls: 'novalist-focus-prop-value' });
+          }
+        };
+
+        // Helper to render a titled group with custom children
+        const renderGroup = (parent: HTMLElement, title: string): HTMLElement => {
+          const group = parent.createDiv('novalist-focus-group');
+          group.createEl('div', { text: title, cls: 'novalist-focus-group-title' });
+          return group;
+        };
+
         if (selectedEntity.type === 'character') {
           characterSheet = parseCharacterSheet(content);
           images = characterSheet.images;
@@ -204,64 +224,87 @@ export class NovalistSidebarView extends ItemView {
             images: override?.images ?? characterSheet.images
           };
 
-          if (displayData.gender) focusLines.push(`**Gender**: ${displayData.gender}`);
-          if (displayData.age) focusLines.push(`**Age**: ${displayData.age}`);
-          if (displayData.role) focusLines.push(`**Role**: ${displayData.role}`);
+          renderImages();
 
+          // Basic properties as pills
+          const basicProps: Array<{ label: string; value: string }> = [];
+          if (displayData.gender) basicProps.push({ label: 'Gender', value: displayData.gender });
+          if (displayData.age) basicProps.push({ label: 'Age', value: displayData.age });
+          if (displayData.role) basicProps.push({ label: 'Role', value: displayData.role });
+          renderProps(details, basicProps);
+
+          // Custom properties
           if (displayData.customProperties && Object.keys(displayData.customProperties).length > 0) {
-            focusLines.push('');
-            focusLines.push('**CustomProperties**');
+            const group = renderGroup(details, 'Properties');
+            const list = group.createDiv('novalist-focus-kv-list');
             for (const [key, val] of Object.entries(displayData.customProperties)) {
-              if (val) focusLines.push(`- ${key}: ${val}`);
+              if (!val) continue;
+              const row = list.createDiv('novalist-focus-kv-row');
+              row.createEl('span', { text: key, cls: 'novalist-focus-kv-key' });
+              row.createEl('span', { text: val, cls: 'novalist-focus-kv-value' });
             }
           }
 
+          // Relationships
           if (displayData.relationships && displayData.relationships.length > 0) {
-            focusLines.push('');
-            focusLines.push('**Relationships**');
+            const group = renderGroup(details, 'Relationships');
+            const list = group.createDiv('novalist-focus-rel-list');
             for (const rel of displayData.relationships) {
-              focusLines.push(`- ${rel.role}: ${rel.character}`);
+              const row = list.createDiv('novalist-focus-rel-row');
+              row.createEl('span', { text: rel.role, cls: 'novalist-focus-rel-role' });
+              const nameEl = row.createDiv('novalist-focus-rel-name');
+              await MarkdownRenderer.render(this.app, rel.character, nameEl, '', this);
             }
           }
 
+          // Free-form sections via MarkdownRenderer
           if (displayData.sections && displayData.sections.length > 0) {
             for (const section of displayData.sections) {
-              focusLines.push('');
-              focusLines.push(`### ${section.title}`);
-              focusLines.push(section.content);
+              const group = renderGroup(details, section.title);
+              const md = group.createDiv('novalist-markdown');
+              await MarkdownRenderer.render(this.app, section.content, md, '', this);
             }
           }
-
-          renderImages();
         }
 
         if (selectedEntity.type === 'location') {
           locationSheet = parseLocationSheet(content);
           images = locationSheet.images;
 
-          if (locationSheet.type) focusLines.push(`**Type**: ${locationSheet.type}`);
-          if (locationSheet.description) focusLines.push(`**Description**: ${locationSheet.description}`);
+          renderImages();
 
+          // Basic properties
+          const basicProps: Array<{ label: string; value: string }> = [];
+          if (locationSheet.type) basicProps.push({ label: 'Type', value: locationSheet.type });
+          renderProps(details, basicProps);
+
+          // Description
+          if (locationSheet.description) {
+            const descGroup = renderGroup(details, 'Description');
+            descGroup.createEl('p', { text: locationSheet.description, cls: 'novalist-focus-description' });
+          }
+
+          // Custom properties
           if (Object.keys(locationSheet.customProperties).length > 0) {
-            focusLines.push('');
-            focusLines.push('**CustomProperties**');
+            const group = renderGroup(details, 'Properties');
+            const list = group.createDiv('novalist-focus-kv-list');
             for (const [key, val] of Object.entries(locationSheet.customProperties)) {
-              if (val) focusLines.push(`- ${key}: ${val}`);
+              if (!val) continue;
+              const row = list.createDiv('novalist-focus-kv-row');
+              row.createEl('span', { text: key, cls: 'novalist-focus-kv-key' });
+              row.createEl('span', { text: val, cls: 'novalist-focus-kv-value' });
             }
           }
 
+          // Free-form sections
           if (locationSheet.sections.length > 0) {
             for (const section of locationSheet.sections) {
-              focusLines.push('');
-              focusLines.push(`### ${section.title}`);
-              focusLines.push(section.content);
+              const group = renderGroup(details, section.title);
+              const md = group.createDiv('novalist-markdown');
+              await MarkdownRenderer.render(this.app, section.content, md, '', this);
             }
           }
-          renderImages();
         }
-
-        const md = details.createDiv('novalist-markdown');
-        await MarkdownRenderer.render(this.app, focusLines.join('\n'), md, '', this);
       }
 
       return;

@@ -826,7 +826,15 @@ export class CharacterSheetView extends TextFileView {
     new ButtonComponent(section)
       .setButtonText('Add custom property')
       .onClick(() => {
-        customProps['New property'] = '';
+        // Generate unique key name
+        let baseName = 'New property';
+        let keyName = baseName;
+        let counter = 2;
+        while (customProps[keyName] !== undefined) {
+          keyName = `${baseName} ${counter}`;
+          counter++;
+        }
+        customProps[keyName] = '';
         this.setEffectiveCustomProperties(customProps);
         void this.render();
       });
