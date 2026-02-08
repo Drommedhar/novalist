@@ -33,9 +33,7 @@ import { LocationModal } from './modals/LocationModal';
 import { ChapterDescriptionModal } from './modals/ChapterDescriptionModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
-import { CHARACTER_ROLE_LABELS, CharacterRole, normalizeCharacterRole } from './utils/characterUtils';
-
-export { CHARACTER_ROLE_LABELS, CharacterRole };
+import { normalizeCharacterRole } from './utils/characterUtils';
 
 export default class NovalistPlugin extends Plugin {
   settings: NovalistSettings;

@@ -10,6 +10,7 @@ import type NovalistPlugin from '../main';
 import { CharacterData, CharacterChapterInfo, LocationData } from '../types';
 import { parseCharacterSheet } from '../utils/characterSheetUtils';
 import { parseLocationSheet } from '../utils/locationSheetUtils';
+import { normalizeCharacterRole } from '../utils/characterUtils';
 
 export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
 
@@ -186,12 +187,17 @@ export class NovalistSidebarView extends ItemView {
         // Helper to render a group of key-value properties as pills
         const renderProps = (
           parent: HTMLElement,
-          props: Array<{ label: string; value: string }>
+          props: Array<{ label: string; value: string; cls?: string; color?: string; colorVar?: string }>
         ) => {
           if (props.length === 0) return;
           const row = parent.createDiv('novalist-focus-props');
           for (const p of props) {
             const pill = row.createDiv('novalist-focus-prop');
+            if (p.cls) pill.addClass(p.cls);
+            if (p.color) {
+              const varName = p.colorVar || '--novalist-role-color';
+              pill.style.setProperty(varName, p.color);
+            }
             pill.createEl('span', { text: p.label, cls: 'novalist-focus-prop-label' });
             pill.createEl('span', { text: p.value, cls: 'novalist-focus-prop-value' });
           }
@@ -227,10 +233,28 @@ export class NovalistSidebarView extends ItemView {
           renderImages();
 
           // Basic properties as pills
-          const basicProps: Array<{ label: string; value: string }> = [];
-          if (displayData.gender) basicProps.push({ label: 'Gender', value: displayData.gender });
+          const basicProps: Array<{ label: string; value: string; cls?: string; color?: string }> = [];
+          if (displayData.gender) {
+            const genderColor = this.getGenderColor(displayData.gender);
+            basicProps.push({
+              label: 'Gender',
+              value: displayData.gender,
+              cls: 'novalist-gender-prop',
+              color: genderColor,
+              colorVar: '--novalist-gender-color'
+            });
+          }
           if (displayData.age) basicProps.push({ label: 'Age', value: displayData.age });
-          if (displayData.role) basicProps.push({ label: 'Role', value: displayData.role });
+          if (displayData.role) {
+            const roleColor = this.getRoleColor(displayData.role);
+            basicProps.push({
+              label: 'Role',
+              value: displayData.role,
+              cls: 'novalist-role-prop',
+              color: roleColor,
+              colorVar: '--novalist-role-color'
+            });
+          }
           renderProps(details, basicProps);
 
           // Custom properties
@@ -372,7 +396,9 @@ export class NovalistSidebarView extends ItemView {
           const topRow = card.createDiv('novalist-overview-card-top');
           topRow.createEl('span', { text: `${charData.name} ${charData.surname}`.trim(), cls: 'novalist-overview-card-name' });
           if (charData.role) {
-            topRow.createEl('span', { text: charData.role, cls: 'novalist-overview-card-role' });
+            const roleBadge = topRow.createEl('span', { text: charData.role, cls: 'novalist-overview-card-role' });
+            const roleColor = this.getRoleColor(charData.role);
+            if (roleColor) roleBadge.style.setProperty('--novalist-role-color', roleColor);
           }
 
           // Properties as pills
@@ -381,7 +407,9 @@ export class NovalistSidebarView extends ItemView {
           const gender = charData.gender;
           const relationship = chapterInfo?.overrides?.relationship || charData.relationship;
           if (gender) {
-            const pill = props.createDiv('novalist-overview-pill');
+            const pill = props.createDiv('novalist-overview-pill novalist-gender-pill');
+            const genderColor = this.getGenderColor(gender);
+            if (genderColor) pill.style.setProperty('--novalist-gender-color', genderColor);
             pill.createEl('span', { text: 'Gender', cls: 'novalist-overview-pill-label' });
             pill.createEl('span', { text: gender, cls: 'novalist-overview-pill-value' });
           }
@@ -483,6 +511,16 @@ export class NovalistSidebarView extends ItemView {
       // Only re-render when clearing focus if we actually changed tabs
       void this.render();
     }
+  }
+
+  private getRoleColor(roleLabel: string): string {
+    const normalized = normalizeCharacterRole(roleLabel);
+    return this.plugin.settings.roleColors[normalized] || '';
+  }
+
+  private getGenderColor(genderLabel: string): string {
+    const trimmed = genderLabel.trim();
+    return this.plugin.settings.genderColors[trimmed] || '';
   }
 
   shouldKeepFocus(): boolean {

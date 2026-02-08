@@ -13,6 +13,9 @@
   chapterFolder: string;
   relationshipPairs: Record<string, string[]>;
   startupWizardShown: boolean;
+  roleColors: Record<string, string>;
+  genderColors: Record<string, string>;
+  explorerGroupCollapsed: Record<string, boolean>;
 }
 
 export interface AutoReplacementPair {

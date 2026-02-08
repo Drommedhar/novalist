@@ -84,5 +84,8 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   imageFolder: 'Images',
   chapterFolder: 'Chapters',
   relationshipPairs: {},
-  startupWizardShown: false
+  startupWizardShown: false,
+  roleColors: {},
+  genderColors: {},
+  explorerGroupCollapsed: {}
 };

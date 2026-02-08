@@ -6,7 +6,7 @@
   Menu
 } from 'obsidian';
 import type NovalistPlugin from '../main';
-import { CHARACTER_ROLE_LABELS } from '../utils/characterUtils';
+import { normalizeCharacterRole } from '../utils/characterUtils';
 import { ChapterListData, CharacterListData, LocationListData } from '../types';
 
 export const NOVELIST_EXPLORER_VIEW_TYPE = 'novalist-explorer';
@@ -199,16 +199,9 @@ export class NovalistExplorerView extends ItemView {
     const groups: Record<string, CharacterListData[]> = {};
     const unassignedLabel = 'Unassigned';
     
-    // Initialize standard groups to ensure ordering
-    const standardGroups = [
-      CHARACTER_ROLE_LABELS.main,
-      CHARACTER_ROLE_LABELS.side,
-      CHARACTER_ROLE_LABELS.background
-    ];
-    
     // Distribute items
     for (const item of items) {
-      const roleLabel = item.role || unassignedLabel;
+      const roleLabel = item.role?.trim() || unassignedLabel;
       
       if (!groups[roleLabel]) {
         groups[roleLabel] = [];
@@ -216,16 +209,12 @@ export class NovalistExplorerView extends ItemView {
       groups[roleLabel].push(item);
     }
 
-    // Determine render order: Standard groups first, then others alphabetically
-    const existingRoles = Object.keys(groups);
-    const otherRoles = existingRoles.filter(r => !standardGroups.includes(r)).sort();
-    
-    // Only include standard groups if they exist in 'groups' (i.e., have items)
-    const rolesToRender = [
-      ...standardGroups.filter(r => groups[r]),
-      ...(groups[unassignedLabel] ? [unassignedLabel] : []),
-      ...otherRoles.filter(r => r !== unassignedLabel)
-    ];
+    const existingRoles = Object.keys(groups)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const rolesToRender = existingRoles.filter(r => r !== unassignedLabel);
+    if (groups[unassignedLabel]) {
+      rolesToRender.unshift(unassignedLabel);
+    }
 
     // Create a flattened visual order list for range selection logic
     const visualOrder: CharacterListData[] = [];
@@ -239,10 +228,31 @@ export class NovalistExplorerView extends ItemView {
       const groupItems = groups[roleLabel];
       if (!groupItems || groupItems.length === 0) continue;
 
+      const groupKey = this.getGroupKey(roleLabel, unassignedLabel);
+      const roleColor = this.getRoleColor(groupKey);
+      const isCollapsed = this.getGroupCollapsed(groupKey);
 
       // Group Header
       const headerObj = list.createDiv('novalist-group-header');
-      headerObj.createEl('span', { text: roleLabel }); 
+      headerObj.dataset.role = groupKey;
+      if (roleColor) headerObj.style.setProperty('--novalist-role-color', roleColor);
+      if (isCollapsed) headerObj.addClass('is-collapsed');
+
+      headerObj.createEl('span', { text: roleLabel, cls: 'novalist-group-title' });
+
+
+      const toggleGroup = () => {
+        const nextCollapsed = !this.getGroupCollapsed(groupKey);
+        this.setGroupCollapsed(groupKey, nextCollapsed);
+        headerObj.toggleClass('is-collapsed', nextCollapsed);
+        if (groupContainer) {
+          groupContainer.toggleClass('is-collapsed', nextCollapsed);
+        }
+      };
+
+      headerObj.addEventListener('click', () => {
+        toggleGroup();
+      });
 
       // Header drop target
       headerObj.addEventListener('dragover', (evt) => {
@@ -279,19 +289,26 @@ export class NovalistExplorerView extends ItemView {
       });
 
       const groupContainer = list.createDiv('novalist-group-container');
+      if (isCollapsed) {
+        groupContainer.addClass('is-collapsed');
+      }
+      if (roleColor) groupContainer.style.setProperty('--novalist-role-color', roleColor);
       
       for (const item of groupItems) {
         const row = groupContainer.createDiv('novalist-explorer-item');
         row.setAttribute('draggable', 'true');
         row.dataset.path = item.file.path;
+        if (roleColor) row.style.setProperty('--novalist-role-color', roleColor);
         row.createEl('span', { text: item.name, cls: 'novalist-explorer-label' });
         
         if (item.gender) {
-            row.createEl('span', { 
+          const genderBadge = row.createEl('span', { 
                 text: item.gender, 
                 cls: 'novalist-explorer-badge novalist-gender-badge', 
                 attr: { title: `Gender: ${item.gender}` }
             });
+          const genderColor = this.getGenderColor(item.gender);
+          if (genderColor) genderBadge.style.setProperty('--novalist-gender-color', genderColor);
         }
 
         if (this.selectedFiles.has(item.file.path)) {
@@ -410,6 +427,34 @@ export class NovalistExplorerView extends ItemView {
         });
       }
     }
+  }
+
+  private getGroupKey(roleLabel: string, unassignedLabel: string): string {
+    if (roleLabel === unassignedLabel) return unassignedLabel;
+    return normalizeCharacterRole(roleLabel);
+  }
+
+  private getRoleColor(roleLabel: string): string {
+    const normalized = normalizeCharacterRole(roleLabel);
+    return this.plugin.settings.roleColors[normalized] || '';
+  }
+
+  private getGenderColor(genderLabel: string): string {
+    const trimmed = genderLabel.trim();
+    return this.plugin.settings.genderColors[trimmed] || '';
+  }
+
+  private getGroupCollapsed(roleLabel: string): boolean {
+    return this.plugin.settings.explorerGroupCollapsed[roleLabel] ?? false;
+  }
+
+  private setGroupCollapsed(roleLabel: string, collapsed: boolean): void {
+    if (collapsed) {
+      this.plugin.settings.explorerGroupCollapsed[roleLabel] = true;
+    } else {
+      delete this.plugin.settings.explorerGroupCollapsed[roleLabel];
+    }
+    void this.plugin.saveSettings();
   }
 
   private renderList(

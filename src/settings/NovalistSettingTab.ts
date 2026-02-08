@@ -39,26 +39,6 @@ export class NovalistSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
-    new Setting(containerEl)
-      .setName('Language')
-      .setDesc('Choose default replacements for quotes and punctuation.')
-      .addDropdown((dropdown) => {
-        for (const [key, label] of Object.entries(LANGUAGE_LABELS)) {
-          dropdown.addOption(key, label);
-        }
-        dropdown.setValue(this.plugin.settings.language);
-        dropdown.onChange(async (value) => {
-          if (!(value in LANGUAGE_LABELS)) return;
-          const nextLanguage = value as LanguageKey;
-          this.plugin.settings.language = nextLanguage;
-          if (nextLanguage !== 'custom') {
-            const defaults = LANGUAGE_DEFAULTS[nextLanguage];
-            this.plugin.settings.autoReplacements = cloneAutoReplacements(defaults);
-          }
-          await this.plugin.saveSettings();
-          this.display();
-        });
-      });
 
     new Setting(containerEl)
       .setName('Folder structure')
@@ -104,10 +84,37 @@ export class NovalistSettingTab extends PluginSettingTab {
                 await this.plugin.saveSettings();
             }));
 
+    const roleSection = containerEl.createDiv('novalist-role-colors');
+    void this.renderRoleColorSettings(roleSection);
+
+    const genderSection = containerEl.createDiv('novalist-gender-colors');
+    void this.renderGenderColorSettings(genderSection);
+
     new Setting(containerEl)
       .setName('Auto replacements')
       .setHeading();
     containerEl.createEl('p', { text: 'Configure text shortcuts that will be auto-replaced while typing.' });
+
+    new Setting(containerEl)
+      .setName('Language')
+      .setDesc('Choose default replacements for quotes and punctuation.')
+      .addDropdown((dropdown) => {
+        for (const [key, label] of Object.entries(LANGUAGE_LABELS)) {
+          dropdown.addOption(key, label);
+        }
+        dropdown.setValue(this.plugin.settings.language);
+        dropdown.onChange(async (value) => {
+          if (!(value in LANGUAGE_LABELS)) return;
+          const nextLanguage = value as LanguageKey;
+          this.plugin.settings.language = nextLanguage;
+          if (nextLanguage !== 'custom') {
+            const defaults = LANGUAGE_DEFAULTS[nextLanguage];
+            this.plugin.settings.autoReplacements = cloneAutoReplacements(defaults);
+          }
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      });
 
     const isCustomLanguage = this.plugin.settings.language === 'custom';
     if (!isCustomLanguage) {
@@ -206,5 +213,123 @@ export class NovalistSettingTab extends PluginSettingTab {
                 this.plugin.settings.enableCustomExplorer = value;
                 await this.plugin.saveSettings();
             }));
+  }
+
+  private async renderRoleColorSettings(containerEl: HTMLElement): Promise<void> {
+    containerEl.empty();
+    new Setting(containerEl)
+      .setName('Role colors')
+      .setHeading();
+    containerEl.createEl('p', { text: 'Colors used for role highlights and badges.' });
+
+    const fallbackColor = '#64748b';
+    const roles = await this.getKnownRoles();
+
+    if (roles.length === 0) {
+      containerEl.createEl('p', { text: 'No roles found yet.' });
+      return;
+    }
+
+    for (const roleLabel of roles) {
+      const row = new Setting(containerEl)
+        .setName(roleLabel);
+
+      const stored = this.plugin.settings.roleColors[roleLabel];
+
+      row.addColorPicker((picker) => {
+        picker.setValue(stored || fallbackColor);
+        picker.onChange(async (value) => {
+          this.plugin.settings.roleColors[roleLabel] = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+      row.addButton((btn) => {
+        btn.setIcon('rotate-ccw');
+        btn.setTooltip('Restore default color');
+        btn.setDisabled(!stored);
+        btn.onClick(async () => {
+          delete this.plugin.settings.roleColors[roleLabel];
+          await this.plugin.saveSettings();
+          void this.renderRoleColorSettings(containerEl);
+        });
+      });
+    }
+  }
+
+  private async renderGenderColorSettings(containerEl: HTMLElement): Promise<void> {
+    containerEl.empty();
+    new Setting(containerEl)
+      .setName('Gender colors')
+      .setHeading();
+    containerEl.createEl('p', { text: 'Colors used for gender badges.' });
+
+    const fallbackColor = '#64748b';
+    const genders = await this.getKnownGenders();
+
+    if (genders.length === 0) {
+      containerEl.createEl('p', { text: 'No genders found yet.' });
+      return;
+    }
+
+    for (const genderLabel of genders) {
+      const row = new Setting(containerEl)
+        .setName(genderLabel);
+
+      const stored = this.plugin.settings.genderColors[genderLabel];
+
+      row.addColorPicker((picker) => {
+        picker.setValue(stored || fallbackColor);
+        picker.onChange(async (value) => {
+          this.plugin.settings.genderColors[genderLabel] = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+      row.addButton((btn) => {
+        btn.setIcon('rotate-ccw');
+        btn.setTooltip('Restore default color');
+        btn.setDisabled(!stored);
+        btn.onClick(async () => {
+          delete this.plugin.settings.genderColors[genderLabel];
+          await this.plugin.saveSettings();
+          void this.renderGenderColorSettings(containerEl);
+        });
+      });
+    }
+  }
+
+  private async getKnownRoles(): Promise<string[]> {
+    const roles = new Set<string>();
+
+    for (const role of Object.keys(this.plugin.settings.roleColors)) {
+      const trimmed = role.trim();
+      if (trimmed) roles.add(trimmed);
+    }
+
+    const characters = await this.plugin.getCharacterList();
+    for (const character of characters) {
+      const trimmed = character.role?.trim();
+      if (trimmed) roles.add(trimmed);
+    }
+
+    return Array.from(roles).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
+
+  private async getKnownGenders(): Promise<string[]> {
+    const genders = new Set<string>();
+
+    for (const gender of Object.keys(this.plugin.settings.genderColors)) {
+      const trimmed = gender.trim();
+      if (trimmed) genders.add(trimmed);
+    }
+
+    const characters = await this.plugin.getCharacterList();
+    for (const character of characters) {
+      const trimmed = character.gender?.trim();
+      if (trimmed) genders.add(trimmed);
+    }
+
+    return Array.from(genders).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }
 }

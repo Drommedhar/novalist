@@ -243,6 +243,14 @@
   letter-spacing: 0.03em;
 }
 
+.novalist-focus-prop.novalist-role-prop .novalist-focus-prop-label {
+  background: var(--novalist-role-color, var(--interactive-accent));
+}
+
+.novalist-focus-prop.novalist-gender-prop .novalist-focus-prop-label {
+  background: var(--novalist-gender-color, var(--interactive-accent));
+}
+
 .novalist-focus-prop-value {
   padding: 3px 8px;
   color: var(--text-normal);
@@ -411,7 +419,7 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--text-on-accent);
-  background: var(--interactive-accent);
+  background: var(--novalist-role-color, var(--interactive-accent));
   padding: 2px 8px;
   border-radius: 10px;
   white-space: nowrap;
@@ -440,6 +448,11 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.novalist-overview-pill.novalist-gender-pill .novalist-overview-pill-label {
+  background: var(--novalist-gender-color, var(--background-secondary));
+  color: var(--text-on-accent);
 }
 
 .novalist-overview-pill-value {
@@ -705,7 +718,47 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    background: color-mix(in srgb, var(--novalist-role-color, transparent) 10%, transparent);
+    border-radius: 6px;
+    padding: 4px 6px;
 }
+
+.novalist-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: inset 0 -1px 0 var(--background-modifier-border);
+  background: color-mix(in srgb, var(--novalist-role-color, transparent) 12%, transparent);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.novalist-group-header.is-collapsed {
+  opacity: 0.7;
+}
+
+.novalist-group-title {
+  font-weight: 600;
+  color: var(--text-normal);
+  flex: 1;
+}
+
+.novalist-group-container.is-collapsed {
+  display: none;
+}
+
+.novalist-role-colors .setting-item,
+.novalist-gender-colors .setting-item {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.novalist-role-colors .setting-item-info,
+.novalist-gender-colors .setting-item-info {
+  margin-bottom: 2px;
+}
+
 
 .novalist-explorer-badge {
     font-size: 0.75em;
@@ -719,6 +772,11 @@
     text-overflow: ellipsis;
     max-width: 60px;
 }
+
+  .novalist-gender-badge {
+    background: color-mix(in srgb, var(--novalist-gender-color, var(--background-modifier-border)) 40%, var(--background-modifier-border));
+    color: var(--text-normal);
+  }
 
 .novalist-wizard-actions {
   margin-top: 20px;
