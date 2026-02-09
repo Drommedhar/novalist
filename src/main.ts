@@ -27,6 +27,7 @@ import { LocationSheetView, LOCATION_SHEET_VIEW_TYPE } from './views/LocationShe
 import { CharacterSheetView, CHARACTER_SHEET_VIEW_TYPE } from './views/CharacterSheetView';
 import { StatisticsView, STATISTICS_VIEW_TYPE } from './views/StatisticsView';
 import { ExportView, EXPORT_VIEW_TYPE } from './views/ExportView';
+import { NovalistToolbarManager } from './utils/toolbarUtils';
 
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
 import { RelationshipKeySuggester } from './suggesters/RelationshipKeySuggester';
@@ -45,6 +46,7 @@ export default class NovalistPlugin extends Plugin {
   private lastHoverEntity: string | null = null;
   private hoverTimer: number | null = null;
   public knownRelationshipKeys: Set<string> = new Set();
+  toolbarManager: NovalistToolbarManager;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -106,6 +108,8 @@ export default class NovalistPlugin extends Plugin {
       (leaf) => new ExportView(leaf, this)
     );
 
+
+
     // Command to open current character file in sheet view
     this.addCommand({
       id: 'open-character-sheet',
@@ -137,9 +141,13 @@ export default class NovalistPlugin extends Plugin {
     });
 
     // Add ribbon icon
-    this.addRibbonIcon('book-open', 'Novalist', () => {
+    this.addRibbonIcon('book-open', 'Novalist sidebar', () => {
       void this.activateView();
     });
+
+    // Initialize toolbar manager and apply setting
+    this.toolbarManager = new NovalistToolbarManager(this);
+    this.toolbarManager.update();
 
     // Initialize project structure command
     this.addCommand({
@@ -194,6 +202,8 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
+
+
     // Open focused entity in sidebar (edit mode)
     this.addCommand({
       id: 'open-entity-in-sidebar',
@@ -228,15 +238,6 @@ export default class NovalistPlugin extends Plugin {
       callback: () => {
         this.openChapterDescriptionModal();
       }
-    });
-
-    // Sync roles command
-    this.addCommand({
-        id: 'sync-all-roles',
-        name: 'Sync all chapter info sections',
-        callback: () => {
-            void this.syncAllCharactersChapterInfos();
-        }
     });
 
     // Register settings tab
@@ -530,6 +531,10 @@ export default class NovalistPlugin extends Plugin {
     }
   }
 
+  updateToolbar(): void {
+    this.toolbarManager.update();
+  }
+
   async addRelationshipToFile(file: TFile, relationshipKey: string, sourceName: string): Promise<void> {
     const content = await this.app.vault.read(file);
     const lines = content.split('\n');
@@ -623,15 +628,23 @@ export default class NovalistPlugin extends Plugin {
   }
 
   async activateView(): Promise<void> {
-    this.app.workspace.detachLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE);
+    // Check if sidebar already exists
+    const existing = this.app.workspace.getLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE);
+    if (existing.length > 0) {
+      // Reveal existing sidebar
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
 
+    // Create new sidebar
     const rightLeaf = this.app.workspace.getRightLeaf(false);
     if (rightLeaf) {
         await rightLeaf.setViewState({
             type: NOVELIST_SIDEBAR_VIEW_TYPE,
-            active: false,
+            active: true,
             state: { focus: false }
         });
+        void this.app.workspace.revealLeaf(rightLeaf);
     }
   }
 

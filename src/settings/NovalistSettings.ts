@@ -93,5 +93,6 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
     projectGoal: 50000,
     dailyHistory: []
   },
-  enableBookParagraphSpacing: false
+  enableBookParagraphSpacing: false,
+  enableToolbar: false
 };

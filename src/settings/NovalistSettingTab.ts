@@ -206,6 +206,17 @@ export class NovalistSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName('Show toolbar in tabs')
+      .setDesc('Adds a toolbar with quick action buttons to every tab header.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.enableToolbar)
+        .onChange(async (value) => {
+          this.plugin.settings.enableToolbar = value;
+          await this.plugin.saveSettings();
+          this.plugin.updateToolbar();
+        }));
+
+    new Setting(containerEl)
       .setName('Advanced')
       .setHeading();
 

@@ -20,6 +20,8 @@
   wordCountGoals: WordCountGoals;
   // Book formatting
   enableBookParagraphSpacing: boolean;
+  // Toolbar
+  enableToolbar: boolean;
 }
 
 export interface AutoReplacementPair {
