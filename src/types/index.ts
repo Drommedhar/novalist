@@ -168,6 +168,24 @@ export interface ChapterWordCount {
   wordCount: number;
   charCount: number;
   charCountNoSpaces: number;
+  readability?: ReadabilityScore;
+}
+
+export interface ReadabilityScore {
+  /** Score value (typically 0-100, higher = easier to read) */
+  score: number;
+  /** Interpretation level */
+  level: 'very_easy' | 'easy' | 'moderate' | 'difficult' | 'very_difficult';
+  /** Human-readable description */
+  description: string;
+  /** Average words per sentence */
+  wordsPerSentence: number;
+  /** Average characters per word */
+  charsPerWord: number;
+  /** Total sentences counted */
+  sentenceCount: number;
+  /** Method used for calculation */
+  method: string;
 }
 
 export interface ProjectStatistics {

@@ -2184,3 +2184,139 @@
 .novalist-export-selection-count {
   margin: 0;
 }
+
+
+/* ================================
+   Readability Score Styles
+   ================================ */
+
+.novalist-readability-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.novalist-readability-method {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-style: italic;
+}
+
+.novalist-readability-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.novalist-readability-row:hover {
+  border-color: var(--interactive-accent);
+  background: var(--background-secondary);
+  transform: translateX(2px);
+}
+
+.novalist-readability-name {
+  font-weight: 500;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 12px;
+}
+
+.novalist-readability-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.novalist-readability-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  min-width: 50px;
+  text-align: center;
+}
+
+.novalist-readability-level {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 80px;
+  text-align: right;
+}
+
+.novalist-readability-na {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Readability level colors (used as CSS variables or inline styles) */
+.novalist-readability-very-easy {
+  background-color: #4ade80;
+}
+
+.novalist-readability-easy {
+  background-color: #86efac;
+}
+
+.novalist-readability-moderate {
+  background-color: #fbbf24;
+}
+
+.novalist-readability-difficult {
+  background-color: #fb923c;
+}
+
+.novalist-readability-very-difficult {
+  background-color: #f87171;
+}
+
+/* Tooltip styling for detailed info */
+.novalist-readability-row[aria-label] {
+  position: relative;
+}
+
+.novalist-readability-row:hover::after {
+  content: attr(aria-label);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-normal);
+  white-space: pre-line;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  margin-bottom: 8px;
+  pointer-events: none;
+}
+
+.novalist-readability-row:hover::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: var(--background-modifier-border) transparent transparent transparent;
+  z-index: 100;
+  pointer-events: none;
+}

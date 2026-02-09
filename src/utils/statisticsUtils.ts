@@ -1,6 +1,7 @@
 import { TFile } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { ProjectStatistics, ChapterWordCount, WordCountGoals, DailyWritingGoal } from '../types';
+import { calculateReadability } from './readabilityUtils';
 
 export function countWords(text: string): number {
   // Remove frontmatter
@@ -45,12 +46,16 @@ export async function calculateChapterStats(
   const charCount = countCharacters(content, true);
   const charCountNoSpaces = countCharacters(content, false);
   
+  // Calculate readability using the plugin's configured language
+  const readability = calculateReadability(content, plugin.settings.language);
+  
   return {
     file,
     name: file.basename,
     wordCount,
     charCount,
-    charCountNoSpaces
+    charCountNoSpaces,
+    readability
   };
 }
 

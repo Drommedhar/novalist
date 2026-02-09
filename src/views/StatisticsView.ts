@@ -7,6 +7,11 @@ import {
   calculateDailyProgress,
   calculateProjectProgress
 } from '../utils/statisticsUtils';
+import { 
+  getReadabilityColor, 
+  formatReadabilityScore,
+  ReadabilityScore
+} from '../utils/readabilityUtils';
 
 export const STATISTICS_VIEW_TYPE = 'novalist-statistics';
 
@@ -150,6 +155,75 @@ export class StatisticsView extends ItemView {
     this.createStatCard(statsGrid, 'Reading time', formatReadingTime(stats.estimatedReadingTime), 'clock');
     this.createStatCard(statsGrid, 'Avg chapter', formatWordCount(stats.averageChapterLength), 'align-left');
 
+    // Readability Section
+    const readabilitySection = container.createDiv('novalist-statistics-section');
+    readabilitySection.createEl('h4', { text: 'Readability', cls: 'novalist-statistics-section-title' });
+    
+    if (stats.chapterStats.length === 0) {
+      readabilitySection.createEl('p', { text: 'No chapters found.', cls: 'novalist-empty' });
+    } else {
+      const readabilityList = readabilitySection.createDiv('novalist-readability-list');
+      
+      // Sort by order (filename) for consistency
+      const sortedChapters = [...stats.chapterStats].sort((a, b) => a.name.localeCompare(b.name));
+      
+      // Show method used
+      const firstWithReadability = sortedChapters.find(c => c.readability);
+      if (firstWithReadability?.readability) {
+        readabilityList.createEl('div', { 
+          text: `Using: ${firstWithReadability.readability.method}`,
+          cls: 'novalist-readability-method'
+        });
+      }
+      
+      for (const chapter of sortedChapters) {
+        const row = readabilityList.createDiv('novalist-readability-row');
+        
+        // Chapter name
+        row.createEl('span', { 
+          text: chapter.name, 
+          cls: 'novalist-readability-name' 
+        });
+        
+        // Readability display
+        if (chapter.readability) {
+          const readabilityEl = row.createDiv('novalist-readability-score');
+          
+          // Score badge
+          const badge = readabilityEl.createEl('span', {
+            text: formatReadabilityScore(chapter.readability),
+            cls: 'novalist-readability-badge'
+          });
+          badge.style.backgroundColor = getReadabilityColor(chapter.readability.level);
+          
+          // Level label
+          readabilityEl.createEl('span', {
+            text: this.getLevelLabel(chapter.readability.level),
+            cls: 'novalist-readability-level'
+          });
+          
+          // Tooltip with details
+          row.setAttribute('aria-label', 
+            `${chapter.readability.description}\n` +
+            `${chapter.readability.wordsPerSentence} words/sentence, ` +
+            `${chapter.readability.charsPerWord} chars/word, ` +
+            `${chapter.readability.sentenceCount} sentences`
+          );
+        } else {
+          row.createEl('span', {
+            text: '–',
+            cls: 'novalist-readability-na'
+          });
+        }
+        
+        // Click to open chapter
+        row.addEventListener('click', () => {
+          const leaf = this.app.workspace.getLeaf(false);
+          void leaf.openFile(chapter.file);
+        });
+      }
+    }
+
     // Chapter Breakdown
     const chapterSection = container.createDiv('novalist-statistics-section');
     chapterSection.createEl('h4', { text: 'Chapter breakdown', cls: 'novalist-statistics-section-title' });
@@ -232,6 +306,17 @@ export class StatisticsView extends ItemView {
     
     card.createEl('div', { text: value, cls: 'novalist-stat-value' });
     card.createEl('div', { text: label, cls: 'novalist-stat-label' });
+  }
+
+  private getLevelLabel(level: ReadabilityScore['level']): string {
+    switch (level) {
+      case 'very_easy': return 'Very Easy';
+      case 'easy': return 'Easy';
+      case 'moderate': return 'Moderate';
+      case 'difficult': return 'Difficult';
+      case 'very_difficult': return 'Very Difficult';
+      default: return 'Unknown';
+    }
   }
 
   private createIconElement(name: string): SVGSVGElement {
