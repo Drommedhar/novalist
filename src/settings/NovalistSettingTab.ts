@@ -191,6 +191,21 @@ export class NovalistSettingTab extends PluginSettingTab {
     }
 
     new Setting(containerEl)
+      .setName('Formatting')
+      .setHeading();
+
+    new Setting(containerEl)
+      .setName('Book paragraph spacing')
+      .setDesc('Adds a gap between paragraphs like in printed books. Only works in edit mode.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.enableBookParagraphSpacing)
+        .onChange(async (value) => {
+          this.plugin.settings.enableBookParagraphSpacing = value;
+          await this.plugin.saveSettings();
+          this.plugin.updateBookParagraphSpacing();
+        }));
+
+    new Setting(containerEl)
       .setName('Advanced')
       .setHeading();
 

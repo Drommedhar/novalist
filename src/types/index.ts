@@ -18,6 +18,8 @@
   explorerGroupCollapsed: Record<string, boolean>;
   // Word Count Goals
   wordCountGoals: WordCountGoals;
+  // Book formatting
+  enableBookParagraphSpacing: boolean;
 }
 
 export interface AutoReplacementPair {

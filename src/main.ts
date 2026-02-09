@@ -48,6 +48,9 @@ export default class NovalistPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    
+    // Apply book paragraph spacing if enabled
+    this.updateBookParagraphSpacing();
 
     await this.refreshEntityIndex();
     this.app.workspace.onLayoutReady(() => {
@@ -505,7 +508,8 @@ export default class NovalistPlugin extends Plugin {
   }
 
   onunload(): void {
-    // Standard cleanup
+    // Clean up paragraph spacing class
+    document.body.classList.remove('novalist-book-paragraph-spacing');
   }
 
   async loadSettings(): Promise<void> {
@@ -515,6 +519,15 @@ export default class NovalistPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+  }
+
+  updateBookParagraphSpacing(): void {
+    const body = document.body;
+    if (this.settings.enableBookParagraphSpacing) {
+      body.classList.add('novalist-book-paragraph-spacing');
+    } else {
+      body.classList.remove('novalist-book-paragraph-spacing');
+    }
   }
 
   async addRelationshipToFile(file: TFile, relationshipKey: string, sourceName: string): Promise<void> {

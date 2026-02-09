@@ -2320,3 +2320,44 @@
   z-index: 100;
   pointer-events: none;
 }
+
+
+/* ================================
+   Book Paragraph Spacing Styles
+   ================================ */
+
+/* Body class to toggle book spacing */
+body.novalist-book-paragraph-spacing {
+  --novalist-paragraph-gap: 0.75em;
+}
+
+/* ========================================
+   EDIT MODE (CM6 Editor) ONLY
+   ======================================== */
+
+/* CM6 editor lines - these are the actual paragraph lines */
+body.novalist-book-paragraph-spacing .cm-editor .cm-line {
+  padding-bottom: var(--novalist-paragraph-gap) !important;
+  margin-bottom: 0 !important;
+}
+
+/* Empty lines should not add extra space */
+body.novalist-book-paragraph-spacing .cm-editor .cm-line:empty,
+body.novalist-book-paragraph-spacing .cm-editor .cm-line.cm-empty-line {
+  padding-bottom: 0 !important;
+  min-height: 1em;
+}
+
+/* Hard line breaks (Shift+Enter) should not have paragraph spacing */
+body.novalist-book-paragraph-spacing .cm-editor .cm-line[dir="ltr"] {
+  /* Ensure direction doesn't affect spacing */
+}
+
+/* ========================================
+   LEGACY SOURCE MODE (CodeMirror 5)
+   ======================================== */
+
+body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
+  padding-bottom: var(--novalist-paragraph-gap) !important;
+  line-height: 1.8 !important;
+}
