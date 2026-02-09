@@ -213,6 +213,38 @@ export class NovalistSettingTab extends PluginSettingTab {
                 this.plugin.settings.enableCustomExplorer = value;
                 await this.plugin.saveSettings();
             }));
+
+    new Setting(containerEl)
+      .setName('Writing goals')
+      .setHeading();
+
+    new Setting(containerEl)
+      .setName('Daily word goal')
+      .setDesc('Target number of words to write per day.')
+      .addText(text => text
+        .setPlaceholder('1000')
+        .setValue(String(this.plugin.settings.wordCountGoals.dailyGoal))
+        .onChange(async (value) => {
+          const num = parseInt(value, 10);
+          if (!isNaN(num) && num > 0) {
+            this.plugin.settings.wordCountGoals.dailyGoal = num;
+            await this.plugin.saveSettings();
+          }
+        }));
+
+    new Setting(containerEl)
+      .setName('Project word goal')
+      .setDesc('Target total word count for the entire novel.')
+      .addText(text => text
+        .setPlaceholder('50000')
+        .setValue(String(this.plugin.settings.wordCountGoals.projectGoal))
+        .onChange(async (value) => {
+          const num = parseInt(value, 10);
+          if (!isNaN(num) && num > 0) {
+            this.plugin.settings.wordCountGoals.projectGoal = num;
+            await this.plugin.saveSettings();
+          }
+        }));
   }
 
   private async renderRoleColorSettings(containerEl: HTMLElement): Promise<void> {

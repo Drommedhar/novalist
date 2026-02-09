@@ -10,9 +10,15 @@
     "verify": "npm run build && npm run lint"
   },
   "dependencies": {
+    "@xmldom/xmldom": "^0.8.11",
     "cytoscape": "^3.33.1",
     "cytoscape-fcose": "^2.2.0",
-    "obsidian": "^1.11.4"
+    "docx": "^9.5.1",
+    "epub-gen": "^0.1.0",
+    "file-saver": "^2.0.5",
+    "jszip": "^3.10.1",
+    "obsidian": "^1.11.4",
+    "pdf-lib": "^1.17.1"
   },
   "eslint-plugin-eslint-comments": "^3.2.0",
   "devDependencies": {

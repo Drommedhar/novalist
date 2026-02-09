@@ -25,6 +25,9 @@ import { NovalistExplorerView, NOVELIST_EXPLORER_VIEW_TYPE } from './views/Noval
 import { CharacterMapView, CHARACTER_MAP_VIEW_TYPE } from './views/CharacterMapView';
 import { LocationSheetView, LOCATION_SHEET_VIEW_TYPE } from './views/LocationSheetView';
 import { CharacterSheetView, CHARACTER_SHEET_VIEW_TYPE } from './views/CharacterSheetView';
+import { StatisticsView, STATISTICS_VIEW_TYPE } from './views/StatisticsView';
+import { ExportView, EXPORT_VIEW_TYPE } from './views/ExportView';
+
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
 import { RelationshipKeySuggester } from './suggesters/RelationshipKeySuggester';
 import { ImageSuggester } from './suggesters/ImageSuggester';
@@ -86,6 +89,18 @@ export default class NovalistPlugin extends Plugin {
     this.registerView(
       LOCATION_SHEET_VIEW_TYPE,
       (leaf) => new LocationSheetView(leaf, this)
+    );
+
+    // Register statistics view
+    this.registerView(
+      STATISTICS_VIEW_TYPE,
+      (leaf) => new StatisticsView(leaf, this)
+    );
+
+    // Register export view
+    this.registerView(
+      EXPORT_VIEW_TYPE,
+      (leaf) => new ExportView(leaf, this)
     );
 
     // Command to open current character file in sheet view
@@ -155,6 +170,24 @@ export default class NovalistPlugin extends Plugin {
       name: 'Open character map',
       callback: () => {
         void this.activateCharacterMapView();
+      }
+    });
+
+    // Open statistics view
+    this.addCommand({
+      id: 'open-statistics',
+      name: 'Open project statistics',
+      callback: () => {
+        void this.activateStatisticsView();
+      }
+    });
+
+    // Open export view
+    this.addCommand({
+      id: 'open-export',
+      name: 'Export novel',
+      callback: () => {
+        void this.activateExportView();
       }
     });
 
@@ -616,6 +649,38 @@ export default class NovalistPlugin extends Plugin {
     const leaf = this.app.workspace.getLeaf('tab');
     await leaf.setViewState({
       type: CHARACTER_MAP_VIEW_TYPE,
+      active: true
+    });
+
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async activateStatisticsView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(STATISTICS_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: STATISTICS_VIEW_TYPE,
+      active: true
+    });
+
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async activateExportView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(EXPORT_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: EXPORT_VIEW_TYPE,
       active: true
     });
 

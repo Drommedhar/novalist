@@ -16,6 +16,8 @@
   roleColors: Record<string, string>;
   genderColors: Record<string, string>;
   explorerGroupCollapsed: Record<string, boolean>;
+  // Word Count Goals
+  wordCountGoals: WordCountGoals;
 }
 
 export interface AutoReplacementPair {
@@ -157,4 +159,38 @@ export interface LocationSheetData {
   relationships: LocationRelationship[]; // Kept for compatibility or future use, though UI removed
   customProperties: Record<string, string>;
   sections: CharacterSheetSection[]; // Reuse section structure
+}
+
+// Word Count & Statistics
+export interface ChapterWordCount {
+  file: TFile;
+  name: string;
+  wordCount: number;
+  charCount: number;
+  charCountNoSpaces: number;
+}
+
+export interface ProjectStatistics {
+  totalWords: number;
+  totalChapters: number;
+  totalCharacters: number;
+  totalLocations: number;
+  estimatedReadingTime: number; // in minutes
+  averageChapterLength: number;
+  longestChapter: ChapterWordCount | null;
+  shortestChapter: ChapterWordCount | null;
+  chapterStats: ChapterWordCount[];
+}
+
+export interface DailyWritingGoal {
+  date: string; // YYYY-MM-DD
+  targetWords: number;
+  actualWords: number;
+}
+
+export interface WordCountGoals {
+  dailyGoal: number;
+  projectGoal: number;
+  deadline?: string; // YYYY-MM-DD
+  dailyHistory: DailyWritingGoal[];
 }

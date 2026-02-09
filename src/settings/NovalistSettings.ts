@@ -87,5 +87,10 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   startupWizardShown: false,
   roleColors: {},
   genderColors: {},
-  explorerGroupCollapsed: {}
+  explorerGroupCollapsed: {},
+  wordCountGoals: {
+    dailyGoal: 1000,
+    projectGoal: 50000,
+    dailyHistory: []
+  }
 };
