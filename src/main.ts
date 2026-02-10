@@ -19,7 +19,8 @@ import {
   LocationData,
   ChapterListData,
   CharacterListData,
-  LocationListData
+  LocationListData,
+  ChapterStatus
 } from './types';
 import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS } from './settings/NovalistSettings';
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
@@ -225,8 +226,6 @@ export default class NovalistPlugin extends Plugin {
         void this.activatePlotBoardView();
       }
     });
-
-
 
     // Add new character command
     this.addCommand({
@@ -1263,12 +1262,12 @@ order: ${orderValue}
     }
   }
 
-  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; file: TFile }>> {
+  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }>> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; file: TFile }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }> = [];
     for (const file of files) {
       const content = await this.app.vault.read(file);
       const { frontmatter, body } = this.extractFrontmatterAndBody(content);
@@ -1276,10 +1275,12 @@ order: ${orderValue}
         ? frontmatter.guid.trim()
         : file.basename;
       const title = this.extractTitle(body) || file.basename;
+      const status = (frontmatter.status as ChapterStatus) || 'outline';
       chapters.push({
         id: guid,
         name: title,
         order: Number(frontmatter.order) || 999,
+        status,
         file
       });
     }
@@ -1300,20 +1301,22 @@ order: ${orderValue}
     }));
   }
 
-  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; file: TFile }> {
+  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; file: TFile }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }> = [];
     for (const file of files) {
       const cache = this.app.metadataCache.getFileCache(file);
       const frontmatter = cache?.frontmatter || {};
       const heading = cache?.headings?.find(h => h.level === 1)?.heading;
+      const status = (frontmatter.status as ChapterStatus) || 'outline';
       chapters.push({
         id: typeof frontmatter.guid === 'string' && frontmatter.guid.trim() ? frontmatter.guid.trim() : file.basename,
         name: heading || file.basename,
         order: Number(frontmatter.order) || 999,
+        status,
         file
       });
     }
@@ -1336,6 +1339,14 @@ order: ${orderValue}
       const nextFrontmatter = this.serializeFrontmatter(frontmatter);
       await this.app.vault.modify(file, nextFrontmatter + body);
     }
+  }
+
+  async updateChapterStatus(file: TFile, status: ChapterStatus): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const { frontmatter, body } = this.extractFrontmatterAndBody(content);
+    frontmatter.status = status;
+    const nextFrontmatter = this.serializeFrontmatter(frontmatter);
+    await this.app.vault.modify(file, nextFrontmatter + body);
   }
 
   detectCharacterRole(content: string, frontmatter: Record<string, string>): string {

@@ -130,6 +130,17 @@ export interface LocationListData {
 }
 
 // Character Sheet Data Structure
+// ─── Chapter Status ─────────────────────────────────────────────────
+export type ChapterStatus = 'outline' | 'first-draft' | 'revised' | 'edited' | 'final';
+
+export const CHAPTER_STATUSES: { value: ChapterStatus; label: string; icon: string; color: string }[] = [
+  { value: 'outline',     label: 'Outline',     icon: '○', color: 'var(--text-faint)' },
+  { value: 'first-draft', label: 'First draft',  icon: '◔', color: 'var(--text-warning, #e0a040)' },
+  { value: 'revised',     label: 'Revised',      icon: '◑', color: 'var(--text-accent)' },
+  { value: 'edited',      label: 'Edited',       icon: '◕', color: 'var(--interactive-accent)' },
+  { value: 'final',       label: 'Final',        icon: '●', color: 'var(--text-success, #40c060)' },
+];
+
 export interface CharacterRelationship {
   role: string;
   character: string; // wikilink format [[Name]]
@@ -153,6 +164,14 @@ export interface CharacterChapterOverride {
   age?: string;
   role?: string;
   faceShot?: string; // deprecated
+  // Physical attributes
+  eyeColor?: string;
+  hairColor?: string;
+  hairLength?: string;
+  height?: string;
+  build?: string;
+  skinTone?: string;
+  distinguishingFeatures?: string;
   images?: CharacterImage[];
   relationships?: CharacterRelationship[];
   customProperties?: Record<string, string>;
@@ -165,6 +184,14 @@ export interface CharacterSheetData {
   age: string;
   role: string;
   faceShot: string; // wikilink to image (deprecated, kept for compatibility)
+  // Physical attributes
+  eyeColor: string;
+  hairColor: string;
+  hairLength: string;
+  height: string;
+  build: string;
+  skinTone: string;
+  distinguishingFeatures: string;
   images: CharacterImage[]; // Multiple named images
   relationships: CharacterRelationship[];
   customProperties: Record<string, string>;

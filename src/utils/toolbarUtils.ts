@@ -1,8 +1,11 @@
+import { MarkdownView, TFile } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { CHAPTER_STATUSES, type ChapterStatus } from '../types';
 
 export class NovalistToolbarManager {
   private plugin: NovalistPlugin;
   private observer: MutationObserver | null = null;
+  private eventRefs: Array<{ unload: () => void }> = [];
 
   constructor(plugin: NovalistPlugin) {
     this.plugin = plugin;
@@ -14,6 +17,7 @@ export class NovalistToolbarManager {
   enable(): void {
     this.injectAll();
     this.startObserving();
+    this.startListeningForLeafChanges();
   }
 
   /**
@@ -21,6 +25,7 @@ export class NovalistToolbarManager {
    */
   disable(): void {
     this.stopObserving();
+    this.stopListeningForLeafChanges();
     this.removeAll();
   }
 
@@ -44,6 +49,37 @@ export class NovalistToolbarManager {
 
   private removeAll(): void {
     document.querySelectorAll('.novalist-view-toolbar').forEach(el => el.remove());
+  }
+
+  private startListeningForLeafChanges(): void {
+    // Update chapter status dropdowns whenever the active leaf or file changes
+    const ref1 = this.plugin.app.workspace.on('active-leaf-change', () => {
+      this.refreshAllChapterDropdowns();
+    });
+    const ref2 = this.plugin.app.workspace.on('file-open', () => {
+      this.refreshAllChapterDropdowns();
+    });
+    this.plugin.registerEvent(ref1);
+    this.plugin.registerEvent(ref2);
+    // Keep refs so we can conceptually track them (Obsidian handles cleanup via registerEvent)
+    this.eventRefs.push(
+      { unload: () => this.plugin.app.workspace.offref(ref1) },
+      { unload: () => this.plugin.app.workspace.offref(ref2) }
+    );
+  }
+
+  private stopListeningForLeafChanges(): void {
+    for (const ref of this.eventRefs) {
+      ref.unload();
+    }
+    this.eventRefs = [];
+  }
+
+  /** Re-render the chapter status dropdown in every injected toolbar. */
+  private refreshAllChapterDropdowns(): void {
+    document.querySelectorAll('.novalist-view-toolbar').forEach(toolbar => {
+      this.updateChapterDropdown(toolbar as HTMLElement);
+    });
   }
 
   private startObserving(): void {
@@ -92,6 +128,9 @@ export class NovalistToolbarManager {
 
     // Insert at the start of header, positioned absolutely
     header.prepend(toolbar);
+
+    // Initial update for chapter dropdown
+    this.updateChapterDropdown(toolbar);
   }
 
   private renderToolbar(container: HTMLElement): void {
@@ -121,11 +160,108 @@ export class NovalistToolbarManager {
     this.createButton(viewsGroup, 'table', 'Plot board', () => {
       void this.plugin.activatePlotBoardView();
     });
-
-    // Tools group
-    const toolsGroup = container.createDiv('novalist-view-toolbar-group');
-    this.createButton(toolsGroup, 'download', 'Export', () => {
+    this.createButton(viewsGroup, 'download', 'Export', () => {
       void this.plugin.activateExportView();
+    });
+
+    // Chapter status placeholder — filled dynamically by updateChapterDropdown
+    container.createDiv('novalist-chapter-status-slot');
+  }
+
+  /**
+   * Determine which TFile (if any) the toolbar's parent view-header displays.
+   * Walk the DOM to the workspace-leaf, then match it against Obsidian leaves.
+   */
+  private getFileForToolbar(toolbar: HTMLElement): TFile | null {
+    const leafEl = toolbar.closest('.workspace-leaf');
+    if (!leafEl) return null;
+
+    let found: TFile | null = null;
+    this.plugin.app.workspace.iterateAllLeaves(leaf => {
+      if (found) return;
+      if ((leaf as unknown as { containerEl: HTMLElement }).containerEl === leafEl) {
+        const view = leaf.view;
+        if (view instanceof MarkdownView && view.file) {
+          found = view.file;
+        }
+      }
+    });
+    return found;
+  }
+
+  /** Check whether a file lives inside the chapter folder. */
+  private isChapterFile(file: TFile): boolean {
+    const root = this.plugin.settings.projectPath;
+    const folder = `${root}/${this.plugin.settings.chapterFolder}/`;
+    return file.path.startsWith(folder) && file.extension === 'md';
+  }
+
+  /**
+   * Show or hide the chapter-status dropdown inside a given toolbar.
+   * Called once on injection and again on every leaf / file change.
+   */
+  private updateChapterDropdown(toolbar: HTMLElement): void {
+    const slot = toolbar.querySelector('.novalist-chapter-status-slot');
+    if (!slot) return;
+
+    // Clear previous contents
+    slot.innerHTML = '';
+
+    const file = this.getFileForToolbar(toolbar);
+    if (!file || !this.isChapterFile(file)) return;
+
+    // Read current status from frontmatter cache
+    const cache = this.plugin.app.metadataCache.getFileCache(file);
+    const currentStatus: ChapterStatus =
+      (cache?.frontmatter?.status as ChapterStatus) || 'outline';
+    const currentDef = CHAPTER_STATUSES.find(s => s.value === currentStatus) || CHAPTER_STATUSES[0];
+
+    const wrapper = (slot as HTMLElement).createDiv('novalist-chapter-status-dropdown');
+
+    // Current value button
+    const btn = wrapper.createEl('button', {
+      cls: 'novalist-chapter-status-btn',
+      attr: { 'aria-label': `Chapter status: ${currentDef.label}` }
+    });
+    btn.createEl('span', { text: currentDef.icon, cls: 'novalist-chapter-status-btn-icon' });
+    btn.setCssProps({ '--status-color': currentDef.color });
+    btn.createEl('span', { text: currentDef.label, cls: 'novalist-chapter-status-btn-label' });
+
+    // Dropdown menu (hidden by default via CSS, toggled via class)
+    const menu = wrapper.createDiv('novalist-chapter-status-menu is-hidden');
+
+    for (const statusDef of CHAPTER_STATUSES) {
+      const option = menu.createDiv({
+        cls: `novalist-chapter-status-option${statusDef.value === currentStatus ? ' is-active' : ''}`
+      });
+      option.createEl('span', { text: statusDef.icon });
+      option.createEl('span', { text: statusDef.label });
+      option.setCssProps({ '--status-color': statusDef.color });
+
+      option.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.addClass('is-hidden');
+        void this.plugin.updateChapterStatus(file, statusDef.value).then(() => {
+          this.refreshAllChapterDropdowns();
+        });
+      });
+    }
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.toggleClass('is-hidden', !menu.hasClass('is-hidden'));
+    });
+
+    // Close menu when clicking outside
+    const closeHandler = (e: MouseEvent) => {
+      if (!wrapper.contains(e.target as Node)) {
+        menu.addClass('is-hidden');
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    btn.addEventListener('click', () => {
+      // Defer so this click doesn't immediately close
+      setTimeout(() => document.addEventListener('click', closeHandler), 0);
     });
   }
 
@@ -156,6 +292,8 @@ export class NovalistToolbarManager {
       'bar-chart-2': '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
       'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
       'table': '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
+      'clock': '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+      'shield-check': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
       'refresh-cw': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>'
     };
 

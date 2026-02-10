@@ -7,7 +7,7 @@
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { normalizeCharacterRole } from '../utils/characterUtils';
-import { ChapterListData, CharacterListData, LocationListData } from '../types';
+import { ChapterListData, CharacterListData, LocationListData, CHAPTER_STATUSES, ChapterStatus } from '../types';
 
 export const NOVELIST_EXPLORER_VIEW_TYPE = 'novalist-explorer';
 
@@ -85,12 +85,14 @@ export class NovalistExplorerView extends ItemView {
     const list = container.createDiv('novalist-explorer-list');
 
     if (this.activeTab === 'chapters') {
-      const chapters = (await this.plugin.getChapterDescriptions()).map((chapter) => ({
+      const chapters = await this.plugin.getChapterDescriptions();
+      const chapterItems = chapters.map((chapter) => ({
         name: chapter.name,
         order: chapter.order,
+        status: chapter.status,
         file: chapter.file
       }));
-      this.renderChapterList(list, chapters, 'No chapters found.');
+      this.renderChapterList(list, chapterItems, 'No chapters found.');
       return;
     }
 
@@ -122,7 +124,7 @@ export class NovalistExplorerView extends ItemView {
 
   private renderChapterList(
     list: HTMLElement,
-    items: ChapterListData[],
+    items: (ChapterListData & { status?: ChapterStatus })[],
     emptyMessage: string
   ) {
     if (items.length === 0) {
@@ -134,6 +136,16 @@ export class NovalistExplorerView extends ItemView {
       const row = list.createDiv('novalist-explorer-item');
       row.setAttribute('draggable', 'true');
       row.createEl('span', { text: `${index + 1}. ${item.name}`, cls: 'novalist-explorer-label' });
+
+      // Status icon (right side, read-only indicator)
+      const status = item.status || 'outline';
+      const statusDef = CHAPTER_STATUSES.find(s => s.value === status) || CHAPTER_STATUSES[0];
+      const statusIcon = row.createEl('span', {
+        text: statusDef.icon,
+        cls: 'novalist-chapter-status-icon',
+        attr: { title: statusDef.label, 'aria-label': statusDef.label }
+      });
+      statusIcon.style.color = statusDef.color;
 
       row.addEventListener('click', () => {
         void this.openFileInExplorer(item.file);

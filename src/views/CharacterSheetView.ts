@@ -184,6 +184,13 @@ export class CharacterSheetView extends TextFileView {
     age: '',
     role: 'Side',
     faceShot: '',
+    eyeColor: '',
+    hairColor: '',
+    hairLength: '',
+    height: '',
+    build: '',
+    skinTone: '',
+    distinguishingFeatures: '',
     relationships: [],
     customProperties: {},
     sections: [],
@@ -317,6 +324,7 @@ export class CharacterSheetView extends TextFileView {
     this.renderImagesSection(rightCol);
 
     // Full width sections below
+    this.renderPhysicalAttributesSection(this.contentContainer);
     this.renderRelationshipsSection(this.contentContainer);
     this.renderCustomPropertiesSection(this.contentContainer);
     if (!this.enableOverrides) {
@@ -438,6 +446,54 @@ export class CharacterSheetView extends TextFileView {
           void this.populateDatalist(roleDatalist, this.getKnownRoles(value));
         });
       });
+  }
+
+  private renderPhysicalAttributesSection(container: HTMLElement): void {
+    const section = container.createDiv('character-sheet-section');
+    section.createEl('h3', { text: 'Physical attributes', cls: 'character-sheet-section-title' });
+
+    const row1 = section.createDiv('character-sheet-row');
+    new Setting(row1).setName('Eye color').addText(t => {
+      t.setValue(this.getEffectiveValue('eyeColor'));
+      t.setPlaceholder('Blue, hazel, etc.');
+      t.onChange(v => this.setEffectiveValue('eyeColor', v));
+    });
+    new Setting(row1).setName('Hair color').addText(t => {
+      t.setValue(this.getEffectiveValue('hairColor'));
+      t.setPlaceholder('Black, auburn, etc.');
+      t.onChange(v => this.setEffectiveValue('hairColor', v));
+    });
+
+    const row2 = section.createDiv('character-sheet-row');
+    new Setting(row2).setName('Hair length').addText(t => {
+      t.setValue(this.getEffectiveValue('hairLength'));
+      t.setPlaceholder('Shoulder-length, buzz cut, etc.');
+      t.onChange(v => this.setEffectiveValue('hairLength', v));
+    });
+    new Setting(row2).setName('Height').addText(t => {
+      t.setValue(this.getEffectiveValue('height'));
+      t.setPlaceholder("5'10, 178cm, tall, etc.");
+      t.onChange(v => this.setEffectiveValue('height', v));
+    });
+
+    const row3 = section.createDiv('character-sheet-row');
+    new Setting(row3).setName('Build').addText(t => {
+      t.setValue(this.getEffectiveValue('build'));
+      t.setPlaceholder('Athletic, slender, etc.');
+      t.onChange(v => this.setEffectiveValue('build', v));
+    });
+    new Setting(row3).setName('Skin tone').addText(t => {
+      t.setValue(this.getEffectiveValue('skinTone'));
+      t.setPlaceholder('Olive, fair, dark, etc.');
+      t.onChange(v => this.setEffectiveValue('skinTone', v));
+    });
+
+    const row4 = section.createDiv('character-sheet-row');
+    new Setting(row4).setName('Distinguishing features').addText(t => {
+      t.setValue(this.getEffectiveValue('distinguishingFeatures'));
+      t.setPlaceholder('Scar on left cheek, etc.');
+      t.onChange(v => this.setEffectiveValue('distinguishingFeatures', v));
+    });
   }
 
   private async populateDatalist(
@@ -1078,6 +1134,13 @@ export class CharacterSheetView extends TextFileView {
       if (override.age) details.push(`age: ${override.age}`);
       if (override.gender) details.push(`gender: ${override.gender}`);
       if (override.role) details.push(`role: ${override.role}`);
+      if (override.eyeColor) details.push(`eyes: ${override.eyeColor}`);
+      if (override.hairColor) details.push(`hair: ${override.hairColor}`);
+      if (override.hairLength) details.push(`hair length: ${override.hairLength}`);
+      if (override.height) details.push(`height: ${override.height}`);
+      if (override.build) details.push(`build: ${override.build}`);
+      if (override.skinTone) details.push(`skin: ${override.skinTone}`);
+      if (override.distinguishingFeatures) details.push(`features: ${override.distinguishingFeatures}`);
       if (override.relationships) details.push(`relationships: ${override.relationships.length}`);
       
       if (details.length > 0) {
