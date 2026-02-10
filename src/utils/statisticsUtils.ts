@@ -8,8 +8,7 @@ export function countWords(text: string): number {
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
   // Remove markdown syntax
   const cleanText = withoutFrontmatter
-    // eslint-disable-next-line no-useless-escape -- Regex needs these escapes
-    .replace(/[#*_\[\]()|`\-]/g, '')
+    .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -23,8 +22,7 @@ export function countWords(text: string): number {
 export function countCharacters(text: string, includeSpaces = true): number {
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
   const cleanText = withoutFrontmatter
-    // eslint-disable-next-line no-useless-escape -- Regex needs these escapes
-    .replace(/[#*_\[\]()|`]/g, '')
+    .replace(/[#*_[\]()|`]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1');
   
   if (includeSpaces) {

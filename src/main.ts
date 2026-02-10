@@ -25,7 +25,6 @@ import { NovalistExplorerView, NOVELIST_EXPLORER_VIEW_TYPE } from './views/Noval
 import { CharacterMapView, CHARACTER_MAP_VIEW_TYPE } from './views/CharacterMapView';
 import { LocationSheetView, LOCATION_SHEET_VIEW_TYPE } from './views/LocationSheetView';
 import { CharacterSheetView, CHARACTER_SHEET_VIEW_TYPE } from './views/CharacterSheetView';
-import { StatisticsView, STATISTICS_VIEW_TYPE } from './views/StatisticsView';
 import { ExportView, EXPORT_VIEW_TYPE } from './views/ExportView';
 import { NovalistToolbarManager } from './utils/toolbarUtils';
 
@@ -45,6 +44,9 @@ import {
   nextAnnotationColor,
   type AnnotationCallbacks
 } from './cm/annotationExtension';
+import { statisticsPanelExtension, type StatisticsPanelConfig, type ChapterOverviewStat } from './cm/statisticsPanelExtension';
+import { countWords, getTodayDate, getOrCreateDailyGoal } from './utils/statisticsUtils';
+import { calculateReadability } from './utils/readabilityUtils';
 import type { CommentThread, CommentMessage } from './types';
 
 export default class NovalistPlugin extends Plugin {
@@ -56,6 +58,8 @@ export default class NovalistPlugin extends Plugin {
   public knownRelationshipKeys: Set<string> = new Set();
   toolbarManager: NovalistToolbarManager;
   private annotationExtension: import('@codemirror/state').Extension | null = null;
+  private cachedProjectOverview = { totalWords: 0, totalChapters: 0, totalCharacters: 0, totalLocations: 0, readingTime: 0, avgChapter: 0, chapters: [] as ChapterOverviewStat[] };
+  private projectWordsCacheTimer: number | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -105,12 +109,6 @@ export default class NovalistPlugin extends Plugin {
       (leaf) => new LocationSheetView(leaf, this)
     );
 
-    // Register statistics view
-    this.registerView(
-      STATISTICS_VIEW_TYPE,
-      (leaf) => new StatisticsView(leaf, this)
-    );
-
     // Register export view
     this.registerView(
       EXPORT_VIEW_TYPE,
@@ -119,6 +117,9 @@ export default class NovalistPlugin extends Plugin {
 
     // Register annotation CM6 extension
     this.setupAnnotationExtension();
+
+    // Register statistics bottom panel CM6 extension
+    this.setupStatisticsPanel();
 
     // Command to open current character file in sheet view
     this.addCommand({
@@ -191,15 +192,6 @@ export default class NovalistPlugin extends Plugin {
       name: 'Open character map',
       callback: () => {
         void this.activateCharacterMapView();
-      }
-    });
-
-    // Open statistics view
-    this.addCommand({
-      id: 'open-statistics',
-      name: 'Open project statistics',
-      callback: () => {
-        void this.activateStatisticsView();
       }
     });
 
@@ -685,22 +677,6 @@ export default class NovalistPlugin extends Plugin {
     const leaf = this.app.workspace.getLeaf('tab');
     await leaf.setViewState({
       type: CHARACTER_MAP_VIEW_TYPE,
-      active: true
-    });
-
-    void this.app.workspace.revealLeaf(leaf);
-  }
-
-  async activateStatisticsView(): Promise<void> {
-    const existing = this.app.workspace.getLeavesOfType(STATISTICS_VIEW_TYPE);
-    if (existing.length > 0) {
-      void this.app.workspace.revealLeaf(existing[0]);
-      return;
-    }
-
-    const leaf = this.app.workspace.getLeaf('tab');
-    await leaf.setViewState({
-      type: STATISTICS_VIEW_TYPE,
       active: true
     });
 
@@ -1426,8 +1402,8 @@ order: ${orderValue}
 
   async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; file: TFile }>> {
     const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.chapterFolder}`;
-    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder));
+    const folder = `${root}/${this.settings.chapterFolder}/`;
+    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
     const chapters: Array<{ id: string; name: string; order: number; file: TFile }> = [];
     for (const file of files) {
@@ -1463,8 +1439,8 @@ order: ${orderValue}
 
   getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; file: TFile }> {
     const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.chapterFolder}`;
-    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder));
+    const folder = `${root}/${this.settings.chapterFolder}/`;
+    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
     const chapters: Array<{ id: string; name: string; order: number; file: TFile }> = [];
     for (const file of files) {
@@ -1515,8 +1491,8 @@ order: ${orderValue}
 
   async getCharacterList(): Promise<CharacterListData[]> {
     const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.characterFolder}`;
-    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder));
+    const folder = `${root}/${this.settings.characterFolder}/`;
+    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
     const chars: CharacterListData[] = [];
     for (const file of files) {
@@ -1647,8 +1623,8 @@ order: ${orderValue}
 
   getLocationList(): LocationListData[] {
     const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.locationFolder}`;
-    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder));
+    const folder = `${root}/${this.settings.locationFolder}/`;
+    const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
     return files.map((file) => ({
       name: file.basename,
@@ -2145,32 +2121,32 @@ order: ${orderValue}
 
   isChapterFile(file: TFile): boolean {
     const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.chapterFolder}`;
+    const folder = `${root}/${this.settings.chapterFolder}/`;
     return file.path.startsWith(folder);
   }
 
   isChapterPath(path: string): boolean {
       const root = this.settings.projectPath;
       if (!root) return false;
-      const folder = `${root}/${this.settings.chapterFolder}`;
+      const folder = `${root}/${this.settings.chapterFolder}/`;
       return path.startsWith(folder);
   }
 
   isTemplateFile(file: TFile): boolean {
     const root = this.settings.projectPath;
-    const folder = `${root}/Templates`;
+    const folder = `${root}/Templates/`;
     return file.path.startsWith(folder);
   }
 
   isCharacterFile(file: TFile): boolean {
     const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.characterFolder}`;
+    const folder = `${root}/${this.settings.characterFolder}/`;
     return file.path.startsWith(folder) && file.extension === 'md';
   }
 
   isLocationFile(file: TFile): boolean {
     const root = this.settings.projectPath;
-    const folder = `${root}/${this.settings.locationFolder}`;
+    const folder = `${root}/${this.settings.locationFolder}/`;
     return file.path.startsWith(folder) && file.extension === 'md';
   }
 
@@ -2383,6 +2359,124 @@ order: ${orderValue}
         this.debouncedAnnotationSync();
       })
     );
+  }
+
+  private setupStatisticsPanel(): void {
+    const config: StatisticsPanelConfig = {
+      language: this.settings.language,
+      getGoals: () => this.settings.wordCountGoals,
+      getProjectOverview: () => this.cachedProjectOverview
+    };
+    this.registerEditorExtension(statisticsPanelExtension(config));
+
+    // Defer initial computation until the workspace & cache are ready
+    this.app.workspace.onLayoutReady(() => {
+      this.refreshProjectWordCount();
+    });
+    // Also refresh once more after metadata cache has resolved everything
+    this.registerEvent(this.app.metadataCache.on('resolved', () => {
+      this.refreshProjectWordCount();
+    }));
+    // Refresh periodically
+    this.registerInterval(
+      window.setInterval(() => this.refreshProjectWordCount(), 30000)
+    );
+    // Also refresh on file changes
+    this.registerEvent(this.app.vault.on('modify', () => {
+      if (this.projectWordsCacheTimer) clearTimeout(this.projectWordsCacheTimer);
+      this.projectWordsCacheTimer = setTimeout(() => {
+        this.refreshProjectWordCount();
+      }, 3000) as unknown as number;
+    }));
+    // Refresh on file create/delete (chapter/character/location added/removed)
+    this.registerEvent(this.app.vault.on('create', () => {
+      this.refreshProjectWordCount();
+    }));
+    this.registerEvent(this.app.vault.on('delete', () => {
+      this.refreshProjectWordCount();
+    }));
+  }
+
+  private refreshProjectWordCount(): void {
+    const chapters = this.getChapterDescriptionsSync();
+    const charFolder = `${this.settings.projectPath}/${this.settings.characterFolder}/`;
+    const characterCount = this.app.vault.getFiles()
+      .filter(f => f.path.startsWith(charFolder) && f.extension === 'md')
+      .length;
+    const locationCount = this.getLocationList().length;
+
+    let totalWords = 0;
+    const vault = this.app.vault;
+    let remaining = chapters.length;
+    const chapterCount = chapters.length;
+
+    if (remaining === 0) {
+      this.cachedProjectOverview = {
+        totalWords: 0, totalChapters: 0, totalCharacters: characterCount,
+        totalLocations: locationCount, readingTime: 0, avgChapter: 0, chapters: []
+      };
+      return;
+    }
+
+    const chapterStats: ChapterOverviewStat[] = [];
+
+    for (const ch of chapters) {
+      void vault.cachedRead(ch.file).then(content => {
+        const words = countWords(content);
+        totalWords += words;
+        const readability = calculateReadability(content, this.settings.language);
+        chapterStats.push({
+          name: ch.name,
+          words,
+          readability: readability.score > 0 ? readability : null
+        });
+        remaining--;
+        if (remaining === 0) {
+          // Sort by name for consistent display
+          chapterStats.sort((a, b) => a.name.localeCompare(b.name));
+          const avg = chapterCount > 0 ? Math.round(totalWords / chapterCount) : 0;
+          this.cachedProjectOverview = {
+            totalWords,
+            totalChapters: chapterCount,
+            totalCharacters: characterCount,
+            totalLocations: locationCount,
+            readingTime: Math.ceil(totalWords / 200),
+            avgChapter: avg,
+            chapters: chapterStats
+          };
+          this.updateDailyWordCount(totalWords);
+        }
+      });
+    }
+  }
+
+  private updateDailyWordCount(totalWords: number): void {
+    const today = getTodayDate();
+    const goals = this.settings.wordCountGoals;
+    const todayGoal = getOrCreateDailyGoal(goals, today);
+
+    // Day changed → snapshot current total as the new baseline
+    if (goals.dailyBaselineDate !== today) {
+      goals.dailyBaselineWords = totalWords;
+      goals.dailyBaselineDate = today;
+      todayGoal.actualWords = 0;
+      void this.saveSettings();
+      return;
+    }
+
+    // Baseline not set (legacy data) → infer from saved progress
+    if (goals.dailyBaselineWords == null) {
+      goals.dailyBaselineWords = totalWords - todayGoal.actualWords;
+      void this.saveSettings();
+      return;
+    }
+
+    // Normal update: words today = total now minus baseline at start of day
+    const wordsToday = Math.max(0, totalWords - goals.dailyBaselineWords);
+    if (todayGoal.actualWords !== wordsToday) {
+      todayGoal.actualWords = wordsToday;
+      void this.saveSettings();
+    }
   }
 
   private annotationSyncTimer: number | null = null;

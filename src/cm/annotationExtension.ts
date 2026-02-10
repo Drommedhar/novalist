@@ -1,4 +1,3 @@
-// eslint-disable-next-line import/no-extraneous-dependencies -- provided by Obsidian at runtime
 import {
   StateField,
   StateEffect,
@@ -7,7 +6,6 @@ import {
   type Extension,
   type EditorState
 } from '@codemirror/state';
-// eslint-disable-next-line import/no-extraneous-dependencies -- provided by Obsidian at runtime
 import {
   Decoration,
   ViewPlugin,

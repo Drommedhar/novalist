@@ -121,9 +121,6 @@ export class NovalistToolbarManager {
 
     // Tools group
     const toolsGroup = container.createDiv('novalist-view-toolbar-group');
-    this.createButton(toolsGroup, 'bar-chart-2', 'Stats', () => {
-      void this.plugin.activateStatisticsView();
-    });
     this.createButton(toolsGroup, 'download', 'Export', () => {
       void this.plugin.activateExportView();
     });

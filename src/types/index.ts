@@ -237,4 +237,7 @@ export interface WordCountGoals {
   projectGoal: number;
   deadline?: string; // YYYY-MM-DD
   dailyHistory: DailyWritingGoal[];
+  /** Persisted baseline for daily tracking (survives restarts). */
+  dailyBaselineWords?: number;
+  dailyBaselineDate?: string;
 }

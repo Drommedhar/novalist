@@ -1,5 +1,3 @@
-/* eslint-disable no-undef -- temporary debugging */
-// eslint-disable-next-line import/no-extraneous-dependencies -- provided by Obsidian at runtime
 import {
   StateField,
   StateEffect,
@@ -8,7 +6,6 @@ import {
   type Extension,
   type EditorState
 } from '@codemirror/state';
-// eslint-disable-next-line import/no-extraneous-dependencies -- provided by Obsidian at runtime
 import {
   Decoration,
   ViewPlugin,
@@ -163,7 +160,6 @@ function removeAnnotationTooltip(): void {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- temporarily disabled for debugging
 function showAnnotationTooltip(view: EditorView): void {
   const sel = view.state.selection.main;
   if (sel.empty) { removeAnnotationTooltip(); return; }
@@ -548,7 +544,6 @@ class AnnotationPanelPlugin implements PluginValue {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- temporarily disabled for debugging
 const annotationPanelPlugin = ViewPlugin.fromClass(AnnotationPanelPlugin);
 
 // ─── Public: create the full extension ─────────────────────────────

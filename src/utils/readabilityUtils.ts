@@ -1,4 +1,3 @@
-/* eslint-disable no-useless-escape -- Regex needs these escapes for character class */
 /**
  * Readability scoring utilities that work across multiple languages.
  * 
@@ -47,7 +46,7 @@ export function countSentences(text: string): number {
   
   // Remove markdown
   const cleanText = withoutFrontmatter
-    .replace(/[#*_\[\]()|`\-]/g, '')
+    .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -70,7 +69,7 @@ export function countSentences(text: string): number {
 export function countWords(text: string): number {
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
   const cleanText = withoutFrontmatter
-    .replace(/[#*_\[\]()|`\-]/g, '')
+    .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -85,7 +84,7 @@ export function countWords(text: string): number {
 export function countChars(text: string): number {
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
   const cleanText = withoutFrontmatter
-    .replace(/[#*_\[\]()|`\-]/g, '')
+    .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1');
   
   // Only count letters and numbers
@@ -100,7 +99,7 @@ export function countChars(text: string): number {
 export function estimateSyllables(text: string, language?: LanguageKey): number {
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
   const cleanText = withoutFrontmatter
-    .replace(/[#*_\[\]()|`\-]/g, '')
+    .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -440,17 +439,17 @@ export function calculateReadability(
 export function getReadabilityColor(level: ReadabilityScore['level']): string {
   switch (level) {
     case 'very_easy':
-      return '#4ade80'; // Green
+      return '#16a34a'; // Green (dimmed)
     case 'easy':
-      return '#86efac'; // Light green
+      return '#22863a'; // Muted green
     case 'moderate':
-      return '#fbbf24'; // Amber
+      return '#b08800'; // Dark amber
     case 'difficult':
-      return '#fb923c'; // Orange
+      return '#c05621'; // Dark orange
     case 'very_difficult':
-      return '#f87171'; // Red
+      return '#b91c1c'; // Dark red
     default:
-      return '#9ca3af'; // Gray
+      return '#6b7280'; // Gray
   }
 }
 

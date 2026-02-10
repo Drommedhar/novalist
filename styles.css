@@ -1735,250 +1735,6 @@
 }
 
 
-/* ============================================
-   STATISTICS VIEW STYLES
-   ============================================ */
-
-.novalist-statistics {
-  padding: 20px;
-  overflow-y: auto;
-  height: 100%;
-}
-
-.novalist-statistics-header {
-  margin: 0 0 15px 0;
-  padding-bottom: 10px;
-  border-bottom: 2px solid var(--interactive-accent);
-  color: var(--text-normal);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.novalist-statistics-actions {
-  margin-bottom: 15px;
-}
-
-.novalist-statistics-section {
-  margin-bottom: 25px;
-  background: var(--background-secondary);
-  border-radius: 10px;
-  padding: 15px;
-}
-
-.novalist-statistics-section-title {
-  margin: 0 0 15px 0;
-  font-size: 18px;
-  color: var(--text-accent);
-  font-weight: 600;
-}
-
-/* Goal Cards */
-.novalist-goal-card {
-  background: var(--background-primary);
-  border-radius: 8px;
-  padding: 12px 15px;
-  margin-bottom: 12px;
-  border: 1px solid var(--background-modifier-border);
-}
-
-.novalist-goal-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-  font-weight: 600;
-}
-
-.novalist-goal-numbers {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-normal);
-  margin-bottom: 10px;
-}
-
-.novalist-progress-bar {
-  height: 8px;
-  background: var(--background-modifier-border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.novalist-progress-fill {
-  height: 100%;
-  background: var(--interactive-accent);
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.novalist-progress-fill.novalist-progress-complete {
-  background: var(--color-green);
-}
-
-.novalist-goal-settings {
-  display: flex;
-  gap: 10px;
-  margin-top: 15px;
-}
-
-.novalist-goal-input {
-  flex: 1;
-}
-
-.novalist-goal-input input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  background: var(--background-primary);
-  color: var(--text-normal);
-}
-
-/* Stats Grid */
-.novalist-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 12px;
-}
-
-.novalist-stat-card {
-  background: var(--background-primary);
-  border-radius: 10px;
-  padding: 15px;
-  text-align: center;
-  border: 1px solid var(--background-modifier-border);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.novalist-stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.novalist-stat-icon {
-  color: var(--interactive-accent);
-  margin-bottom: 10px;
-  display: flex;
-  justify-content: center;
-}
-
-.novalist-stat-icon svg {
-  width: 24px;
-  height: 24px;
-}
-
-.novalist-stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--text-normal);
-  margin-bottom: 5px;
-}
-
-.novalist-stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* Chapter Stats List */
-.novalist-chapter-stats-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.novalist-chapter-stats-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  background: var(--background-primary);
-  border-radius: 8px;
-  border: 1px solid var(--background-modifier-border);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.novalist-chapter-stats-row:hover {
-  background: var(--background-primary-alt);
-}
-
-.novalist-chapter-stats-name {
-  flex: 1;
-  font-weight: 500;
-  color: var(--text-normal);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.novalist-chapter-stats-count {
-  font-size: 13px;
-  color: var(--text-muted);
-  min-width: 80px;
-  text-align: right;
-}
-
-.novalist-chapter-stats-bar-container {
-  width: 100px;
-  height: 6px;
-  background: var(--background-modifier-border);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.novalist-chapter-stats-bar {
-  height: 100%;
-  background: var(--interactive-accent);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-/* Extremes Grid */
-.novalist-extremes-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-
-.novalist-extreme-card {
-  background: var(--background-primary);
-  border-radius: 8px;
-  padding: 12px;
-  text-align: center;
-  border: 1px solid var(--background-modifier-border);
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.novalist-extreme-card:hover {
-  background: var(--background-primary-alt);
-}
-
-.novalist-extreme-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-  margin-bottom: 5px;
-}
-
-.novalist-extreme-name {
-  font-weight: 600;
-  color: var(--text-normal);
-  margin-bottom: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.novalist-extreme-value {
-  font-size: 13px;
-  color: var(--text-accent);
-}
-
 /* Empty State */
 .novalist-empty {
   text-align: center;
@@ -2998,4 +2754,231 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 @keyframes novalist-annotation-slide-in {
   from { opacity: 0; transform: translateX(12px); }
   to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ============================================
+   STATISTICS BOTTOM PANEL (CM6)
+   ============================================ */
+.novalist-stats-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 12px;
+  background: var(--background-secondary);
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  flex-wrap: wrap;
+  min-height: 24px;
+}
+
+.novalist-stats-panel-left,
+.novalist-stats-panel-mid,
+.novalist-stats-panel-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.novalist-stats-panel-left {
+  flex: 1 1 0;
+  justify-content: flex-start;
+}
+
+.novalist-stats-panel-mid {
+  flex: 0 0 auto;
+  justify-content: center;
+  border-left: 1px solid var(--background-modifier-border);
+  border-right: 1px solid var(--background-modifier-border);
+  padding: 0 10px;
+}
+
+.novalist-stats-panel-right {
+  flex: 1 1 0;
+  justify-content: flex-end;
+}
+
+.novalist-stats-panel-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.novalist-stats-panel-dim {
+  opacity: 0.6;
+}
+
+.novalist-stats-panel-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-faint);
+}
+
+.novalist-stats-panel-icon > .svg-icon,
+.novalist-stats-panel-icon > svg {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+}
+
+.novalist-stats-panel-readability-badge {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 10px;
+  color: #fff;
+  margin-right: 3px;
+  line-height: 1.6;
+}
+
+.novalist-stats-panel-goal {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.novalist-stats-panel-goal-label {
+  font-size: 10px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.novalist-stats-panel-bar {
+  width: 50px;
+  height: 4px;
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.novalist-stats-panel-bar-fill {
+  height: 100%;
+  background: var(--interactive-accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.novalist-stats-panel-bar-fill.novalist-stats-panel-bar-complete {
+  background: var(--color-green);
+}
+
+/* Clickable middle section */
+.novalist-stats-panel-clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+.novalist-stats-panel-clickable:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* ── Chapter breakdown popup ── */
+.novalist-stats-popup {
+  position: fixed;
+  z-index: 1000;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  padding: 10px 12px;
+  min-width: 300px;
+  max-width: 460px;
+  max-height: 360px;
+  overflow-y: auto;
+  font-size: 12px;
+  animation: novalist-stats-popup-in 0.12s ease;
+}
+
+@keyframes novalist-stats-popup-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.novalist-stats-popup-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: var(--text-normal);
+}
+
+.novalist-stats-popup-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 8px 0;
+}
+
+.novalist-stats-popup-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.novalist-stats-popup-table th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  padding: 2px 6px 4px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.novalist-stats-popup-table td {
+  padding: 4px 6px 4px 0;
+  border-bottom: 1px solid var(--background-modifier-border-hover, var(--background-modifier-border));
+  vertical-align: middle;
+}
+
+.novalist-stats-popup-table tr:last-child td {
+  border-bottom: none;
+}
+
+.novalist-stats-popup-name {
+  font-weight: 500;
+  color: var(--text-normal);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.novalist-stats-popup-words {
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.novalist-stats-popup-bar {
+  display: inline-block;
+  width: 40px;
+  height: 4px;
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.novalist-stats-popup-bar-fill {
+  height: 100%;
+  background: var(--interactive-accent);
+  border-radius: 2px;
+}
+
+.novalist-stats-popup-read {
+  white-space: nowrap;
+}
+
+.novalist-stats-popup-level {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 3px;
+}
+
+.novalist-stats-popup-na {
+  color: var(--text-faint);
 }

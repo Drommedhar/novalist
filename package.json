@@ -20,6 +20,10 @@
     "obsidian": "^1.11.4",
     "pdf-lib": "^1.17.1"
   },
+  "peerDependencies": {
+    "@codemirror/state": "*",
+    "@codemirror/view": "*"
+  },
   "eslint-plugin-eslint-comments": "^3.2.0",
   "devDependencies": {
     "@types/cytoscape": "^3.21.9",
