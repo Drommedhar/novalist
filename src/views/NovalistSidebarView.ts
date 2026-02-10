@@ -7,6 +7,7 @@
 import type NovalistPlugin from '../main';
 import { CharacterData, CharacterChapterInfo, LocationData } from '../types';
 import { normalizeCharacterRole } from '../utils/characterUtils';
+import { t } from '../i18n';
 
 export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
 
@@ -25,7 +26,7 @@ export class NovalistSidebarView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'Novalist context';
+    return t('sidebar.displayName');
   }
 
   getIcon(): string {
@@ -60,7 +61,7 @@ export class NovalistSidebarView extends ItemView {
     container.addClass('novalist-sidebar');
 
     // Header
-    container.createEl('h3', { text: 'Novalist context', cls: 'novalist-sidebar-header' });
+    container.createEl('h3', { text: t('sidebar.displayName'), cls: 'novalist-sidebar-header' });
 
     // Tabs
     const tabs = container.createDiv('novalist-tabs');
@@ -70,8 +71,8 @@ export class NovalistSidebarView extends ItemView {
     };
 
     const tabOrder: Array<{ id: 'actions' | 'context'; label: string }> = [
-      { id: 'actions', label: 'Actions' },
-      { id: 'context', label: 'Overview' }
+      { id: 'actions', label: t('sidebar.actions') },
+      { id: 'context', label: t('sidebar.overview') }
     ];
 
     for (const tab of tabOrder) {
@@ -84,27 +85,27 @@ export class NovalistSidebarView extends ItemView {
 
     if (this.activeTab === 'actions') {
       const actionsSection = container.createDiv('novalist-section');
-      actionsSection.createEl('h4', { text: 'Quick actions', cls: 'novalist-section-title' });
+      actionsSection.createEl('h4', { text: t('sidebar.quickActions'), cls: 'novalist-section-title' });
 
       const btnContainer = actionsSection.createDiv('novalist-actions');
 
       new ButtonComponent(btnContainer)
-        .setButtonText('Add character')
+        .setButtonText(t('sidebar.addCharacter'))
         .onClick(() => this.plugin.openCharacterModal());
 
       new ButtonComponent(btnContainer)
-        .setButtonText('Add location')
+        .setButtonText(t('sidebar.addLocation'))
         .onClick(() => this.plugin.openLocationModal());
 
       new ButtonComponent(btnContainer)
-        .setButtonText('Add chapter')
+        .setButtonText(t('sidebar.addChapter'))
         .onClick(() => this.plugin.openChapterDescriptionModal());
 
       return;
     }
 
     if (!this.currentChapterFile) {
-      container.createEl('p', { text: 'Open a chapter file to see context.', cls: 'novalist-empty' });
+      container.createEl('p', { text: t('sidebar.openChapter'), cls: 'novalist-empty' });
       return;
     }
 
@@ -133,7 +134,7 @@ export class NovalistSidebarView extends ItemView {
 
       if (characterItems.length > 0) {
         const charSection = contextContent.createDiv('novalist-overview-section');
-        charSection.createEl('div', { text: 'Characters', cls: 'novalist-overview-section-title' });
+        charSection.createEl('div', { text: t('sidebar.characters'), cls: 'novalist-overview-section-title' });
 
         const charList = charSection.createDiv('novalist-overview-list');
         for (const itemData of characterItems) {
@@ -163,17 +164,17 @@ export class NovalistSidebarView extends ItemView {
                 '--novalist-gender-text': 'var(--text-on-accent)'
               });
             }
-            pill.createEl('span', { text: 'Gender', cls: 'novalist-overview-pill-label' });
+            pill.createEl('span', { text: t('sidebar.gender'), cls: 'novalist-overview-pill-label' });
             pill.createEl('span', { text: gender, cls: 'novalist-overview-pill-value' });
           }
           if (age) {
             const pill = props.createDiv('novalist-overview-pill');
-            pill.createEl('span', { text: 'Age', cls: 'novalist-overview-pill-label' });
+            pill.createEl('span', { text: t('sidebar.age'), cls: 'novalist-overview-pill-label' });
             pill.createEl('span', { text: age, cls: 'novalist-overview-pill-value' });
           }
           if (relationship) {
             const pill = props.createDiv('novalist-overview-pill');
-            pill.createEl('span', { text: 'Rel', cls: 'novalist-overview-pill-label' });
+            pill.createEl('span', { text: t('sidebar.rel'), cls: 'novalist-overview-pill-label' });
             pill.createEl('span', { text: relationship, cls: 'novalist-overview-pill-value' });
           }
 
@@ -199,7 +200,7 @@ export class NovalistSidebarView extends ItemView {
 
       if (locationItems.length > 0) {
         const locSection = contextContent.createDiv('novalist-overview-section');
-        locSection.createEl('div', { text: 'Locations', cls: 'novalist-overview-section-title' });
+        locSection.createEl('div', { text: t('sidebar.locations'), cls: 'novalist-overview-section-title' });
 
         const locList = locSection.createDiv('novalist-overview-list');
         for (const locData of locationItems) {

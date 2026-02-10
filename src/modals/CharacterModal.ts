@@ -5,6 +5,7 @@
   ButtonComponent
 } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { t } from '../i18n';
 
 export class CharacterModal extends Modal {
   plugin: NovalistPlugin;
@@ -20,27 +21,27 @@ export class CharacterModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     
-    contentEl.createEl('h2', { text: 'Create new character' });
+    contentEl.createEl('h2', { text: t('modal.createCharacter') });
     
     // Name
     new Setting(contentEl)
-      .setName('Name')
+      .setName(t('modal.name'))
       .addText(text => text.onChange(value => this.name = value));
     
     // Surname
     new Setting(contentEl)
-      .setName('Surname')
+      .setName(t('modal.surname'))
       .addText(text => text.onChange(value => this.surname = value));
     
     // Buttons
     const buttonDiv = contentEl.createDiv('modal-button-container');
     
     new ButtonComponent(buttonDiv)
-      .setButtonText('Cancel')
+      .setButtonText(t('modal.cancel'))
       .onClick(() => this.close());
     
     new ButtonComponent(buttonDiv)
-      .setButtonText('Create')
+      .setButtonText(t('modal.create'))
       .setCta()
       .onClick(async () => {
         await this.plugin.createCharacter(

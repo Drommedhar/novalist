@@ -1,4 +1,6 @@
-﻿export interface NovalistSettings {
+﻿import { t } from '../i18n';
+
+export interface NovalistSettings {
   projectPath: string;
   autoReplacements: AutoReplacementPair[];
   language: LanguageKey;
@@ -134,11 +136,11 @@ export interface LocationListData {
 export type ChapterStatus = 'outline' | 'first-draft' | 'revised' | 'edited' | 'final';
 
 export const CHAPTER_STATUSES: { value: ChapterStatus; label: string; icon: string; color: string }[] = [
-  { value: 'outline',     label: 'Outline',     icon: '○', color: 'var(--text-faint)' },
-  { value: 'first-draft', label: 'First draft',  icon: '◔', color: 'var(--text-warning, #e0a040)' },
-  { value: 'revised',     label: 'Revised',      icon: '◑', color: 'var(--text-accent)' },
-  { value: 'edited',      label: 'Edited',       icon: '◕', color: 'var(--interactive-accent)' },
-  { value: 'final',       label: 'Final',        icon: '●', color: 'var(--text-success, #40c060)' },
+  { value: 'outline',     get label() { return t('status.outline'); },     icon: '○', color: 'var(--text-faint)' },
+  { value: 'first-draft', get label() { return t('status.firstDraft'); },  icon: '◔', color: 'var(--text-warning, #e0a040)' },
+  { value: 'revised',     get label() { return t('status.revised'); },     icon: '◑', color: 'var(--text-accent)' },
+  { value: 'edited',      get label() { return t('status.edited'); },      icon: '◕', color: 'var(--interactive-accent)' },
+  { value: 'final',       get label() { return t('status.final'); },       icon: '●', color: 'var(--text-success, #40c060)' },
 ];
 
 export interface CharacterRelationship {

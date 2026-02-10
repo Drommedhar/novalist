@@ -1,4 +1,5 @@
 import { App } from 'obsidian';
+import { t } from '../i18n';
 
 export interface TourStep {
     selector: string;
@@ -99,10 +100,10 @@ export class TourGuide {
 
         const btnContainer = bubble.createDiv('novalist-tour-buttons');
 
-        const skipBtn = btnContainer.createEl('button', { text: 'Skip tour' });
+        const skipBtn = btnContainer.createEl('button', { text: t('tour.skip') });
         skipBtn.onclick = () => this.end();
 
-        const nextBtn = btnContainer.createEl('button', { text: this.currentStepIndex === this.steps.length - 1 ? 'Finish' : 'Next' });
+        const nextBtn = btnContainer.createEl('button', { text: this.currentStepIndex === this.steps.length - 1 ? t('tour.finish') : t('tour.next') });
         nextBtn.addClass('mod-cta');
         nextBtn.onclick = () => this.next();
 

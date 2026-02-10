@@ -1,6 +1,7 @@
 import { MarkdownView, TFile } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { CHAPTER_STATUSES, type ChapterStatus } from '../types';
+import { t } from '../i18n';
 
 export class NovalistToolbarManager {
   private plugin: NovalistPlugin;
@@ -136,31 +137,31 @@ export class NovalistToolbarManager {
   private renderToolbar(container: HTMLElement): void {
     // Create group
     const createGroup = container.createDiv('novalist-view-toolbar-group');
-    this.createButton(createGroup, 'user-plus', 'Add character', () => {
+    this.createButton(createGroup, 'user-plus', t('toolbar.addCharacter'), () => {
       this.plugin.openCharacterModal();
     });
-    this.createButton(createGroup, 'map-pin', 'Add location', () => {
+    this.createButton(createGroup, 'map-pin', t('toolbar.addLocation'), () => {
       this.plugin.openLocationModal();
     });
-    this.createButton(createGroup, 'file-plus', 'Add chapter', () => {
+    this.createButton(createGroup, 'file-plus', t('toolbar.addChapter'), () => {
       this.plugin.openChapterDescriptionModal();
     });
 
     // Views group
     const viewsGroup = container.createDiv('novalist-view-toolbar-group');
-    this.createButton(viewsGroup, 'folder-tree', 'Explorer', () => {
+    this.createButton(viewsGroup, 'folder-tree', t('toolbar.explorer'), () => {
       void this.plugin.activateExplorerView(true);
     });
-    this.createButton(viewsGroup, 'panel-right', 'Sidebar', () => {
+    this.createButton(viewsGroup, 'panel-right', t('toolbar.sidebar'), () => {
       void this.plugin.activateView();
     });
-    this.createButton(viewsGroup, 'git-graph', 'Map', () => {
+    this.createButton(viewsGroup, 'git-graph', t('toolbar.map'), () => {
       void this.plugin.activateCharacterMapView();
     });
-    this.createButton(viewsGroup, 'table', 'Plot board', () => {
+    this.createButton(viewsGroup, 'table', t('toolbar.plotBoard'), () => {
       void this.plugin.activatePlotBoardView();
     });
-    this.createButton(viewsGroup, 'download', 'Export', () => {
+    this.createButton(viewsGroup, 'download', t('toolbar.export'), () => {
       void this.plugin.activateExportView();
     });
 
@@ -221,7 +222,7 @@ export class NovalistToolbarManager {
     // Current value button
     const btn = wrapper.createEl('button', {
       cls: 'novalist-chapter-status-btn',
-      attr: { 'aria-label': `Chapter status: ${currentDef.label}` }
+      attr: { 'aria-label': t('toolbar.chapterStatus', { label: currentDef.label }) }
     });
     btn.createEl('span', { text: currentDef.icon, cls: 'novalist-chapter-status-btn-icon' });
     btn.setCssProps({ '--status-color': currentDef.color });

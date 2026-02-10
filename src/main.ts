@@ -43,6 +43,7 @@ import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole } from './utils/characterUtils';
 import { parseCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
 import { parseLocationSheet } from './utils/locationSheetUtils';
+import { initLocale, t } from './i18n';
 import {
   annotationExtension,
   setThreadsEffect,
@@ -68,6 +69,7 @@ export default class NovalistPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    initLocale();
     
     // Apply book paragraph spacing if enabled
     this.updateBookParagraphSpacing();
@@ -138,7 +140,7 @@ export default class NovalistPlugin extends Plugin {
     // Command to open current character file in sheet view
     this.addCommand({
       id: 'open-character-sheet',
-      name: 'Open character sheet view',
+      name: t('cmd.openCharacterSheet'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         const canRun = file instanceof TFile && this.isCharacterFile(file);
@@ -153,7 +155,7 @@ export default class NovalistPlugin extends Plugin {
     // Command to open current location file in sheet view
     this.addCommand({
       id: 'open-location-sheet',
-      name: 'Open location sheet view',
+      name: t('cmd.openLocationSheet'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         const canRun = file instanceof TFile && this.isLocationFile(file);
@@ -166,7 +168,7 @@ export default class NovalistPlugin extends Plugin {
     });
 
     // Add ribbon icon
-    this.addRibbonIcon('book-open', 'Novalist sidebar', () => {
+    this.addRibbonIcon('book-open', t('ribbon.sidebar'), () => {
       void this.activateView();
     });
 
@@ -177,7 +179,7 @@ export default class NovalistPlugin extends Plugin {
     // Initialize project structure command
     this.addCommand({
       id: 'initialize-novel-project',
-      name: 'Initialize novel project structure',
+      name: t('cmd.initProject'),
       callback: () => {
         new StartupWizardModal(this.app, this).open();
       }
@@ -186,7 +188,7 @@ export default class NovalistPlugin extends Plugin {
     // Open sidebar command
     this.addCommand({
       id: 'open-context-sidebar',
-      name: 'Open context sidebar',
+      name: t('cmd.openSidebar'),
       callback: () => {
         void this.activateView();
       }
@@ -195,7 +197,7 @@ export default class NovalistPlugin extends Plugin {
     // Open custom explorer command
     this.addCommand({
       id: 'open-custom-explorer',
-      name: 'Open custom explorer',
+      name: t('cmd.openExplorer'),
       callback: () => {
         void this.activateExplorerView(true);
       }
@@ -203,7 +205,7 @@ export default class NovalistPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-character-map',
-      name: 'Open character map',
+      name: t('cmd.openCharacterMap'),
       callback: () => {
         void this.activateCharacterMapView();
       }
@@ -212,7 +214,7 @@ export default class NovalistPlugin extends Plugin {
     // Open export view
     this.addCommand({
       id: 'open-export',
-      name: 'Export novel',
+      name: t('cmd.export'),
       callback: () => {
         void this.activateExportView();
       }
@@ -221,7 +223,7 @@ export default class NovalistPlugin extends Plugin {
     // Open plot board
     this.addCommand({
       id: 'open-plot-board',
-      name: 'Open plot board',
+      name: t('cmd.openPlotBoard'),
       callback: () => {
         void this.activatePlotBoardView();
       }
@@ -230,7 +232,7 @@ export default class NovalistPlugin extends Plugin {
     // Add new character command
     this.addCommand({
       id: 'add-character',
-      name: 'Add new character',
+      name: t('cmd.addCharacter'),
       callback: () => {
         this.openCharacterModal();
       }
@@ -239,7 +241,7 @@ export default class NovalistPlugin extends Plugin {
     // Add new location command
     this.addCommand({
       id: 'add-location',
-      name: 'Add new location',
+      name: t('cmd.addLocation'),
       callback: () => {
         this.openLocationModal();
       }
@@ -248,7 +250,7 @@ export default class NovalistPlugin extends Plugin {
     // Add new chapter command
     this.addCommand({
       id: 'add-chapter-description',
-      name: 'Add new chapter',
+      name: t('cmd.addChapter'),
       callback: () => {
         this.openChapterDescriptionModal();
       }
@@ -438,7 +440,7 @@ export default class NovalistPlugin extends Plugin {
     }
 
     await this.app.vault.modify(file, lines.join('\n'));
-    new Notice(`Updated relationships in ${file.basename}`);
+    new Notice(t('notice.updatedRelationships', { name: file.basename }));
   }
 
   async learnRelationshipPair(keyA: string, keyB: string): Promise<void> {
@@ -582,7 +584,7 @@ export default class NovalistPlugin extends Plugin {
   async initializeProjectStructure(): Promise<void> {
     const root = this.settings.projectPath;
     if (!root) {
-      new Notice('Please set a project path in settings first.');
+      new Notice(t('notice.setProjectPath'));
       return;
     }
 
@@ -602,7 +604,7 @@ export default class NovalistPlugin extends Plugin {
     }
 
     await this.createTemplateFiles();
-    new Notice('Novel project structure initialized.');
+    new Notice(t('notice.projectInitialized'));
   }
 
   async createTemplateFiles(): Promise<void> {
@@ -678,7 +680,7 @@ export default class NovalistPlugin extends Plugin {
     const path = `${folder}/${fileName}.md`;
 
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new Notice('Character already exists.');
+      new Notice(t('notice.characterExists'));
       return;
     }
 
@@ -705,7 +707,7 @@ export default class NovalistPlugin extends Plugin {
     ].join('\n');
 
     await this.app.vault.create(path, content);
-    new Notice(`Character ${fileName} created.`);
+    new Notice(t('notice.characterCreated', { name: fileName }));
   }
 
   async createLocation(name: string, description: string): Promise<void> {
@@ -714,7 +716,7 @@ export default class NovalistPlugin extends Plugin {
     const path = `${folder}/${name}.md`;
 
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new Notice('Location already exists.');
+      new Notice(t('notice.locationExists'));
       return;
     }
 
@@ -730,7 +732,7 @@ ${description}
 `;
 
     await this.app.vault.create(path, content);
-    new Notice(`Location ${name} created.`);
+    new Notice(t('notice.locationCreated', { name }));
   }
 
   async createChapter(name: string, order: string): Promise<void> {
@@ -739,7 +741,7 @@ ${description}
     const path = `${folder}/${name}.md`;
 
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new Notice('Chapter already exists.');
+      new Notice(t('notice.chapterExists'));
       return;
     }
 
@@ -761,7 +763,7 @@ order: ${orderValue}
 `;
 
     await this.app.vault.create(path, content);
-    new Notice(`Chapter ${name} created.`);
+    new Notice(t('notice.chapterCreated', { name }));
   }
 
   openCharacterModal(): void {
@@ -1455,7 +1457,7 @@ order: ${orderValue}
 
     await this.app.vault.modify(file, newContent);
     
-    new Notice(`Updated ${file.basename} role to ${trimmedRole || 'Unassigned'}`);
+    new Notice(t('notice.updatedRole', { name: file.basename, role: trimmedRole || t('general.unassigned') }));
   }
 
   serializeFrontmatter(fm: Record<string, string | number>): string {
@@ -2537,7 +2539,7 @@ order: ${orderValue}
     this.settings.commentThreads.push(thread);
     void this.saveSettings();
     this.syncAnnotationThreads();
-    new Notice('Comment added — type your message in the panel');
+    new Notice(t('notice.commentAdded'));
   }
 
   addCommentMessage(threadId: string, content: string): void {

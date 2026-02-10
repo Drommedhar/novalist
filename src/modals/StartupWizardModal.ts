@@ -1,8 +1,9 @@
 import { App, Modal, Setting, setIcon } from 'obsidian';
 import NovalistPlugin from '../main';
 import { TourGuide } from '../utils/TourGuide';
-import { LANGUAGE_LABELS, LANGUAGE_DEFAULTS, cloneAutoReplacements } from '../settings/NovalistSettings';
+import { getLanguageLabels, LANGUAGE_DEFAULTS, cloneAutoReplacements } from '../settings/NovalistSettings';
 import { LanguageKey } from '../types';
+import { t } from '../i18n';
 
 export class StartupWizardModal extends Modal {
   plugin: NovalistPlugin;
@@ -36,16 +37,16 @@ export class StartupWizardModal extends Modal {
     const hero = contentEl.createDiv('novalist-wizard-hero');
     const iconContainer = hero.createDiv('novalist-wizard-icon');
     setIcon(iconContainer, 'book-open');
-    hero.createEl('h2').setText('Welcome to ' + 'Novalist');
-    hero.createEl('p').setText('The all-in-one novel writing environment for Obsidian.');
+    hero.createEl('h2').setText(t('wizard.welcomeTitle'));
+    hero.createEl('p').setText(t('wizard.welcomeSubtitle'));
 
     const featuresGrid = contentEl.createDiv('novalist-wizard-features');
 
     const features = [
-        { icon: 'users', title: 'Characters', desc: 'Track roles, relationships and details.' },
-        { icon: 'map-pin', title: 'Locations', desc: 'Organize the world of your story.' },
-        { icon: 'book', title: 'Chapters', desc: 'Plan and write scenes efficiently.' },
-        { icon: 'quote', title: 'Smart quotes', desc: 'Auto-format dialogue as you type.' }
+        { icon: 'users', title: t('wizard.featureCharacters'), desc: t('wizard.featureCharactersDesc') },
+        { icon: 'map-pin', title: t('wizard.featureLocations'), desc: t('wizard.featureLocationsDesc') },
+        { icon: 'book', title: t('wizard.featureChapters'), desc: t('wizard.featureChaptersDesc') },
+        { icon: 'quote', title: t('wizard.featureSmartQuotes'), desc: t('wizard.featureSmartQuotesDesc') }
     ];
 
     features.forEach(f => {
@@ -61,7 +62,7 @@ export class StartupWizardModal extends Modal {
 
     new Setting(btnContainer)
       .addButton(btn => btn
-        .setButtonText('Next: setup project')
+        .setButtonText(t('wizard.nextSetup'))
         .setCta()
         .onClick(() => {
           this.currentStep++;
@@ -72,13 +73,13 @@ export class StartupWizardModal extends Modal {
   displaySetup() {
     const { contentEl } = this;
     
-    contentEl.createEl('h2').setText('Setup');
-    contentEl.createEl('p', { text: 'Let\'s get your project folder and settings ready.' });
+    contentEl.createEl('h2').setText(t('wizard.setupTitle'));
+    contentEl.createEl('p', { text: t('wizard.setupDesc') });
 
     // Project Path Setting
     new Setting(contentEl)
-      .setName('Project ' + 'folder')
-      .setDesc('Values ' + 'default to "NovelProject"')
+      .setName(t('wizard.projectFolder'))
+      .setDesc(t('wizard.projectFolderDesc'))
       .addText(text => text
         .setValue(this.plugin.settings.projectPath)
         .onChange(async (value) => {
@@ -88,10 +89,10 @@ export class StartupWizardModal extends Modal {
 
     // Language Setting
     new Setting(contentEl)
-      .setName('Dialogue language / style')
-      .setDesc('Choose your preferred quotation style for dialogues.')
+      .setName(t('wizard.dialogueLanguage'))
+      .setDesc(t('wizard.dialogueLanguageDesc'))
       .addDropdown(dropdown => {
-        Object.entries(LANGUAGE_LABELS).forEach(([key, label]) => {
+        Object.entries(getLanguageLabels()).forEach(([key, label]) => {
           dropdown.addOption(key, label);
         });
         dropdown.setValue(this.plugin.settings.language);
@@ -111,7 +112,7 @@ export class StartupWizardModal extends Modal {
 
     new Setting(btnContainer)
       .addButton(btn => btn
-        .setButtonText('Back')
+        .setButtonText(t('wizard.back'))
         .onClick(() => {
           this.currentStep--;
           this.display();
@@ -119,7 +120,7 @@ export class StartupWizardModal extends Modal {
 
     new Setting(btnContainer)
       .addButton(btn => btn
-        .setButtonText('Initialize project & next')
+        .setButtonText(t('wizard.initAndNext'))
         .setCta()
         .onClick(async () => {
           await this.plugin.initializeProjectStructure();
@@ -134,27 +135,27 @@ export class StartupWizardModal extends Modal {
     const hero = contentEl.createDiv('novalist-wizard-hero');
     const iconContainer = hero.createDiv('novalist-wizard-icon');
     setIcon(iconContainer, 'check-circle');
-    hero.createEl('h2').setText('You are all set!');
-    hero.createEl('p').setText('Your project structure has been initialized.');
+    hero.createEl('h2').setText(t('wizard.allSet'));
+    hero.createEl('p').setText(t('wizard.projectInitialized'));
 
-    contentEl.createEl('h3', { text: 'Next steps' });
+    contentEl.createEl('h3', { text: t('wizard.nextSteps') });
     
     const ol = contentEl.createEl('ol');
     ol.addClass('novalist-tutorial-list');
     
-    ol.createEl('li', { text: 'Use the "Novalist: ' + 'initialize novel project structure" command if you ever need to recreate folders.' });
-    ol.createEl('li', { text: 'Use the sidebar (book icon) or commands to create characters and locations.' });
-    ol.createEl('li').setText('Create chapters in your chapter folder.');
-    ol.createEl('li', { text: 'Type quote characters like \' to see auto-replacement in action.' });
+    ol.createEl('li', { text: t('wizard.tipRecreate') });
+    ol.createEl('li', { text: t('wizard.tipSidebar') });
+    ol.createEl('li').setText(t('wizard.tipChapters'));
+    ol.createEl('li', { text: t('wizard.tipQuotes') });
 
-    contentEl.createDiv('novalist-tutorial-final-msg').setText('Happy writing!');
+    contentEl.createDiv('novalist-tutorial-final-msg').setText(t('wizard.happyWriting'));
     
     const btnContainer = contentEl.createDiv();
     btnContainer.addClass('novalist-wizard-actions');
 
     new Setting(btnContainer)
       .addButton(btn => btn
-        .setButtonText('Finish & tour')
+        .setButtonText(t('wizard.finishTour'))
         .setCta()
         .onClick(async () => {
             this.plugin.settings.startupWizardShown = true;
@@ -168,8 +169,8 @@ export class StartupWizardModal extends Modal {
     const tour = new TourGuide(this.app, [
         {
             selector: '.workspace-ribbon-glyph[aria-label="Novalist"]',
-            title: 'Quick access',
-            content: 'Click this icon to toggle the Novalist sidebar view.',
+            title: t('tour.quickAccessTitle'),
+            content: t('tour.quickAccessContent'),
             position: 'right',
             onShow: async () => {
                 // Ensure sidebar is closed initially to make the toggle clear?
@@ -180,8 +181,8 @@ export class StartupWizardModal extends Modal {
         // Sidebar Tour
         {
             selector: '.workspace-tab-header[data-type="novalist-sidebar"]',
-            title: 'Sidebar view',
-            content: 'This panel shows important context about characters and locations for your current chapter.',
+            title: t('tour.sidebarTitle'),
+            content: t('tour.sidebarContent'),
             position: 'left',
             onShow: async () => {
                 await this.plugin.activateView();
@@ -189,8 +190,8 @@ export class StartupWizardModal extends Modal {
         },
         {
             selector: '.novalist-tab-header-container .novalist-tab:nth-child(2)',
-            title: 'Context tab',
-            content: 'Shows characters and locations mentioned in the active chapter.',
+            title: t('tour.contextTabTitle'),
+            content: t('tour.contextTabContent'),
             position: 'left',
             onShow: async () => {
                 await this.plugin.activateView();
@@ -200,21 +201,21 @@ export class StartupWizardModal extends Modal {
         },
         {
             selector: '.novalist-tabs .novalist-tab:nth-child(2)', // Overview
-            title: 'Overview',
-            content: 'This tab gives you a quick overview of all entities in the current scene.',
+            title: t('tour.overviewTitle'),
+            content: t('tour.overviewContent'),
             position: 'bottom'
         },
         {
             selector: '.novalist-tabs .novalist-tab:nth-child(1)', // Actions
-            title: 'Actions',
-            content: 'Quickly create new characters or locations from here.',
+            title: t('tour.actionsTitle'),
+            content: t('tour.actionsContent'),
             position: 'bottom'
         },
         // Explorer Tour
         {
             selector: '.workspace-tab-header[data-type="novalist-explorer"]',
-            title: 'Project explorer',
-            content: 'Navigate your novel structure separately from your other notes.',
+            title: t('tour.explorerTitle'),
+            content: t('tour.explorerContent'),
             position: 'right',
             onShow: async () => {
                 if (this.plugin.settings.enableCustomExplorer) {
@@ -224,8 +225,8 @@ export class StartupWizardModal extends Modal {
         },
         {
             selector: '.novalist-explorer-tab:nth-child(1)',
-            title: 'Chapters',
-            content: 'Drag and drop chapters to reorder them.',
+            title: t('tour.chaptersTitle'),
+            content: t('tour.chaptersContent'),
             position: 'bottom',
             onShow: async () => {
                  if (this.plugin.settings.enableCustomExplorer) {
@@ -235,18 +236,18 @@ export class StartupWizardModal extends Modal {
         },
         {
             selector: '.novalist-explorer-tab:nth-child(2)',
-            title: 'Characters',
-            content: 'View all your characters grouped by role.',
+            title: t('tour.charactersTitle'),
+            content: t('tour.charactersContent'),
             position: 'bottom'
         },
         {
             selector: '.novalist-explorer-tab:nth-child(3)',
-            title: 'Locations',
-            content: 'Access your location files quickly.',
+            title: t('tour.locationsTitle'),
+            content: t('tour.locationsContent'),
             position: 'bottom'
         }
     ].filter(step => {
-        if ((step.title === 'Project explorer' || step.selector.includes('novalist-explorer')) 
+        if ((step.title === t('tour.explorerTitle') || step.selector.includes('novalist-explorer')) 
             && !this.plugin.settings.enableCustomExplorer) return false;
         return true;
     }));

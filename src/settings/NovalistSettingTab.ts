@@ -6,11 +6,12 @@
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import {
-  LANGUAGE_LABELS,
+  getLanguageLabels,
   LANGUAGE_DEFAULTS,
   cloneAutoReplacements
 } from './NovalistSettings';
 import { LanguageKey } from '../types';
+import { t } from '../i18n';
 
 export class NovalistSettingTab extends PluginSettingTab {
   plugin: NovalistPlugin;
@@ -25,14 +26,14 @@ export class NovalistSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     new Setting(containerEl)
-      .setName('Preferences')
+      .setName(t('settings.preferences'))
       .setHeading();
 
     new Setting(containerEl)
-      .setName('Project path')
-      .setDesc('Root folder for your novel project')
+      .setName(t('settings.projectPath'))
+      .setDesc(t('settings.projectPathDesc'))
       .addText(text => text
-        .setPlaceholder('Novel project')
+        .setPlaceholder(t('settings.projectPathPlaceholder'))
         .setValue(this.plugin.settings.projectPath)
         .onChange(async (value) => {
           this.plugin.settings.projectPath = value;
@@ -41,12 +42,12 @@ export class NovalistSettingTab extends PluginSettingTab {
 
 
     new Setting(containerEl)
-      .setName('Folder structure')
+      .setName(t('settings.folderStructure'))
       .setHeading();
 
     new Setting(containerEl)
-        .setName('Character folder')
-        .setDesc('Folder for character files')
+        .setName(t('settings.characterFolder'))
+        .setDesc(t('settings.characterFolderDesc'))
         .addText(text => text
             .setValue(this.plugin.settings.characterFolder)
             .onChange(async (value) => {
@@ -55,8 +56,8 @@ export class NovalistSettingTab extends PluginSettingTab {
             }));
 
     new Setting(containerEl)
-        .setName('Location folder')
-        .setDesc('Folder for location files')
+        .setName(t('settings.locationFolder'))
+        .setDesc(t('settings.locationFolderDesc'))
         .addText(text => text
             .setValue(this.plugin.settings.locationFolder)
             .onChange(async (value) => {
@@ -65,8 +66,8 @@ export class NovalistSettingTab extends PluginSettingTab {
             }));
 
     new Setting(containerEl)
-        .setName('Chapter folder')
-        .setDesc('Folder for chapter files')
+        .setName(t('settings.chapterFolder'))
+        .setDesc(t('settings.chapterFolderDesc'))
         .addText(text => text
             .setValue(this.plugin.settings.chapterFolder)
             .onChange(async (value) => {
@@ -75,8 +76,8 @@ export class NovalistSettingTab extends PluginSettingTab {
             }));
 
     new Setting(containerEl)
-        .setName('Image folder')
-        .setDesc('Folder for project images')
+        .setName(t('settings.imageFolder'))
+        .setDesc(t('settings.imageFolderDesc'))
         .addText(text => text
             .setValue(this.plugin.settings.imageFolder)
             .onChange(async (value) => {
@@ -91,20 +92,21 @@ export class NovalistSettingTab extends PluginSettingTab {
     void this.renderGenderColorSettings(genderSection);
 
     new Setting(containerEl)
-      .setName('Auto replacements')
+      .setName(t('settings.autoReplacements'))
       .setHeading();
-    containerEl.createEl('p', { text: 'Configure text shortcuts that will be auto-replaced while typing.' });
+    containerEl.createEl('p', { text: t('settings.autoReplacementsDesc') });
 
     new Setting(containerEl)
-      .setName('Language')
-      .setDesc('Choose default replacements for quotes and punctuation.')
+      .setName(t('settings.language'))
+      .setDesc(t('settings.languageDesc'))
       .addDropdown((dropdown) => {
-        for (const [key, label] of Object.entries(LANGUAGE_LABELS)) {
+        const languageLabels = getLanguageLabels();
+        for (const [key, label] of Object.entries(languageLabels)) {
           dropdown.addOption(key, label);
         }
         dropdown.setValue(this.plugin.settings.language);
         dropdown.onChange(async (value) => {
-          if (!(value in LANGUAGE_LABELS)) return;
+          if (!(value in languageLabels)) return;
           const nextLanguage = value as LanguageKey;
           this.plugin.settings.language = nextLanguage;
           if (nextLanguage !== 'custom') {
@@ -118,15 +120,15 @@ export class NovalistSettingTab extends PluginSettingTab {
 
     const isCustomLanguage = this.plugin.settings.language === 'custom';
     if (!isCustomLanguage) {
-      containerEl.createEl('p', { text: 'Switch language to custom to edit replacements.' });
+      containerEl.createEl('p', { text: t('settings.switchToCustom') });
     }
 
     const replacementContainer = containerEl.createDiv('novalist-replacements');
     const header = replacementContainer.createDiv('novalist-replacement-header');
-    header.createEl('span', { text: 'Start token' });
-    header.createEl('span', { text: 'End token' });
-    header.createEl('span', { text: 'Start replacement' });
-    header.createEl('span', { text: 'End replacement' });
+    header.createEl('span', { text: t('settings.startToken') });
+    header.createEl('span', { text: t('settings.endToken') });
+    header.createEl('span', { text: t('settings.startReplacement') });
+    header.createEl('span', { text: t('settings.endReplacement') });
     header.createEl('span', { text: '' });
 
     const updatePair = async (): Promise<void> => {
@@ -137,7 +139,7 @@ export class NovalistSettingTab extends PluginSettingTab {
       const row = replacementContainer.createDiv('novalist-replacement-row');
 
       const startInput = row.createEl('input', { type: 'text', value: pair.start });
-      startInput.placeholder = "For example: '";
+      startInput.placeholder = t('settings.startTokenPlaceholder');
       startInput.disabled = !isCustomLanguage;
       startInput.addEventListener('input', () => {
         pair.start = startInput.value;
@@ -145,7 +147,7 @@ export class NovalistSettingTab extends PluginSettingTab {
       });
 
       const endInput = row.createEl('input', { type: 'text', value: pair.end });
-      endInput.placeholder = 'Optional';
+      endInput.placeholder = t('settings.endTokenPlaceholder');
       endInput.disabled = !isCustomLanguage;
       endInput.addEventListener('input', () => {
         pair.end = endInput.value;
@@ -153,7 +155,7 @@ export class NovalistSettingTab extends PluginSettingTab {
       });
 
       const startReplaceInput = row.createEl('input', { type: 'text', value: pair.startReplace });
-      startReplaceInput.placeholder = 'For example: „';
+      startReplaceInput.placeholder = t('settings.startReplacementPlaceholder');
       startReplaceInput.disabled = !isCustomLanguage;
       startReplaceInput.addEventListener('input', () => {
         pair.startReplace = startReplaceInput.value;
@@ -161,7 +163,7 @@ export class NovalistSettingTab extends PluginSettingTab {
       });
 
       const endReplaceInput = row.createEl('input', { type: 'text', value: pair.endReplace });
-      endReplaceInput.placeholder = 'Optional';
+      endReplaceInput.placeholder = t('settings.endTokenPlaceholder');
       endReplaceInput.disabled = !isCustomLanguage;
       endReplaceInput.addEventListener('input', () => {
         pair.endReplace = endReplaceInput.value;
@@ -171,7 +173,7 @@ export class NovalistSettingTab extends PluginSettingTab {
       const actions = row.createDiv();
       const deleteButton = new ButtonComponent(actions)
         .setIcon('trash')
-        .setTooltip('Remove replacement');
+        .setTooltip(t('settings.removeReplacement'));
       deleteButton.setDisabled(!isCustomLanguage);
       deleteButton.onClick(async () => {
         this.plugin.settings.autoReplacements = this.plugin.settings.autoReplacements.filter(p => p !== pair);
@@ -182,7 +184,7 @@ export class NovalistSettingTab extends PluginSettingTab {
 
     if (isCustomLanguage) {
       new ButtonComponent(containerEl)
-        .setButtonText('Add replacement')
+        .setButtonText(t('settings.addReplacement'))
         .onClick(async () => {
           this.plugin.settings.autoReplacements.push({ start: '', end: '', startReplace: '', endReplace: '' });
           await this.plugin.saveSettings();
@@ -191,12 +193,12 @@ export class NovalistSettingTab extends PluginSettingTab {
     }
 
     new Setting(containerEl)
-      .setName('Formatting')
+      .setName(t('settings.formatting'))
       .setHeading();
 
     new Setting(containerEl)
-      .setName('Book paragraph spacing')
-      .setDesc('Adds a gap between paragraphs like in printed books. Only works in edit mode.')
+      .setName(t('settings.bookParagraphSpacing'))
+      .setDesc(t('settings.bookParagraphSpacingDesc'))
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.enableBookParagraphSpacing)
         .onChange(async (value) => {
@@ -206,8 +208,8 @@ export class NovalistSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Show toolbar in tabs')
-      .setDesc('Adds a toolbar with quick action buttons to every tab header.')
+      .setName(t('settings.showToolbar'))
+      .setDesc(t('settings.showToolbarDesc'))
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.enableToolbar)
         .onChange(async (value) => {
@@ -217,12 +219,12 @@ export class NovalistSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Advanced')
+      .setName(t('settings.advanced'))
       .setHeading();
 
     new Setting(containerEl)
-        .setName('Enable custom explorer')
-        .setDesc('Replaces standard file explorer with a specialized novel project view.')
+        .setName(t('settings.enableCustomExplorer'))
+        .setDesc(t('settings.enableCustomExplorerDesc'))
         .addToggle(toggle => toggle
             .setValue(this.plugin.settings.enableCustomExplorer)
             .onChange(async (value) => {
@@ -231,12 +233,12 @@ export class NovalistSettingTab extends PluginSettingTab {
             }));
 
     new Setting(containerEl)
-      .setName('Writing goals')
+      .setName(t('settings.writingGoals'))
       .setHeading();
 
     new Setting(containerEl)
-      .setName('Daily word goal')
-      .setDesc('Target number of words to write per day.')
+      .setName(t('settings.dailyWordGoal'))
+      .setDesc(t('settings.dailyWordGoalDesc'))
       .addText(text => text
         .setPlaceholder('1000')
         .setValue(String(this.plugin.settings.wordCountGoals.dailyGoal))
@@ -249,8 +251,8 @@ export class NovalistSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Project word goal')
-      .setDesc('Target total word count for the entire novel.')
+      .setName(t('settings.projectWordGoal'))
+      .setDesc(t('settings.projectWordGoalDesc'))
       .addText(text => text
         .setPlaceholder('50000')
         .setValue(String(this.plugin.settings.wordCountGoals.projectGoal))
@@ -266,15 +268,15 @@ export class NovalistSettingTab extends PluginSettingTab {
   private async renderRoleColorSettings(containerEl: HTMLElement): Promise<void> {
     containerEl.empty();
     new Setting(containerEl)
-      .setName('Role colors')
+      .setName(t('settings.roleColors'))
       .setHeading();
-    containerEl.createEl('p', { text: 'Colors used for role highlights and badges.' });
+    containerEl.createEl('p', { text: t('settings.roleColorsDesc') });
 
     const fallbackColor = '#64748b';
     const roles = await this.getKnownRoles();
 
     if (roles.length === 0) {
-      containerEl.createEl('p', { text: 'No roles found yet.' });
+      containerEl.createEl('p', { text: t('settings.noRolesFound') });
       return;
     }
 
@@ -294,7 +296,7 @@ export class NovalistSettingTab extends PluginSettingTab {
 
       row.addButton((btn) => {
         btn.setIcon('rotate-ccw');
-        btn.setTooltip('Restore default color');
+        btn.setTooltip(t('settings.restoreDefaultColor'));
         btn.setDisabled(!stored);
         btn.onClick(async () => {
           delete this.plugin.settings.roleColors[roleLabel];
@@ -308,15 +310,15 @@ export class NovalistSettingTab extends PluginSettingTab {
   private async renderGenderColorSettings(containerEl: HTMLElement): Promise<void> {
     containerEl.empty();
     new Setting(containerEl)
-      .setName('Gender colors')
+      .setName(t('settings.genderColors'))
       .setHeading();
-    containerEl.createEl('p', { text: 'Colors used for gender badges.' });
+    containerEl.createEl('p', { text: t('settings.genderColorsDesc') });
 
     const fallbackColor = '#64748b';
     const genders = await this.getKnownGenders();
 
     if (genders.length === 0) {
-      containerEl.createEl('p', { text: 'No genders found yet.' });
+      containerEl.createEl('p', { text: t('settings.noGendersFound') });
       return;
     }
 
@@ -336,7 +338,7 @@ export class NovalistSettingTab extends PluginSettingTab {
 
       row.addButton((btn) => {
         btn.setIcon('rotate-ccw');
-        btn.setTooltip('Restore default color');
+        btn.setTooltip(t('settings.restoreDefaultColor'));
         btn.setDisabled(!stored);
         btn.onClick(async () => {
           delete this.plugin.settings.genderColors[genderLabel];

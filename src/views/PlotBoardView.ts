@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { t } from '../i18n';
 import type { PlotBoardColumn } from '../types';
 
 export const PLOT_BOARD_VIEW_TYPE = 'novalist-plot-board';
@@ -18,7 +19,7 @@ export class PlotBoardView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'Plot board';
+    return t('plotBoard.displayName');
   }
 
   getIcon(): string {
@@ -101,15 +102,15 @@ export class PlotBoardView extends ItemView {
 
     // Header
     const header = container.createDiv('novalist-plot-board-header');
-    header.createEl('h3', { text: 'Plot board', cls: 'novalist-plot-board-title' });
-    const addBtn = header.createEl('button', { text: '+ add column', cls: 'novalist-plot-board-add-col' });
+    header.createEl('h3', { text: t('plotBoard.displayName'), cls: 'novalist-plot-board-title' });
+    const addBtn = header.createEl('button', { text: t('plotBoard.addColumn'), cls: 'novalist-plot-board-add-col' });
     addBtn.addEventListener('click', () => this.promptNewColumn());
 
     // Chapters
     const chapters = await this.plugin.getChapterDescriptions();
 
     if (chapters.length === 0) {
-      container.createEl('p', { text: 'No chapters found. Create some chapters first.', cls: 'novalist-empty' });
+      container.createEl('p', { text: t('plotBoard.noChapters'), cls: 'novalist-empty' });
       return;
     }
 
@@ -122,8 +123,8 @@ export class PlotBoardView extends ItemView {
     // Thead
     const thead = table.createEl('thead');
     const headRow = thead.createEl('tr');
-    headRow.createEl('th', { text: '#', cls: 'novalist-plot-board-th-index' });
-    headRow.createEl('th', { text: 'Chapter', cls: 'novalist-plot-board-th-chapter' });
+    headRow.createEl('th', { text: t('plotBoard.indexHeader'), cls: 'novalist-plot-board-th-index' });
+    headRow.createEl('th', { text: t('plotBoard.chapterHeader'), cls: 'novalist-plot-board-th-chapter' });
 
     for (const col of columns) {
       const th = headRow.createEl('th', { cls: 'novalist-plot-board-th-custom' });
@@ -185,16 +186,16 @@ export class PlotBoardView extends ItemView {
     const actions = th.createDiv('novalist-plot-board-col-actions');
 
     if (this.board.columns.indexOf(col) > 0) {
-      const leftBtn = actions.createEl('button', { text: '←', cls: 'novalist-plot-board-col-btn', attr: { 'aria-label': 'Move left' } });
+      const leftBtn = actions.createEl('button', { text: '←', cls: 'novalist-plot-board-col-btn', attr: { 'aria-label': t('plotBoard.moveLeft') } });
       leftBtn.addEventListener('click', () => this.moveColumn(col.id, -1));
     }
 
     if (this.board.columns.indexOf(col) < this.board.columns.length - 1) {
-      const rightBtn = actions.createEl('button', { text: '→', cls: 'novalist-plot-board-col-btn', attr: { 'aria-label': 'Move right' } });
+      const rightBtn = actions.createEl('button', { text: '→', cls: 'novalist-plot-board-col-btn', attr: { 'aria-label': t('plotBoard.moveRight') } });
       rightBtn.addEventListener('click', () => this.moveColumn(col.id, 1));
     }
 
-    const delBtn = actions.createEl('button', { text: '✕', cls: 'novalist-plot-board-col-btn novalist-plot-board-col-del', attr: { 'aria-label': 'Delete column' } });
+    const delBtn = actions.createEl('button', { text: '✕', cls: 'novalist-plot-board-col-btn novalist-plot-board-col-del', attr: { 'aria-label': t('plotBoard.deleteColumn') } });
     delBtn.addEventListener('click', () => this.deleteColumn(col.id));
   }
 
@@ -229,7 +230,7 @@ export class PlotBoardView extends ItemView {
         display.textContent = text;
       } else {
         display.classList.add('novalist-plot-board-cell-empty');
-        display.textContent = '—';
+        display.textContent = t('plotBoard.emptyCellPlaceholder');
       }
       display.addEventListener('click', () => {
         this.editingCell = { chapterId, columnId };
@@ -246,9 +247,9 @@ export class PlotBoardView extends ItemView {
     if (existing) { existing.querySelector('input')?.focus(); return; }
 
     const row = container.createDiv('novalist-plot-board-new-col-row');
-    const input = row.createEl('input', { cls: 'novalist-plot-board-new-col-input', attr: { placeholder: 'Column name…' } });
-    const okBtn = row.createEl('button', { text: 'Add', cls: 'novalist-plot-board-new-col-ok' });
-    const cancelBtn = row.createEl('button', { text: 'Cancel', cls: 'novalist-plot-board-new-col-cancel' });
+    const input = row.createEl('input', { cls: 'novalist-plot-board-new-col-input', attr: { placeholder: t('plotBoard.columnPlaceholder') } });
+    const okBtn = row.createEl('button', { text: t('plotBoard.add'), cls: 'novalist-plot-board-new-col-ok' });
+    const cancelBtn = row.createEl('button', { text: t('plotBoard.cancel'), cls: 'novalist-plot-board-new-col-cancel' });
 
     input.focus();
 

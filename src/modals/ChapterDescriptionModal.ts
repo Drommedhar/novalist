@@ -5,6 +5,7 @@
   ButtonComponent
 } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { t } from '../i18n';
 
 export class ChapterDescriptionModal extends Modal {
   plugin: NovalistPlugin;
@@ -20,24 +21,24 @@ export class ChapterDescriptionModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
 
-    contentEl.createEl('h2', { text: 'Create chapter' });
+    contentEl.createEl('h2', { text: t('modal.createChapter') });
 
     new Setting(contentEl)
-      .setName('Name')
+      .setName(t('modal.name'))
       .addText(text => text.onChange(value => this.name = value));
 
     new Setting(contentEl)
-      .setName('Order')
+      .setName(t('modal.order'))
       .addText(text => text.onChange(value => this.order = value));
 
     const buttonDiv = contentEl.createDiv('modal-button-container');
 
     new ButtonComponent(buttonDiv)
-      .setButtonText('Cancel')
+      .setButtonText(t('modal.cancel'))
       .onClick(() => this.close());
 
     new ButtonComponent(buttonDiv)
-      .setButtonText('Create')
+      .setButtonText(t('modal.create'))
       .setCta()
       .onClick(async () => {
         await this.plugin.createChapter(this.name, this.order);

@@ -8,6 +8,7 @@
 import type NovalistPlugin from '../main';
 import { normalizeCharacterRole } from '../utils/characterUtils';
 import { ChapterListData, CharacterListData, LocationListData, CHAPTER_STATUSES, ChapterStatus } from '../types';
+import { t } from '../i18n';
 
 export const NOVELIST_EXPLORER_VIEW_TYPE = 'novalist-explorer';
 
@@ -28,7 +29,7 @@ export class NovalistExplorerView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'Novalist explorer';
+    return t('explorer.displayName');
   }
 
   getIcon(): string {
@@ -60,13 +61,13 @@ export class NovalistExplorerView extends ItemView {
     container.empty();
     container.addClass('novalist-explorer');
 
-    container.createEl('h3', { text: 'Novalist explorer', cls: 'novalist-explorer-header' });
+    container.createEl('h3', { text: t('explorer.displayName'), cls: 'novalist-explorer-header' });
 
     const tabs = container.createDiv('novalist-explorer-tabs');
     const tabOrder: Array<{ id: 'chapters' | 'characters' | 'locations'; label: string }> = [
-      { id: 'chapters', label: 'Chapters' },
-      { id: 'characters', label: 'Characters' },
-      { id: 'locations', label: 'Locations' }
+      { id: 'chapters', label: t('explorer.chapters') },
+      { id: 'characters', label: t('explorer.characters') },
+      { id: 'locations', label: t('explorer.locations') }
     ];
 
     const setTab = (tab: 'chapters' | 'characters' | 'locations') => {
@@ -92,18 +93,18 @@ export class NovalistExplorerView extends ItemView {
         status: chapter.status,
         file: chapter.file
       }));
-      this.renderChapterList(list, chapterItems, 'No chapters found.');
+      this.renderChapterList(list, chapterItems, t('explorer.noChapters'));
       return;
     }
 
     if (this.activeTab === 'characters') {
       const characters = await this.plugin.getCharacterList();
-      this.renderCharacterGroupedList(list, characters, 'No characters found.');
+      this.renderCharacterGroupedList(list, characters, t('explorer.noCharacters'));
       return;
     }
 
     const locations = this.plugin.getLocationList();
-    this.renderList(list, locations, 'No locations found.');
+    this.renderList(list, locations, t('explorer.noLocations'));
   }
 
   private handleContextMenu(evt: MouseEvent, file: TFile) {
@@ -112,7 +113,7 @@ export class NovalistExplorerView extends ItemView {
 
     menu.addItem((item) => {
       item
-        .setTitle('Delete')
+        .setTitle(t('explorer.delete'))
         .setIcon('trash')
         .onClick(async () => {
           await this.app.fileManager.trashFile(file);
@@ -209,7 +210,7 @@ export class NovalistExplorerView extends ItemView {
     }
 
     const groups: Record<string, CharacterListData[]> = {};
-    const unassignedLabel = 'Unassigned';
+    const unassignedLabel = t('explorer.unassigned');
     
     // Distribute items
     for (const item of items) {
@@ -317,7 +318,7 @@ export class NovalistExplorerView extends ItemView {
           const genderBadge = row.createEl('span', { 
                 text: item.gender, 
                 cls: 'novalist-explorer-badge novalist-gender-badge', 
-                attr: { title: `Gender: ${item.gender}` }
+                attr: { title: t('explorer.genderTooltip', { gender: item.gender }) }
             });
           const genderColor = this.getGenderColor(item.gender);
           if (genderColor) genderBadge.style.setProperty('--novalist-gender-color', genderColor);

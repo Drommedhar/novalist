@@ -9,6 +9,7 @@ import {
   type PluginValue
 } from '@codemirror/view';
 import { setIcon } from 'obsidian';
+import { t } from '../i18n';
 
 // ─── Data types ─────────────────────────────────────────────────────
 
@@ -316,7 +317,7 @@ class FocusPeekPlugin implements PluginValue {
     if (this.navigationStack.length > 0) {
       const backBtn = header.createEl('button', {
         cls: 'novalist-peek-action novalist-peek-back',
-        attr: { 'aria-label': 'Go back' }
+        attr: { 'aria-label': t('peek.goBack') }
       });
       setIcon(backBtn, 'arrow-left');
       backBtn.addEventListener('click', (e) => {
@@ -328,7 +329,7 @@ class FocusPeekPlugin implements PluginValue {
     header.createEl('span', { text: fullName, cls: 'novalist-peek-name' });
 
     const badge = header.createEl('span', {
-      text: data.type === 'character' ? 'Character' : 'Location',
+      text: data.type === 'character' ? t('peek.character') : t('peek.location'),
       cls: 'novalist-peek-badge'
     });
     if (data.type === 'character') {
@@ -344,7 +345,7 @@ class FocusPeekPlugin implements PluginValue {
     // Pin button
     const pinBtn = header.createEl('button', {
       cls: 'novalist-peek-action',
-      attr: { 'aria-label': 'Pin card' }
+      attr: { 'aria-label': t('peek.pinCard') }
     });
     setIcon(pinBtn, 'pin');
     if (this.pinned) pinBtn.addClass('is-active');
@@ -360,7 +361,7 @@ class FocusPeekPlugin implements PluginValue {
     // Open file button
     const openBtn = header.createEl('button', {
       cls: 'novalist-peek-action',
-      attr: { 'aria-label': 'Open file' }
+      attr: { 'aria-label': t('peek.openFile') }
     });
     setIcon(openBtn, 'external-link');
     openBtn.addEventListener('click', (e) => {
@@ -373,7 +374,7 @@ class FocusPeekPlugin implements PluginValue {
     // Close button
     const closeBtn = header.createEl('button', {
       cls: 'novalist-peek-action',
-      attr: { 'aria-label': 'Close' }
+      attr: { 'aria-label': t('peek.close') }
     });
     setIcon(closeBtn, 'x');
     closeBtn.addEventListener('click', (e) => {
@@ -408,7 +409,7 @@ class FocusPeekPlugin implements PluginValue {
       }
       if (data.age) {
         const pill = props.createDiv('novalist-peek-pill');
-        pill.createEl('span', { text: `Age ${data.age}`, cls: 'novalist-peek-pill-value' });
+        pill.createEl('span', { text: t('peek.age', { age: data.age }), cls: 'novalist-peek-pill-value' });
       }
       if (data.relationships && data.relationships.length > 0) {
         const pill = props.createDiv('novalist-peek-pill novalist-peek-pill--dim');
@@ -458,13 +459,13 @@ class FocusPeekPlugin implements PluginValue {
     // ── Physical attributes (only those with a value)
     if (data.type === 'character') {
       const physicalAttrs: { label: string; value: string | undefined }[] = [
-        { label: 'Eyes', value: data.eyeColor },
-        { label: 'Hair', value: data.hairColor },
-        { label: 'Hair length', value: data.hairLength },
-        { label: 'Height', value: data.height },
-        { label: 'Build', value: data.build },
-        { label: 'Skin', value: data.skinTone },
-        { label: 'Distinguishing', value: data.distinguishingFeatures },
+        { label: t('peek.eyes'), value: data.eyeColor },
+        { label: t('peek.hair'), value: data.hairColor },
+        { label: t('peek.hairLength'), value: data.hairLength },
+        { label: t('peek.height'), value: data.height },
+        { label: t('peek.build'), value: data.build },
+        { label: t('peek.skin'), value: data.skinTone },
+        { label: t('peek.distinguishing'), value: data.distinguishingFeatures },
       ];
       const filled = physicalAttrs.filter((a): a is { label: string; value: string } => Boolean(a.value?.trim()));
       if (filled.length > 0) {
@@ -490,7 +491,7 @@ class FocusPeekPlugin implements PluginValue {
           item.createEl('span', { text: val, cls: 'novalist-peek-kv-val' });
         }
         if (entries.length > 3) {
-          kvRow.createEl('span', { text: `+${entries.length - 3} more`, cls: 'novalist-peek-kv-more' });
+          kvRow.createEl('span', { text: t('peek.more', { n: entries.length - 3 }), cls: 'novalist-peek-kv-more' });
         }
       }
     }
@@ -621,7 +622,7 @@ class FocusPeekPlugin implements PluginValue {
       container.empty();
       const src = cb.resolveImageSrc(img.path, data.entityFilePath);
       if (!src) {
-        container.createEl('span', { text: 'Image not found', cls: 'novalist-peek-image-missing' });
+        container.createEl('span', { text: t('peek.imageNotFound'), cls: 'novalist-peek-image-missing' });
         return;
       }
       container.createEl('img', { attr: { src, alt: img.name } });
@@ -658,7 +659,7 @@ class FocusPeekPlugin implements PluginValue {
       const sec = sections.find(s => s.title === title) ?? sections[0];
       contentEl.empty();
       if (!sec.content) {
-        contentEl.createEl('span', { text: 'No content.', cls: 'novalist-peek-sections-empty' });
+        contentEl.createEl('span', { text: t('peek.noContent'), cls: 'novalist-peek-sections-empty' });
         return;
       }
       void cbs.renderMarkdown(sec.content, contentEl, sourcePath);

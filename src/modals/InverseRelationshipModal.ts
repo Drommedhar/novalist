@@ -6,6 +6,7 @@
   Notice
 } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { t } from '../i18n';
 
 export class InverseRelationshipModal extends Modal {
   private targetFile: TFile;
@@ -25,16 +26,16 @@ export class InverseRelationshipModal extends Modal {
 
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl('h3', { text: 'Define inverse relationship' });
+    contentEl.createEl('h3', { text: t('modal.defineInverse') });
     contentEl.createEl('p', { 
-        text: `You defined ${this.targetFile.basename} as "**${this.relationshipKey}**" of ${this.sourceFile.basename}.` 
+        text: t('modal.inverseDesc', { target: this.targetFile.basename, key: this.relationshipKey, source: this.sourceFile.basename }) 
     });
     contentEl.createEl('p', { 
-        text: `How is ${this.sourceFile.basename} related to ${this.targetFile.basename}?` 
+        text: t('modal.inverseQuestion', { source: this.sourceFile.basename, target: this.targetFile.basename }) 
     });
 
     const inputDiv = contentEl.createDiv('novalist-input-group');
-    const input = inputDiv.createEl('input', { type: 'text', placeholder: 'e.g. Child, Sibling...' });
+    const input = inputDiv.createEl('input', { type: 'text', placeholder: t('modal.inversePlaceholder') });
 
     // Suggestion bubbles
     const suggestionsDiv = contentEl.createDiv('novalist-suggestions');
@@ -82,14 +83,14 @@ export class InverseRelationshipModal extends Modal {
     });
 
     new ButtonComponent(contentEl)
-        .setButtonText('Update')
+        .setButtonText(t('modal.update'))
         .setCta()
         .onClick(() => this.submit(input.value));
   }
 
   submit(value: string) {
       if (!value.trim()) {
-          new Notice('Please enter a relationship label.');
+          new Notice(t('notice.enterRelationshipLabel'));
           return;
       }
       this.onSubmit(value.trim());

@@ -5,6 +5,7 @@
   TFolder
 } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { t } from '../i18n';
 import { parseCharacterSheet } from '../utils/characterSheetUtils';
 import cytoscape from 'cytoscape';
 // @ts-ignore
@@ -51,7 +52,7 @@ export class CharacterMapView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'Character map';
+    return t('charMap.displayName');
   }
 
   getIcon(): string {
@@ -74,7 +75,7 @@ export class CharacterMapView extends ItemView {
         }
     });
 
-    header.createEl('h4', { text: 'Character relationship map (work in progress)' });
+    header.createEl('h4', { text: t('charMap.header') });
     
     const wipBanner = container.createDiv();
     wipBanner.setCssStyles({
@@ -87,10 +88,10 @@ export class CharacterMapView extends ItemView {
         border: '1px solid #8a6d3b',
         textAlign: 'center'
     });
-    wipBanner.createEl('strong', { text: 'Note: ' });
-    wipBanner.createSpan({ text: 'This relationship graph is currently under development. Layout and connections might be unstable.' });
+    wipBanner.createEl('strong', { text: t('charMap.noteLabel') });
+    wipBanner.createSpan({ text: t('charMap.noteBanner') });
 
-    const refreshBtn = header.createEl('button', { text: 'Refresh' });
+    const refreshBtn = header.createEl('button', { text: t('charMap.refresh') });
     refreshBtn.addEventListener('click', () => { void this.updateGraph(); });
 
     const div = container.createDiv();
@@ -111,12 +112,12 @@ export class CharacterMapView extends ItemView {
         fontSize: '0.8em',
         border: '1px solid rgba(255,255,255,0.1)'
     });
-    legend.createEl('div', { text: 'Scroll to zoom • drag to pan' });
-    legend.createEl('div', { text: 'Drag nodes to rearrange' });
+    legend.createEl('div', { text: t('charMap.legendZoom') });
+    legend.createEl('div', { text: t('charMap.legendDrag') });
 
 
     if (!this.plugin.settings.characterFolder) {
-        div.setText('Character folder not set in settings.');
+        div.setText(t('charMap.noFolder'));
         return;
     }
 
@@ -127,13 +128,13 @@ export class CharacterMapView extends ItemView {
 
     const folder = this.plugin.app.vault.getAbstractFileByPath(folderPath);
     if (!(folder instanceof TFolder)) {
-        div.setText('Character folder not found: ' + folderPath);
+        div.setText(t('charMap.folderNotFound', { path: folderPath }));
         return;
     }
 
     const files = this.plugin.app.vault.getFiles().filter((f: TFile) => f.path.startsWith(folderPath));
     if (files.length === 0) {
-        div.setText('No character files found in ' + folderPath);
+        div.setText(t('charMap.noFiles', { path: folderPath }));
         return;
     }
     

@@ -1,6 +1,7 @@
 import { TFile } from 'obsidian';
 import type NovalistPlugin from '../main';
 import JSZip from 'jszip';
+import { t } from '../i18n';
 
 export interface ExportOptions {
   format: 'epub' | 'pdf' | 'docx';
@@ -157,7 +158,7 @@ function generateTOCNCX(chapters: ChapterContent[], options: ExportOptions): str
   </head>
   <docTitle><text>${escapeXml(options.title)}</text></docTitle>
   <navMap>
-    ${options.includeTitlePage ? '<navPoint id="title" playOrder="1"><navLabel><text>Title Page</text></navLabel><content src="content.xhtml#title-page"/></navPoint>' : ''}
+    ${options.includeTitlePage ? '<navPoint id="title" playOrder="1"><navLabel><text>' + t('export.titlePage') + '</text></navLabel><content src="content.xhtml#title-page"/></navPoint>' : ''}
     ${navPoints}
   </navMap>
 </ncx>`;

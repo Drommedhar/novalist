@@ -2,6 +2,7 @@ import { TFile } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { ProjectStatistics, ChapterWordCount, WordCountGoals, DailyWritingGoal } from '../types';
 import { calculateReadability } from './readabilityUtils';
+import { t } from '../i18n';
 
 export function countWords(text: string): number {
   // Remove frontmatter
@@ -98,24 +99,24 @@ export async function calculateProjectStatistics(plugin: NovalistPlugin): Promis
 
 export function formatWordCount(count: number): string {
   if (count >= 1000000) {
-    return (count / 1000000).toFixed(1) + 'M';
+    return (count / 1000000).toFixed(1) + t('format.millions');
   }
   if (count >= 1000) {
-    return (count / 1000).toFixed(1) + 'k';
+    return (count / 1000).toFixed(1) + t('format.thousands');
   }
   return count.toLocaleString();
 }
 
 export function formatReadingTime(minutes: number): string {
   if (minutes < 60) {
-    return `${minutes} min`;
+    return t('stats.minutes', { n: minutes });
   }
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
   if (remainingMinutes === 0) {
-    return `${hours} hr`;
+    return t('stats.hours', { n: hours });
   }
-  return `${hours} hr ${remainingMinutes} min`;
+  return t('stats.hoursMinutes', { h: hours, m: remainingMinutes });
 }
 
 export function getTodayDate(): string {
