@@ -5,6 +5,7 @@
   ButtonComponent
 } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { t } from '../i18n';
 
 export class LocationModal extends Modal {
   plugin: NovalistPlugin;
@@ -20,24 +21,24 @@ export class LocationModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     
-    contentEl.createEl('h2', { text: 'Create new location' });
+    contentEl.createEl('h2', { text: t('modal.createLocation') });
     
     new Setting(contentEl)
-      .setName('Name')
+      .setName(t('modal.name'))
       .addText(text => text.onChange(value => this.name = value));
     
     new Setting(contentEl)
-      .setName('Description')
+      .setName(t('modal.description'))
       .addTextArea(text => text.onChange(value => this.description = value));
     
     const buttonDiv = contentEl.createDiv('modal-button-container');
     
     new ButtonComponent(buttonDiv)
-      .setButtonText('Cancel')
+      .setButtonText(t('modal.cancel'))
       .onClick(() => this.close());
     
     new ButtonComponent(buttonDiv)
-      .setButtonText('Create')
+      .setButtonText(t('modal.create'))
       .setCta()
       .onClick(async () => {
         await this.plugin.createLocation(this.name, this.description);

@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf, ButtonComponent, TextComponent, Notice } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { t } from '../i18n';
 import { 
   exportToEPUB, 
   exportToDOCX, 
@@ -27,7 +28,7 @@ export class ExportView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'Novalist export';
+    return t('export.displayName');
   }
 
   getIcon(): string {
@@ -50,13 +51,13 @@ export class ExportView extends ItemView {
     container.addClass('novalist-export');
 
     // Header
-    container.createEl('h3', { text: 'Export novel', cls: 'novalist-export-header' });
+    container.createEl('h3', { text: t('export.header'), cls: 'novalist-export-header' });
 
     // Get all chapters
     const chapters = await this.plugin.getChapterDescriptions();
     
     if (chapters.length === 0) {
-      container.createEl('p', { text: 'No chapters found. Create some chapters first.', cls: 'novalist-empty' });
+      container.createEl('p', { text: t('export.noChapters'), cls: 'novalist-empty' });
       return;
     }
 
@@ -67,31 +68,31 @@ export class ExportView extends ItemView {
 
     // Options Section
     const optionsSection = container.createDiv('novalist-export-section');
-    optionsSection.createEl('h4', { text: 'Export options', cls: 'novalist-export-section-title' });
+    optionsSection.createEl('h4', { text: t('export.options'), cls: 'novalist-export-section-title' });
 
     // Title
     const titleRow = optionsSection.createDiv('novalist-export-row');
-    titleRow.createEl('label', { text: 'Title:' });
+    titleRow.createEl('label', { text: t('export.title') });
     new TextComponent(titleRow)
-      .setPlaceholder('Novel title')
+      .setPlaceholder(t('export.titlePlaceholder'))
       .setValue(this.title)
       .onChange(value => { this.title = value; });
 
     // Author
     const authorRow = optionsSection.createDiv('novalist-export-row');
-    authorRow.createEl('label', { text: 'Author:' });
+    authorRow.createEl('label', { text: t('export.author') });
     new TextComponent(authorRow)
-      .setPlaceholder('Author name')
+      .setPlaceholder(t('export.authorPlaceholder'))
       .setValue(this.author)
       .onChange(value => { this.author = value; });
 
     // Format
     const formatRow = optionsSection.createDiv('novalist-export-row');
-    formatRow.createEl('label', { text: 'Format' });
+    formatRow.createEl('label', { text: t('export.format') });
     const formatSelect = formatRow.createEl('select', { cls: 'novalist-export-select' });
-    formatSelect.createEl('option', { value: 'epub', text: 'Epub (e-book)' });
-    formatSelect.createEl('option', { value: 'docx', text: 'Docx (word)' });
-    formatSelect.createEl('option', { value: 'md', text: 'Markdown' });
+    formatSelect.createEl('option', { value: 'epub', text: t('export.formatEpub') });
+    formatSelect.createEl('option', { value: 'docx', text: t('export.formatDocx') });
+    formatSelect.createEl('option', { value: 'md', text: t('export.formatMarkdown') });
     formatSelect.value = this.format;
     formatSelect.addEventListener('change', () => {
       this.format = formatSelect.value as typeof this.format;
@@ -99,7 +100,7 @@ export class ExportView extends ItemView {
 
     // Include title page
     const titlePageRow = optionsSection.createDiv('novalist-export-row');
-    titlePageRow.createEl('label', { text: 'Include title page' });
+    titlePageRow.createEl('label', { text: t('export.includeTitlePage') });
     const toggleLabel = titlePageRow.createEl('label', { cls: 'novalist-export-toggle' });
     const toggleInput = toggleLabel.createEl('input', { 
       type: 'checkbox',
@@ -113,18 +114,18 @@ export class ExportView extends ItemView {
     // Chapters Section
     const chaptersSection = container.createDiv('novalist-export-section');
     const chaptersHeader = chaptersSection.createDiv('novalist-export-section-header');
-    chaptersHeader.createEl('h4', { text: 'Select chapters to export', cls: 'novalist-export-section-title' });
+    chaptersHeader.createEl('h4', { text: t('export.selectChapters'), cls: 'novalist-export-section-title' });
     
     // Select all/none buttons
     const selectButtons = chaptersHeader.createDiv('novalist-export-select-buttons');
     new ButtonComponent(selectButtons)
-      .setButtonText('Select all')
+      .setButtonText(t('export.selectAll'))
       .onClick(() => {
         chapters.forEach(ch => this.selectedChapters.add(ch.file.path));
         void this.render();
       });
     new ButtonComponent(selectButtons)
-      .setButtonText('Select none')
+      .setButtonText(t('export.selectNone'))
       .onClick(() => {
         this.selectedChapters.clear();
         void this.render();
@@ -161,7 +162,7 @@ export class ExportView extends ItemView {
     // Export Button
     const exportSection = container.createDiv('novalist-export-section');
     const exportButton = new ButtonComponent(exportSection)
-      .setButtonText(`Export ${this.format.toUpperCase()}`)
+      .setButtonText(t('export.exportButton', { format: this.format.toUpperCase() }))
       .setCta()
       .onClick(() => void this.handleExport());
     exportButton.buttonEl.addClass('novalist-export-button');
@@ -169,7 +170,7 @@ export class ExportView extends ItemView {
     // Info
     const infoSection = container.createDiv('novalist-export-info');
     infoSection.createEl('p', { 
-      text: `Selected: ${this.selectedChapters.size} chapter(s)`,
+      text: t('export.selectedCount', { count: this.selectedChapters.size }),
       cls: 'novalist-export-selection-count'
     });
   }

@@ -16,6 +16,13 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
     age: '',
     role: '',
     faceShot: '',
+    eyeColor: '',
+    hairColor: '',
+    hairLength: '',
+    height: '',
+    build: '',
+    skinTone: '',
+    distinguishingFeatures: '',
     images: [],
     relationships: [],
     customProperties: {},
@@ -43,7 +50,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
       if (!match) return '';
       const value = match[1].trim();
       // Check if the value contains another known field name (corrupted data)
-      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'FaceShot:', 'Relationships:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:'];
+      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'FaceShot:', 'EyeColor:', 'HairColor:', 'HairLength:', 'Height:', 'Build:', 'SkinTone:', 'DistinguishingFeatures:', 'Relationships:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:'];
       for (const field of knownFields) {
         if (value.includes(field)) {
           // Value is corrupted, return empty
@@ -60,6 +67,13 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
     data.age = parseField(sheetContent, 'Age');
     data.role = parseField(sheetContent, 'Role');
     data.faceShot = parseField(sheetContent, 'FaceShot');
+    data.eyeColor = parseField(sheetContent, 'EyeColor');
+    data.hairColor = parseField(sheetContent, 'HairColor');
+    data.hairLength = parseField(sheetContent, 'HairLength');
+    data.height = parseField(sheetContent, 'Height');
+    data.build = parseField(sheetContent, 'Build');
+    data.skinTone = parseField(sheetContent, 'SkinTone');
+    data.distinguishingFeatures = parseField(sheetContent, 'DistinguishingFeatures');
     
     // Parse relationships section within CharacterSheet
     const relSectionIdx = sheetContent.indexOf('\nRelationships:\n');
@@ -197,6 +211,13 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
               case 'age': override.age = value; break;
               case 'role': override.role = value; break;
               case 'faceshot': override.faceShot = value; break;
+              case 'eyecolor': override.eyeColor = value; break;
+              case 'haircolor': override.hairColor = value; break;
+              case 'hairlength': override.hairLength = value; break;
+              case 'height': override.height = value; break;
+              case 'build': override.build = value; break;
+              case 'skintone': override.skinTone = value; break;
+              case 'distinguishingfeatures': override.distinguishingFeatures = value; break;
               case 'images':
                 override.images = [];
                 // Parse subsequent indented image lines
@@ -369,7 +390,14 @@ export function serializeCharacterSheet(data: CharacterSheetData): string {
   result += `Gender: ${sanitize(data.gender)}\n`;
   result += `Age: ${sanitize(data.age)}\n`;
   result += `Role: ${sanitize(data.role)}\n`;
-  result += `FaceShot: ${sanitize(data.faceShot)}\n\n`;
+  result += `FaceShot: ${sanitize(data.faceShot)}\n`;
+  result += `EyeColor: ${sanitize(data.eyeColor)}\n`;
+  result += `HairColor: ${sanitize(data.hairColor)}\n`;
+  result += `HairLength: ${sanitize(data.hairLength)}\n`;
+  result += `Height: ${sanitize(data.height)}\n`;
+  result += `Build: ${sanitize(data.build)}\n`;
+  result += `SkinTone: ${sanitize(data.skinTone)}\n`;
+  result += `DistinguishingFeatures: ${sanitize(data.distinguishingFeatures)}\n\n`;
   
   // Relationships
   result += 'Relationships:\n';
@@ -419,6 +447,13 @@ export function serializeCharacterSheet(data: CharacterSheetData): string {
       if (override.age) result += `- Age: ${sanitize(override.age)}\n`;
       if (override.role) result += `- Role: ${sanitize(override.role)}\n`;
       if (override.faceShot) result += `- FaceShot: ${sanitize(override.faceShot)}\n`;
+      if (override.eyeColor) result += `- EyeColor: ${sanitize(override.eyeColor)}\n`;
+      if (override.hairColor) result += `- HairColor: ${sanitize(override.hairColor)}\n`;
+      if (override.hairLength) result += `- HairLength: ${sanitize(override.hairLength)}\n`;
+      if (override.height) result += `- Height: ${sanitize(override.height)}\n`;
+      if (override.build) result += `- Build: ${sanitize(override.build)}\n`;
+      if (override.skinTone) result += `- SkinTone: ${sanitize(override.skinTone)}\n`;
+      if (override.distinguishingFeatures) result += `- DistinguishingFeatures: ${sanitize(override.distinguishingFeatures)}\n`;
       if (override.images && override.images.length > 0) {
         result += `- Images:\n`;
         for (const img of override.images) {
@@ -507,6 +542,13 @@ export function applyChapterOverride(
     age: override.age ?? data.age,
     role: override.role ?? data.role,
     faceShot: override.faceShot ?? data.faceShot,
+    eyeColor: override.eyeColor ?? data.eyeColor,
+    hairColor: override.hairColor ?? data.hairColor,
+    hairLength: override.hairLength ?? data.hairLength,
+    height: override.height ?? data.height,
+    build: override.build ?? data.build,
+    skinTone: override.skinTone ?? data.skinTone,
+    distinguishingFeatures: override.distinguishingFeatures ?? data.distinguishingFeatures,
     relationships: override.relationships ?? data.relationships,
     customProperties: override.customProperties 
       ? { ...data.customProperties, ...override.customProperties }

@@ -14,6 +14,7 @@ import type NovalistPlugin from '../main';
 import { CharacterSheetData, CharacterRelationship, CharacterChapterOverride, CharacterImage } from '../types';
 import { parseCharacterSheet, serializeCharacterSheet } from '../utils/characterSheetUtils';
 import { InverseRelationshipModal } from '../modals/InverseRelationshipModal';
+import { t } from '../i18n';
 
 export const CHARACTER_SHEET_VIEW_TYPE = 'character-sheet';
 
@@ -184,6 +185,13 @@ export class CharacterSheetView extends TextFileView {
     age: '',
     role: 'Side',
     faceShot: '',
+    eyeColor: '',
+    hairColor: '',
+    hairLength: '',
+    height: '',
+    build: '',
+    skinTone: '',
+    distinguishingFeatures: '',
     relationships: [],
     customProperties: {},
     sections: [],
@@ -207,7 +215,7 @@ export class CharacterSheetView extends TextFileView {
   }
 
   getDisplayText(): string {
-    return this.file ? `${this.file.basename} (Character Sheet)` : 'Character Sheet';
+    return this.file ? `${this.file.basename} ${t('charSheet.tabSuffix')}` : t('charSheet.fallbackTitle');
   }
 
   getIcon(): string {
@@ -276,17 +284,17 @@ export class CharacterSheetView extends TextFileView {
 
     // Header with mode toggle
     const header = this.contentEl.createDiv('character-sheet-header');
-    header.createEl('h2', { text: 'Character', cls: 'character-sheet-title' });
+    header.createEl('h2', { text: t('charSheet.mainHeader'), cls: 'character-sheet-title' });
 
     const headerActions = header.createDiv('character-sheet-header-actions');
     new ButtonComponent(headerActions)
-      .setButtonText('Save')
+      .setButtonText(t('charSheet.save'))
       .setCta()
       .onClick(() => {
         void this.save();
       });
     new ButtonComponent(headerActions)
-      .setButtonText('Edit source')
+      .setButtonText(t('charSheet.editSource'))
       .setClass('character-sheet-mode-toggle')
       .onClick(() => {
         void this.switchToMarkdownView();
@@ -317,6 +325,7 @@ export class CharacterSheetView extends TextFileView {
     this.renderImagesSection(rightCol);
 
     // Full width sections below
+    this.renderPhysicalAttributesSection(this.contentContainer);
     this.renderRelationshipsSection(this.contentContainer);
     this.renderCustomPropertiesSection(this.contentContainer);
     if (!this.enableOverrides) {
@@ -334,10 +343,10 @@ export class CharacterSheetView extends TextFileView {
     this.chapterLabelById = new Map(chapters.map((ch) => [ch.id, ch.name]));
     
     new Setting(container)
-      .setName('Preview/edit for chapter')
-      .setDesc('Select a chapter to preview or edit chapter-specific overrides')
+      .setName(t('charSheet.previewChapter'))
+      .setDesc(t('charSheet.selectChapterDesc'))
       .addDropdown(dropdown => {
-        dropdown.addOption('', 'Default (no override)');
+        dropdown.addOption('', t('charSheet.defaultNoOverride'));
         for (const ch of chapters) {
           dropdown.addOption(ch.id, ch.name);
         }
@@ -353,12 +362,12 @@ export class CharacterSheetView extends TextFileView {
     if (this.currentChapter && this.enableOverrides) {
       const overrideInfo = container.createDiv('character-sheet-override-info');
       overrideInfo.createEl('span', { 
-        text: `Editing overrides for: ${this.getChapterLabel(this.currentChapter)}`,
+        text: t('charSheet.editingOverrides', { chapter: this.getChapterLabel(this.currentChapter) }),
         cls: 'character-sheet-override-badge'
       });
       
       new ButtonComponent(container)
-        .setButtonText('Clear override for this chapter')
+        .setButtonText(t('charSheet.clearOverride'))
         .onClick(() => {
           const label = this.getChapterLabel(this.currentChapter);
           this.data.chapterOverrides = this.data.chapterOverrides.filter(
@@ -373,13 +382,13 @@ export class CharacterSheetView extends TextFileView {
 
   private renderBasicInfoSection(container: HTMLElement): void {
     const section = container.createDiv('character-sheet-section');
-    section.createEl('h3', { text: 'Basic information', cls: 'character-sheet-section-title' });
+    section.createEl('h3', { text: t('charSheet.basicInfo'), cls: 'character-sheet-section-title' });
 
     // Name and Surname row
     const nameRow = section.createDiv('character-sheet-row');
     
     new Setting(nameRow)
-      .setName('Name')
+      .setName(t('charSheet.name'))
       .addText(text => {
         text.setValue(this.getEffectiveValue('name'));
         text.onChange(value => {
@@ -388,7 +397,7 @@ export class CharacterSheetView extends TextFileView {
       });
 
     new Setting(nameRow)
-      .setName('Surname')
+      .setName(t('charSheet.surname'))
       .addText(text => {
         text.setValue(this.getEffectiveValue('surname'));
         text.onChange(value => {
@@ -402,7 +411,7 @@ export class CharacterSheetView extends TextFileView {
     const genderDatalist = section.createEl('datalist', { attr: { id: genderListId } });
     
     new Setting(detailsRow1)
-      .setName('Gender')
+      .setName(t('charSheet.gender'))
       .addText(text => {
         text.setValue(this.getEffectiveValue('gender'));
         text.inputEl.setAttr('list', genderListId);
@@ -414,7 +423,7 @@ export class CharacterSheetView extends TextFileView {
       });
 
     new Setting(detailsRow1)
-      .setName('Age')
+      .setName(t('charSheet.age'))
       .addText(text => {
         text.setValue(this.getEffectiveValue('age'));
         text.onChange(value => {
@@ -427,10 +436,10 @@ export class CharacterSheetView extends TextFileView {
     const roleListId = `novalist-role-suggestions-${this.suggestionId}`;
     const roleDatalist = section.createEl('datalist', { attr: { id: roleListId } });
     new Setting(roleRow)
-      .setName('Role')
+      .setName(t('charSheet.role'))
       .addText(text => {
         text.setValue(this.getEffectiveValue('role'));
-        text.setPlaceholder('Protag, love interest, etc.');
+        text.setPlaceholder(t('charSheet.rolePlaceholder'));
         text.inputEl.setAttr('list', roleListId);
         void this.populateDatalist(roleDatalist, this.getKnownRoles(text.getValue()));
         text.onChange(value => {
@@ -438,6 +447,54 @@ export class CharacterSheetView extends TextFileView {
           void this.populateDatalist(roleDatalist, this.getKnownRoles(value));
         });
       });
+  }
+
+  private renderPhysicalAttributesSection(container: HTMLElement): void {
+    const section = container.createDiv('character-sheet-section');
+    section.createEl('h3', { text: t('charSheet.physicalAttributes'), cls: 'character-sheet-section-title' });
+
+    const row1 = section.createDiv('character-sheet-row');
+    new Setting(row1).setName(t('charSheet.eyeColor')).addText(txt => {
+      txt.setValue(this.getEffectiveValue('eyeColor'));
+      txt.setPlaceholder(t('charSheet.eyeColorPlaceholder'));
+      txt.onChange(v => this.setEffectiveValue('eyeColor', v));
+    });
+    new Setting(row1).setName(t('charSheet.hairColor')).addText(txt => {
+      txt.setValue(this.getEffectiveValue('hairColor'));
+      txt.setPlaceholder(t('charSheet.hairColorPlaceholder'));
+      txt.onChange(v => this.setEffectiveValue('hairColor', v));
+    });
+
+    const row2 = section.createDiv('character-sheet-row');
+    new Setting(row2).setName(t('charSheet.hairLength')).addText(txt => {
+      txt.setValue(this.getEffectiveValue('hairLength'));
+      txt.setPlaceholder(t('charSheet.hairLengthPlaceholder'));
+      txt.onChange(v => this.setEffectiveValue('hairLength', v));
+    });
+    new Setting(row2).setName(t('charSheet.height')).addText(txt => {
+      txt.setValue(this.getEffectiveValue('height'));
+      txt.setPlaceholder(t('charSheet.heightPlaceholder'));
+      txt.onChange(v => this.setEffectiveValue('height', v));
+    });
+
+    const row3 = section.createDiv('character-sheet-row');
+    new Setting(row3).setName(t('charSheet.build')).addText(txt => {
+      txt.setValue(this.getEffectiveValue('build'));
+      txt.setPlaceholder(t('charSheet.buildPlaceholder'));
+      txt.onChange(v => this.setEffectiveValue('build', v));
+    });
+    new Setting(row3).setName(t('charSheet.skinTone')).addText(txt => {
+      txt.setValue(this.getEffectiveValue('skinTone'));
+      txt.setPlaceholder(t('charSheet.skinTonePlaceholder'));
+      txt.onChange(v => this.setEffectiveValue('skinTone', v));
+    });
+
+    const row4 = section.createDiv('character-sheet-row');
+    new Setting(row4).setName(t('charSheet.distinguishingFeatures')).addText(txt => {
+      txt.setValue(this.getEffectiveValue('distinguishingFeatures'));
+      txt.setPlaceholder(t('charSheet.distinguishingFeaturesPlaceholder'));
+      txt.onChange(v => this.setEffectiveValue('distinguishingFeatures', v));
+    });
   }
 
   private async populateDatalist(
@@ -491,7 +548,7 @@ export class CharacterSheetView extends TextFileView {
 
   private renderImagesSection(container: HTMLElement): void {
     const section = container.createDiv('character-sheet-section character-sheet-images');
-    section.createEl('h3', { text: 'Images', cls: 'character-sheet-section-title' });
+    section.createEl('h3', { text: t('charSheet.images'), cls: 'character-sheet-section-title' });
 
     const images = this.getEffectiveImages();
     
@@ -499,7 +556,7 @@ export class CharacterSheetView extends TextFileView {
     const imagesList = section.createDiv('character-sheet-images-list');
     
     if (images.length === 0) {
-      imagesList.createEl('p', { text: 'Drag and drop images here or click add image', cls: 'character-sheet-empty' });
+      imagesList.createEl('p', { text: t('charSheet.dropImages'), cls: 'character-sheet-empty' });
     } else {
       for (let i = 0; i < images.length; i++) {
         this.renderImageRow(imagesList, images, i);
@@ -508,9 +565,9 @@ export class CharacterSheetView extends TextFileView {
 
     // Add image button
     new ButtonComponent(section)
-      .setButtonText('Add image')
+      .setButtonText(t('charSheet.addImage'))
       .onClick(() => {
-        images.push({ name: 'New image', path: '' });
+        images.push({ name: t('charSheet.newImage'), path: '' });
         this.setEffectiveImages(images);
         void this.render();
       });
@@ -553,7 +610,7 @@ export class CharacterSheetView extends TextFileView {
     
     new Setting(details)
       .setClass('character-sheet-image-name')
-      .setName('Name')
+      .setName(t('charSheet.name'))
       .addText(text => {
         text.setValue(image.name);
         text.onChange(value => {
@@ -563,7 +620,7 @@ export class CharacterSheetView extends TextFileView {
       })
       .addButton(btn => {
         btn.setIcon('trash');
-        btn.setTooltip('Remove');
+        btn.setTooltip(t('charSheet.removeTooltip'));
         btn.onClick(() => {
           images.splice(index, 1);
           this.setEffectiveImages(images);
@@ -684,7 +741,7 @@ export class CharacterSheetView extends TextFileView {
       existingImageHashes.set(fileHash, targetPath);
 
       // Add to images list
-      const basename = targetPath.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'New image';
+      const basename = targetPath.split('/').pop()?.replace(/\.[^/.]+$/, '') || t('charSheet.newImage');
       images.push({
         name: basename,
         path: `![[${targetPath}]]`
@@ -694,7 +751,7 @@ export class CharacterSheetView extends TextFileView {
 
     this.setEffectiveImages(images);
     void this.render();
-    new Notice(`Added ${addedCount} image(s)`);
+    new Notice(t('notice.addedImages', { count: addedCount }));
   }
 
   private async computeHash(data: ArrayBuffer): Promise<string> {
@@ -705,13 +762,13 @@ export class CharacterSheetView extends TextFileView {
 
   private renderRelationshipsSection(container: HTMLElement): void {
     const section = container.createDiv('character-sheet-section');
-    section.createEl('h3', { text: 'Character relationships', cls: 'character-sheet-section-title' });
+    section.createEl('h3', { text: t('charSheet.relationships'), cls: 'character-sheet-section-title' });
 
     const relationships = this.getEffectiveRelationships();
     const listContainer = section.createDiv('character-sheet-relationships-list');
 
     if (relationships.length === 0) {
-      listContainer.createEl('p', { text: 'No relationships defined yet.', cls: 'character-sheet-empty' });
+      listContainer.createEl('p', { text: t('charSheet.noRelationships'), cls: 'character-sheet-empty' });
     } else {
       for (let i = 0; i < relationships.length; i++) {
         this.renderRelationshipRow(listContainer, relationships, i);
@@ -720,7 +777,7 @@ export class CharacterSheetView extends TextFileView {
 
     // Add relationship button
     new ButtonComponent(section)
-      .setButtonText('Add relationship')
+      .setButtonText(t('charSheet.addRelationship'))
       .onClick(() => {
         relationships.push({ role: '', character: '' });
         this.setEffectiveRelationships(relationships);
@@ -730,7 +787,7 @@ export class CharacterSheetView extends TextFileView {
     // Known relationship keys as suggestions
     if (this.plugin.knownRelationshipKeys.size > 0) {
       const suggestions = section.createDiv('character-sheet-suggestions');
-      suggestions.createEl('small', { text: 'Suggested relationship types: ' });
+      suggestions.createEl('small', { text: t('charSheet.suggestedRelationships') });
       for (const key of this.plugin.knownRelationshipKeys) {
         const chip = suggestions.createEl('span', { 
           text: key, 
@@ -751,7 +808,7 @@ export class CharacterSheetView extends TextFileView {
     new Setting(row)
       .setClass('character-sheet-relationship-role')
       .addText(text => {
-        text.setPlaceholder('Role (e.g., friend, enemy)');
+        text.setPlaceholder(t('charSheet.relationshipRolePlaceholder'));
         text.setValue(relationships[index].role);
         text.onChange(value => {
           relationships[index].role = value;
@@ -781,7 +838,7 @@ export class CharacterSheetView extends TextFileView {
         
         const removeBtn = badge.createSpan('character-badge-remove');
         setIcon(removeBtn, 'x');
-        removeBtn.setAttr('aria-label', 'Remove character');
+        removeBtn.setAttr('aria-label', t('charSheet.removeCharacter'));
         removeBtn.onclick = (e) => {
             e.stopPropagation();
             const newChars = chars.filter(c => c !== charRaw);
@@ -795,7 +852,7 @@ export class CharacterSheetView extends TextFileView {
     const input = badgeWrapper.createEl('input', { 
         type: 'text', 
         cls: 'character-badge-input', 
-        placeholder: '+' 
+        placeholder: t('charSheet.addPlaceholder') 
     });
 
     // Attach inline suggester first so it processes Enter key before the blur handler
@@ -858,7 +915,7 @@ export class CharacterSheetView extends TextFileView {
     // Remove Row Button (Right column)
     charSetting.addButton(btn => {
         btn.setIcon('trash');
-        btn.setTooltip('Remove relationship row');
+        btn.setTooltip(t('charSheet.removeRelationship'));
         btn.onClick(() => {
           relationships.splice(index, 1);
           this.setEffectiveRelationships(relationships);
@@ -869,14 +926,14 @@ export class CharacterSheetView extends TextFileView {
 
   private renderCustomPropertiesSection(container: HTMLElement): void {
     const section = container.createDiv('character-sheet-section');
-    section.createEl('h3', { text: 'Custom properties', cls: 'character-sheet-section-title' });
+    section.createEl('h3', { text: t('charSheet.customProperties'), cls: 'character-sheet-section-title' });
 
     const customProps = this.getEffectiveCustomProperties();
     const listContainer = section.createDiv('character-sheet-custom-list');
 
     const entries = Object.entries(customProps);
     if (entries.length === 0) {
-      listContainer.createEl('p', { text: 'No custom properties yet.', cls: 'character-sheet-empty' });
+      listContainer.createEl('p', { text: t('charSheet.noCustomProperties'), cls: 'character-sheet-empty' });
     } else {
       for (let i = 0; i < entries.length; i++) {
         this.renderCustomPropertyRow(listContainer, entries, i, customProps);
@@ -885,10 +942,10 @@ export class CharacterSheetView extends TextFileView {
 
     // Add custom property button
     new ButtonComponent(section)
-      .setButtonText('Add custom property')
+      .setButtonText(t('charSheet.addCustomProperty'))
       .onClick(() => {
         // Generate unique key name
-        let baseName = 'New property';
+        let baseName = t('charSheet.newProperty');
         let keyName = baseName;
         let counter = 2;
         while (customProps[keyName] !== undefined) {
@@ -914,7 +971,7 @@ export class CharacterSheetView extends TextFileView {
     new Setting(row)
       .setClass('character-sheet-custom-key')
       .addText(text => {
-        text.setPlaceholder('Property name');
+        text.setPlaceholder(t('charSheet.propertyNamePlaceholder'));
         text.setValue(currentKey);
         // Use blur to avoid creating duplicate keys while typing
         text.inputEl.addEventListener('blur', () => {
@@ -923,7 +980,7 @@ export class CharacterSheetView extends TextFileView {
                // Check for duplicates
                const props = this.getEffectiveCustomProperties();
                if (props[newKey] !== undefined) {
-                   new Notice(`Property '${newKey}' already exists.`);
+                   new Notice(t('notice.propertyExists', { key: newKey }));
                    text.setValue(currentKey);
                    return;
                }
@@ -960,7 +1017,7 @@ export class CharacterSheetView extends TextFileView {
     new Setting(row)
       .setClass('character-sheet-custom-value')
       .addText(text => {
-        text.setPlaceholder('Value');
+        text.setPlaceholder(t('charSheet.valuePlaceholder'));
         text.setValue(value);
         text.onChange(newValue => {
           // Use currentKey to ensure we update the correct entry if it was renamed
@@ -970,7 +1027,7 @@ export class CharacterSheetView extends TextFileView {
       })
       .addButton(btn => {
         btn.setIcon('trash');
-        btn.setTooltip('Remove');
+        btn.setTooltip(t('charSheet.removeTooltip'));
         btn.onClick(() => {
           delete customProps[currentKey];
           this.setEffectiveCustomProperties(customProps);
@@ -993,7 +1050,7 @@ export class CharacterSheetView extends TextFileView {
     // Known section suggestions
     if (this.knownSections.size > 0) {
       const suggestions = addSection.createDiv('character-sheet-section-suggestions');
-      suggestions.createEl('small', { text: 'Add section: ' });
+      suggestions.createEl('small', { text: t('charSheet.addSectionLabel') });
       for (const title of this.knownSections) {
         const chip = suggestions.createEl('span', { 
           text: title, 
@@ -1008,9 +1065,9 @@ export class CharacterSheetView extends TextFileView {
     }
 
     new ButtonComponent(addSection)
-      .setButtonText('Add new section')
+      .setButtonText(t('charSheet.addNewSection'))
       .onClick(() => {
-        this.data.sections.push({ title: 'New section', content: '' });
+        this.data.sections.push({ title: t('charSheet.newSection'), content: '' });
         void this.render();
       });
   }
@@ -1026,7 +1083,7 @@ export class CharacterSheetView extends TextFileView {
       cls: 'character-sheet-section-title-input'
     });
     titleInput.value = section.title;
-    titleInput.placeholder = 'Section title';
+    titleInput.placeholder = t('charSheet.sectionTitlePlaceholder');
     titleInput.addEventListener('change', () => {
       section.title = titleInput.value;
       this.knownSections.add(section.title);
@@ -1034,7 +1091,7 @@ export class CharacterSheetView extends TextFileView {
 
     new ButtonComponent(header)
       .setIcon('trash')
-      .setTooltip('Remove section')
+      .setTooltip(t('charSheet.removeSection'))
       .onClick(() => {
         this.data.sections.splice(index, 1);
         this.render();
@@ -1045,7 +1102,7 @@ export class CharacterSheetView extends TextFileView {
       cls: 'character-sheet-markdown-textarea'
     });
     textarea.value = section.content;
-    textarea.placeholder = 'Write content here';
+    textarea.placeholder = t('charSheet.sectionContentPlaceholder');
     textarea.addEventListener('input', () => {
       section.content = textarea.value;
     });
@@ -1055,13 +1112,13 @@ export class CharacterSheetView extends TextFileView {
     this.ensureChapterLabelMap();
     const section = container.createDiv('character-sheet-section character-sheet-overrides');
     section.createEl('h3', { 
-      text: 'Chapter overrides', 
+      text: t('charSheet.chapterOverrides'), 
       cls: 'character-sheet-section-title' 
     });
 
     if (this.data.chapterOverrides.length === 0) {
       section.createEl('p', { 
-        text: 'No chapter-specific overrides set. Select a chapter above to create overrides.', 
+        text: t('charSheet.noOverrides'), 
         cls: 'character-sheet-empty' 
       });
       return;
@@ -1078,6 +1135,13 @@ export class CharacterSheetView extends TextFileView {
       if (override.age) details.push(`age: ${override.age}`);
       if (override.gender) details.push(`gender: ${override.gender}`);
       if (override.role) details.push(`role: ${override.role}`);
+      if (override.eyeColor) details.push(`eyes: ${override.eyeColor}`);
+      if (override.hairColor) details.push(`hair: ${override.hairColor}`);
+      if (override.hairLength) details.push(`hair length: ${override.hairLength}`);
+      if (override.height) details.push(`height: ${override.height}`);
+      if (override.build) details.push(`build: ${override.build}`);
+      if (override.skinTone) details.push(`skin: ${override.skinTone}`);
+      if (override.distinguishingFeatures) details.push(`features: ${override.distinguishingFeatures}`);
       if (override.relationships) details.push(`relationships: ${override.relationships.length}`);
       
       if (details.length > 0) {
@@ -1089,7 +1153,7 @@ export class CharacterSheetView extends TextFileView {
 
       new ButtonComponent(item)
         .setIcon('trash')
-        .setTooltip('Remove override')
+        .setTooltip(t('charSheet.removeOverride'))
         .onClick(() => {
           this.data.chapterOverrides = this.data.chapterOverrides.filter(
             o => o.chapter !== override.chapter
@@ -1275,10 +1339,10 @@ export class CharacterSheetView extends TextFileView {
 
       const newContent = serializeCharacterSheet(data);
       await this.app.vault.modify(targetFile, newContent);
-      new Notice(`Added "${inverseRole}" relationship to ${targetFile.basename}`);
+      new Notice(t('notice.addedInverseRelationship', { role: inverseRole, name: targetFile.basename }));
       
     } catch {
-      new Notice(`Failed to add inverse relationship to ${targetFile.basename}`);
+      new Notice(t('notice.failedInverseRelationship', { name: targetFile.basename }));
     }
   }
 
@@ -1293,11 +1357,11 @@ export class CharacterSheetView extends TextFileView {
         if (!this.app.vault.getAbstractFileByPath(nextPath)) {
           await this.app.fileManager.renameFile(this.file, nextPath);
         } else {
-          new Notice('A character file with that name already exists.');
+          new Notice(t('notice.characterFileExists'));
         }
       }
       await this.app.vault.modify(this.file, content);
-      new Notice('Character saved!');
+      new Notice(t('notice.characterSaved'));
     }
   }
 }

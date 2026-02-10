@@ -16,6 +16,7 @@ import {
 } from '@codemirror/view';
 import { setIcon } from 'obsidian';
 import type { CommentThread } from '../types';
+import { t } from '../i18n';
 
 // ─── Effects ────────────────────────────────────────────────────────
 /** Replace the full set of threads visible in this editor. */
@@ -158,7 +159,7 @@ function showAnnotationTooltip(view: EditorView): void {
       tooltipEl.className = 'novalist-annotation-tooltip';
       const btn = document.createElement('button');
       btn.className = 'novalist-annotation-tooltip-btn';
-      btn.setAttribute('aria-label', 'Add comment');
+      btn.setAttribute('aria-label', t('annotation.addComment'));
       setIcon(btn, 'plus');
       tooltipEl.appendChild(btn);
       btn.addEventListener('mousedown', (e) => {
@@ -391,7 +392,7 @@ class AnnotationPanelPlugin implements PluginValue {
 
     const toggleBtn = header.createEl('button', {
       cls: 'novalist-annotation-toggle-btn',
-      attr: { 'aria-label': 'Toggle thread' }
+      attr: { 'aria-label': t('annotation.toggleThread') }
     });
     setIcon(toggleBtn, isExpanded ? 'chevron-down' : 'chevron-right');
     toggleBtn.addEventListener('click', () => {
@@ -429,7 +430,7 @@ class AnnotationPanelPlugin implements PluginValue {
 
     const resolveBtn = actions.createEl('button', {
       cls: 'novalist-annotation-action-btn',
-      attr: { 'aria-label': 'Resolve' }
+      attr: { 'aria-label': t('annotation.resolve') }
     });
     setIcon(resolveBtn, 'check');
     resolveBtn.addEventListener('click', () => {
@@ -438,7 +439,7 @@ class AnnotationPanelPlugin implements PluginValue {
 
     const deleteBtn = actions.createEl('button', {
       cls: 'novalist-annotation-action-btn novalist-annotation-action-btn--danger',
-      attr: { 'aria-label': 'Delete thread' }
+      attr: { 'aria-label': t('annotation.deleteThread') }
     });
     setIcon(deleteBtn, 'x');
     deleteBtn.addEventListener('click', () => {
@@ -459,7 +460,7 @@ class AnnotationPanelPlugin implements PluginValue {
 
       const msgDeleteBtn = msgHeader.createEl('button', {
         cls: 'novalist-annotation-action-btn novalist-annotation-action-btn--small',
-        attr: { 'aria-label': 'Delete message' }
+      attr: { 'aria-label': t('annotation.deleteMessage') }
       });
       setIcon(msgDeleteBtn, 'x');
       msgDeleteBtn.addEventListener('click', () => {
@@ -473,7 +474,7 @@ class AnnotationPanelPlugin implements PluginValue {
     const inputRow = body.createDiv('novalist-annotation-input-row');
     const input = inputRow.createEl('input', {
       cls: 'novalist-annotation-input',
-      attr: { placeholder: 'Add a comment…', type: 'text' }
+      attr: { placeholder: t('annotation.placeholder'), type: 'text' }
     });
     // Auto-focus input if this thread was just created via + button
     if (pendingFocusThreadId === thread.id) {
@@ -481,7 +482,7 @@ class AnnotationPanelPlugin implements PluginValue {
       setTimeout(() => input.focus(), 0);
     }    const sendBtn = inputRow.createEl('button', {
       cls: 'novalist-annotation-send-btn',
-      attr: { 'aria-label': 'Send' }
+      attr: { 'aria-label': t('annotation.send') }
     });
     setIcon(sendBtn, 'send');
 
@@ -532,12 +533,12 @@ class AnnotationPanelPlugin implements PluginValue {
       const now = new Date();
       const diffMs = now.getTime() - d.getTime();
       const diffMins = Math.floor(diffMs / 60000);
-      if (diffMins < 1) return 'just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffMins < 1) return t('annotation.justNow');
+      if (diffMins < 60) return t('annotation.minutesAgo', { n: diffMins });
       const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffHours < 24) return t('annotation.hoursAgo', { n: diffHours });
       const diffDays = Math.floor(diffHours / 24);
-      if (diffDays < 7) return `${diffDays}d ago`;
+      if (diffDays < 7) return t('annotation.daysAgo', { n: diffDays });
       return d.toLocaleDateString();
     } catch {
       return '';

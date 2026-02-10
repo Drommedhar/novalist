@@ -1,19 +1,22 @@
 ﻿import { LanguageKey, AutoReplacementPair, NovalistSettings } from '../types';
+import { t } from '../i18n';
 
-export const LANGUAGE_LABELS: Record<LanguageKey, string> = {
-  'de-guillemet': 'German (guillemets)',
-  'de-low': 'German (low-high)',
-  en: 'English (curly quotes)',
-  fr: 'French (guillemets with spaces)',
-  es: 'Spanish (guillemets)',
-  it: 'Italian (guillemets)',
-  pt: 'Portuguese (guillemets)',
-  ru: 'Russian (guillemets)',
-  pl: 'Polish (low-high)',
-  cs: 'Czech (low-high)',
-  sk: 'Slovak (low-high)',
-  custom: 'Custom'
-};
+export function getLanguageLabels(): Record<LanguageKey, string> {
+  return {
+    'de-guillemet': t('lang.de-guillemet'),
+    'de-low': t('lang.de-low'),
+    en: t('lang.en'),
+    fr: t('lang.fr'),
+    es: t('lang.es'),
+    it: t('lang.it'),
+    pt: t('lang.pt'),
+    ru: t('lang.ru'),
+    pl: t('lang.pl'),
+    cs: t('lang.cs'),
+    sk: t('lang.sk'),
+    custom: t('lang.custom'),
+  };
+}
 
 export const COMMON_REPLACEMENTS: AutoReplacementPair[] = [
   { start: '--', end: '--', startReplace: '—', endReplace: '—' },
@@ -77,7 +80,7 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   customLanguageLabel: 'Custom',
   customLanguageDefaults: [],
   enableSidebarView: true,
-  enableCustomExplorer: false,
+  enableCustomExplorer: true,
   characterFolder: 'Characters',
   locationFolder: 'Locations',
   imageFolder: 'Images',
@@ -93,7 +96,8 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
     dailyHistory: []
   },
   enableBookParagraphSpacing: false,
-  enableToolbar: false,
+  enableToolbar: true,
   enableAnnotations: true,
-  commentThreads: []
+  commentThreads: [],
+  plotBoard: { columns: [], cells: {} }
 };

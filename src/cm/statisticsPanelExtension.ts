@@ -1,6 +1,7 @@
 import { Facet, type Extension } from '@codemirror/state';
 import { showPanel, EditorView, type Panel, type ViewUpdate } from '@codemirror/view';
 import { setIcon } from 'obsidian';
+import { t } from '../i18n';
 import type { LanguageKey, WordCountGoals } from '../types';
 import { countWords, countCharacters, estimateReadingTime, formatWordCount, calculateDailyProgress, calculateProjectProgress } from '../utils/statisticsUtils';
 import { calculateReadability, getReadabilityColor, formatReadabilityScore, type ReadabilityScore } from '../utils/readabilityUtils';
@@ -39,21 +40,21 @@ export const statisticsPanelConfig = Facet.define<StatisticsPanelConfig, Statist
 // ─── Helpers ────────────────────────────────────────────────────────
 function getLevelLabel(level: ReadabilityScore['level']): string {
   switch (level) {
-    case 'very_easy': return 'Very Easy';
-    case 'easy': return 'Easy';
-    case 'moderate': return 'Moderate';
-    case 'difficult': return 'Difficult';
-    case 'very_difficult': return 'Very Difficult';
+    case 'very_easy': return t('stats.veryEasy');
+    case 'easy': return t('stats.easy');
+    case 'moderate': return t('stats.moderate');
+    case 'difficult': return t('stats.difficult');
+    case 'very_difficult': return t('stats.veryDifficult');
     default: return '';
   }
 }
 
 function formatReadingTime(minutes: number): string {
-  if (minutes < 1) return '<1 min';
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 1) return t('stats.lessThanMin');
+  if (minutes < 60) return t('stats.minutes', { n: minutes });
   const hours = Math.floor(minutes / 60);
   const rem = minutes % 60;
-  return rem === 0 ? `${hours} hr` : `${hours}h ${rem}m`;
+  return rem === 0 ? t('stats.hours', { n: hours }) : t('stats.hoursMinutes', { h: hours, m: rem });
 }
 
 // ─── Panel builder ──────────────────────────────────────────────────
@@ -73,17 +74,17 @@ function showChapterPopup(overview: ProjectOverview, anchor: HTMLElement): void 
   popup.className = 'novalist-stats-popup';
 
   // Header
-  popup.createEl('div', { text: 'Chapter breakdown', cls: 'novalist-stats-popup-title' });
+  popup.createEl('div', { text: t('stats.chapterBreakdown'), cls: 'novalist-stats-popup-title' });
 
   if (overview.chapters.length === 0) {
-    popup.createEl('div', { text: 'No chapters found.', cls: 'novalist-stats-popup-empty' });
+    popup.createEl('div', { text: t('stats.noChapters'), cls: 'novalist-stats-popup-empty' });
   } else {
     const table = popup.createEl('table', { cls: 'novalist-stats-popup-table' });
     const thead = table.createEl('thead');
     const headRow = thead.createEl('tr');
-    headRow.createEl('th', { text: 'Chapter' });
-    headRow.createEl('th', { text: 'Words' });
-    headRow.createEl('th', { text: 'Readability' });
+    headRow.createEl('th', { text: t('stats.chapter') });
+    headRow.createEl('th', { text: t('stats.words') });
+    headRow.createEl('th', { text: t('stats.readability') });
 
     const tbody = table.createEl('tbody');
     const maxWords = Math.max(...overview.chapters.map(c => c.words), 1);
@@ -164,9 +165,9 @@ function buildStatsPanel(view: EditorView): Panel {
 
     // ── Left: file metrics ──
     const left = dom.createDiv('novalist-stats-panel-left');
-    addStat(left, 'pen-tool', `${formatWordCount(words)} words`);
-    addStat(left, 'type', `${chars.toLocaleString()} chars`);
-    addStat(left, 'type', `${charsNoSpace.toLocaleString()} (no spaces)`, 'novalist-stats-panel-dim');
+    addStat(left, 'pen-tool', t('stats.wordCount', { count: formatWordCount(words) }));
+    addStat(left, 'type', t('stats.charCount', { count: chars.toLocaleString() }));
+    addStat(left, 'type', t('stats.charCountNoSpaces', { count: charsNoSpace.toLocaleString() }), 'novalist-stats-panel-dim');
     addStat(left, 'clock', formatReadingTime(readingTime));
 
     if (readability.score > 0) {
@@ -182,11 +183,11 @@ function buildStatsPanel(view: EditorView): Panel {
     // ── Middle: project overview (clickable) ──
     const mid = dom.createDiv('novalist-stats-panel-mid novalist-stats-panel-clickable');
     addStat(mid, 'pen-tool', `${formatWordCount(overview.totalWords)}`, 'novalist-stats-panel-dim');
-    addStat(mid, 'book-open', `${overview.totalChapters} ch`);
-    addStat(mid, 'users', `${overview.totalCharacters} char`);
-    addStat(mid, 'map-pin', `${overview.totalLocations} loc`);
+    addStat(mid, 'book-open', `${overview.totalChapters} ${t('stats.chAbbr')}`);
+    addStat(mid, 'users', `${overview.totalCharacters} ${t('stats.charAbbr')}`);
+    addStat(mid, 'map-pin', `${overview.totalLocations} ${t('stats.locAbbr')}`);
     addStat(mid, 'clock', formatReadingTime(overview.readingTime), 'novalist-stats-panel-dim');
-    addStat(mid, 'align-left', `~${formatWordCount(overview.avgChapter)}/ch`, 'novalist-stats-panel-dim');
+    addStat(mid, 'align-left', t('stats.perChapter', { count: formatWordCount(overview.avgChapter) }), 'novalist-stats-panel-dim');
     mid.addEventListener('click', (e) => {
       e.stopPropagation();
       showChapterPopup(overview, mid);
@@ -199,7 +200,7 @@ function buildStatsPanel(view: EditorView): Panel {
     if (goals.dailyGoal > 0) {
       const dailyEl = right.createDiv('novalist-stats-panel-goal');
       dailyEl.createEl('span', {
-        text: `Daily ${daily.percentage}%`,
+        text: t('stats.dailyGoal', { pct: daily.percentage }),
         cls: 'novalist-stats-panel-goal-label'
       });
       const bar = dailyEl.createDiv('novalist-stats-panel-bar');
@@ -212,7 +213,7 @@ function buildStatsPanel(view: EditorView): Panel {
     if (goals.projectGoal > 0) {
       const projEl = right.createDiv('novalist-stats-panel-goal');
       projEl.createEl('span', {
-        text: `Project ${project.percentage}%`,
+        text: t('stats.projectGoal', { pct: project.percentage }),
         cls: 'novalist-stats-panel-goal-label'
       });
       const bar = projEl.createDiv('novalist-stats-panel-bar');

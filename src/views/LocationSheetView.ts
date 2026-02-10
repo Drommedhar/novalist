@@ -9,6 +9,7 @@ import {
   App
 } from 'obsidian';
 import type NovalistPlugin from '../main';
+import { t } from '../i18n';
 import { LocationSheetData, CharacterImage } from '../types';
 import { parseLocationSheet, serializeLocationSheet } from '../utils/locationSheetUtils';
 
@@ -68,7 +69,7 @@ export class LocationSheetView extends TextFileView {
   }
 
   getDisplayText(): string {
-    return this.file ? this.file.basename : 'Location Sheet';
+    return this.file ? this.file.basename : t('locSheet.fallbackTitle');
   }
   
   protected async onOpen(): Promise<void> {
@@ -106,17 +107,17 @@ export class LocationSheetView extends TextFileView {
     
     // Header
     const header = wrapper.createDiv('character-sheet-header');
-    header.createEl('h2', { text: this.data.name || 'Unnamed Location', cls: 'character-sheet-title' });
+    header.createEl('h2', { text: this.data.name || t('locSheet.unnamedLocation'), cls: 'character-sheet-title' });
 
     const headerActions = header.createDiv('character-sheet-header-actions');
     new ButtonComponent(headerActions)
-      .setButtonText('Save')
+      .setButtonText(t('locSheet.save'))
       .setCta()
       .onClick(() => {
         void this.save();
       });
     new ButtonComponent(headerActions)
-      .setButtonText('Edit source')
+      .setButtonText(t('locSheet.editSource'))
       .setClass('character-sheet-mode-toggle')
       .onClick(() => {
         void this.switchToMarkdownView();
@@ -139,11 +140,11 @@ export class LocationSheetView extends TextFileView {
 
   private renderBasicInfo(container: HTMLElement): void {
     const section = container.createDiv('character-sheet-section');
-    section.createEl('h3', { text: 'Basic information', cls: 'character-sheet-section-title' });
+    section.createEl('h3', { text: t('locSheet.basicInfo'), cls: 'character-sheet-section-title' });
 
     // Name
     new Setting(section)
-      .setName('Name')
+      .setName(t('locSheet.name'))
       .addText(text => {
         text.setValue(this.data.name || '');
         text.onChange(value => {
@@ -153,10 +154,10 @@ export class LocationSheetView extends TextFileView {
 
     // Type
     new Setting(section)
-      .setName('Type')
+      .setName(t('locSheet.type'))
       .addText(text => {
         text.setValue(this.data.type || '');
-        text.setPlaceholder('City, building');
+        text.setPlaceholder(t('locSheet.typePlaceholder'));
         text.onChange(value => {
             this.data.type = value;
         });
@@ -164,10 +165,10 @@ export class LocationSheetView extends TextFileView {
 
     // Description
     new Setting(section)
-      .setName('Description')
+      .setName(t('locSheet.description'))
       .addTextArea(text => {
         text.setValue(this.data.description || '');
-        text.setPlaceholder('Describe the location...');
+        text.setPlaceholder(t('locSheet.descriptionPlaceholder'));
         text.onChange(value => {
             this.data.description = value;
         });
@@ -176,7 +177,7 @@ export class LocationSheetView extends TextFileView {
 
   private renderCustomProperties(container: HTMLElement): void {
       const section = container.createDiv('character-sheet-section');
-      section.createEl('h3', { text: 'Custom properties', cls: 'character-sheet-section-title' });
+      section.createEl('h3', { text: t('locSheet.customProperties'), cls: 'character-sheet-section-title' });
       
       const props = this.data.customProperties;
       const list = section.createDiv('location-sheet-custom-list');
@@ -187,7 +188,7 @@ export class LocationSheetView extends TextFileView {
           const keyInput = row.createEl('input', {
             type: 'text',
             cls: 'location-sheet-custom-key',
-            placeholder: 'Property name'
+            placeholder: t('locSheet.propertyNamePlaceholder')
           });
           keyInput.value = key;
           keyInput.disabled = true;
@@ -195,7 +196,7 @@ export class LocationSheetView extends TextFileView {
           const valueInput = row.createEl('input', {
             type: 'text',
             cls: 'location-sheet-custom-value',
-            placeholder: 'Value'
+            placeholder: t('locSheet.valuePlaceholder')
           });
           valueInput.value = value;
           valueInput.addEventListener('input', () => {
@@ -211,7 +212,7 @@ export class LocationSheetView extends TextFileView {
       });
       
       new ButtonComponent(section)
-        .setButtonText('Add property')
+        .setButtonText(t('locSheet.addProperty'))
         .onClick(() => {
              let i = 1; 
              while(props[`New Prop ${i}`]) i++;
@@ -222,14 +223,14 @@ export class LocationSheetView extends TextFileView {
 
   private renderImagesSection(container: HTMLElement): void {
       const section = container.createDiv('character-sheet-section character-sheet-images');
-      section.createEl('h3', { text: 'Images', cls: 'character-sheet-section-title' });
+      section.createEl('h3', { text: t('locSheet.images'), cls: 'character-sheet-section-title' });
 
       const images = this.data.images;
       
       const imagesList = section.createDiv('character-sheet-images-list');
 
       if (images.length === 0) {
-          imagesList.createEl('p', { text: 'Drag and drop images here or click add image', cls: 'character-sheet-empty' });
+          imagesList.createEl('p', { text: t('locSheet.dropImages'), cls: 'character-sheet-empty' });
       } else {
         images.forEach((img, idx) => {
             this.renderImageRow(imagesList, images, idx);
@@ -237,7 +238,7 @@ export class LocationSheetView extends TextFileView {
       }
       
       new ButtonComponent(section)
-        .setButtonText('Add image')
+        .setButtonText(t('locSheet.addImage'))
         .onClick(() => {
              images.push({ name: 'New image', path: '' });
              this.render();
@@ -432,11 +433,11 @@ export class LocationSheetView extends TextFileView {
         if (!this.app.vault.getAbstractFileByPath(nextPath)) {
           await this.app.fileManager.renameFile(this.file, nextPath);
         } else {
-          new Notice('A location file with that name already exists.');
+          new Notice(t('notice.locationFileExists'));
         }
       }
       await this.app.vault.modify(this.file, content);
-      new Notice('Location saved!');
+      new Notice(t('notice.locationSaved'));
     }
   }
 }

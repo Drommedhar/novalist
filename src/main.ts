@@ -19,7 +19,8 @@ import {
   LocationData,
   ChapterListData,
   CharacterListData,
-  LocationListData
+  LocationListData,
+  ChapterStatus
 } from './types';
 import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS } from './settings/NovalistSettings';
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
@@ -28,6 +29,7 @@ import { CharacterMapView, CHARACTER_MAP_VIEW_TYPE } from './views/CharacterMapV
 import { LocationSheetView, LOCATION_SHEET_VIEW_TYPE } from './views/LocationSheetView';
 import { CharacterSheetView, CHARACTER_SHEET_VIEW_TYPE } from './views/CharacterSheetView';
 import { ExportView, EXPORT_VIEW_TYPE } from './views/ExportView';
+import { PlotBoardView, PLOT_BOARD_VIEW_TYPE } from './views/PlotBoardView';
 import { NovalistToolbarManager } from './utils/toolbarUtils';
 
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
@@ -39,8 +41,9 @@ import { ChapterDescriptionModal } from './modals/ChapterDescriptionModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole } from './utils/characterUtils';
-import { parseCharacterSheet } from './utils/characterSheetUtils';
+import { parseCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
 import { parseLocationSheet } from './utils/locationSheetUtils';
+import { initLocale, t } from './i18n';
 import {
   annotationExtension,
   setThreadsEffect,
@@ -66,6 +69,7 @@ export default class NovalistPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    initLocale();
     
     // Apply book paragraph spacing if enabled
     this.updateBookParagraphSpacing();
@@ -118,6 +122,12 @@ export default class NovalistPlugin extends Plugin {
       (leaf) => new ExportView(leaf, this)
     );
 
+    // Register plot board view
+    this.registerView(
+      PLOT_BOARD_VIEW_TYPE,
+      (leaf) => new PlotBoardView(leaf, this)
+    );
+
     // Register annotation CM6 extension
     this.setupAnnotationExtension();
 
@@ -130,7 +140,7 @@ export default class NovalistPlugin extends Plugin {
     // Command to open current character file in sheet view
     this.addCommand({
       id: 'open-character-sheet',
-      name: 'Open character sheet view',
+      name: t('cmd.openCharacterSheet'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         const canRun = file instanceof TFile && this.isCharacterFile(file);
@@ -145,7 +155,7 @@ export default class NovalistPlugin extends Plugin {
     // Command to open current location file in sheet view
     this.addCommand({
       id: 'open-location-sheet',
-      name: 'Open location sheet view',
+      name: t('cmd.openLocationSheet'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         const canRun = file instanceof TFile && this.isLocationFile(file);
@@ -158,7 +168,7 @@ export default class NovalistPlugin extends Plugin {
     });
 
     // Add ribbon icon
-    this.addRibbonIcon('book-open', 'Novalist sidebar', () => {
+    this.addRibbonIcon('book-open', t('ribbon.sidebar'), () => {
       void this.activateView();
     });
 
@@ -169,7 +179,7 @@ export default class NovalistPlugin extends Plugin {
     // Initialize project structure command
     this.addCommand({
       id: 'initialize-novel-project',
-      name: 'Initialize novel project structure',
+      name: t('cmd.initProject'),
       callback: () => {
         new StartupWizardModal(this.app, this).open();
       }
@@ -178,7 +188,7 @@ export default class NovalistPlugin extends Plugin {
     // Open sidebar command
     this.addCommand({
       id: 'open-context-sidebar',
-      name: 'Open context sidebar',
+      name: t('cmd.openSidebar'),
       callback: () => {
         void this.activateView();
       }
@@ -187,7 +197,7 @@ export default class NovalistPlugin extends Plugin {
     // Open custom explorer command
     this.addCommand({
       id: 'open-custom-explorer',
-      name: 'Open custom explorer',
+      name: t('cmd.openExplorer'),
       callback: () => {
         void this.activateExplorerView(true);
       }
@@ -195,7 +205,7 @@ export default class NovalistPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-character-map',
-      name: 'Open character map',
+      name: t('cmd.openCharacterMap'),
       callback: () => {
         void this.activateCharacterMapView();
       }
@@ -204,18 +214,25 @@ export default class NovalistPlugin extends Plugin {
     // Open export view
     this.addCommand({
       id: 'open-export',
-      name: 'Export novel',
+      name: t('cmd.export'),
       callback: () => {
         void this.activateExportView();
       }
     });
 
-
+    // Open plot board
+    this.addCommand({
+      id: 'open-plot-board',
+      name: t('cmd.openPlotBoard'),
+      callback: () => {
+        void this.activatePlotBoardView();
+      }
+    });
 
     // Add new character command
     this.addCommand({
       id: 'add-character',
-      name: 'Add new character',
+      name: t('cmd.addCharacter'),
       callback: () => {
         this.openCharacterModal();
       }
@@ -224,7 +241,7 @@ export default class NovalistPlugin extends Plugin {
     // Add new location command
     this.addCommand({
       id: 'add-location',
-      name: 'Add new location',
+      name: t('cmd.addLocation'),
       callback: () => {
         this.openLocationModal();
       }
@@ -233,7 +250,7 @@ export default class NovalistPlugin extends Plugin {
     // Add new chapter command
     this.addCommand({
       id: 'add-chapter-description',
-      name: 'Add new chapter',
+      name: t('cmd.addChapter'),
       callback: () => {
         this.openChapterDescriptionModal();
       }
@@ -257,9 +274,7 @@ export default class NovalistPlugin extends Plugin {
 
     // Layout changes
     this.registerEvent(this.app.workspace.on('layout-change', () => {
-        if (this.settings.enableCustomExplorer) {
-            void this.activateExplorerView();
-        }
+      void this.activateExplorerView();
     }));
 
     // Auto-open character and location files in sheet view
@@ -364,6 +379,8 @@ export default class NovalistPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const data = await this.loadData() as NovalistSettings | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+    this.settings.enableToolbar = true;
+    this.settings.enableCustomExplorer = true;
   }
 
   async saveSettings(): Promise<void> {
@@ -423,7 +440,7 @@ export default class NovalistPlugin extends Plugin {
     }
 
     await this.app.vault.modify(file, lines.join('\n'));
-    new Notice(`Updated relationships in ${file.basename}`);
+    new Notice(t('notice.updatedRelationships', { name: file.basename }));
   }
 
   async learnRelationshipPair(keyA: string, keyB: string): Promise<void> {
@@ -544,6 +561,22 @@ export default class NovalistPlugin extends Plugin {
     void this.app.workspace.revealLeaf(leaf);
   }
 
+  async activatePlotBoardView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(PLOT_BOARD_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: PLOT_BOARD_VIEW_TYPE,
+      active: true
+    });
+
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
   // ==========================================
   // LOGIC & UTILITIES
   // ==========================================
@@ -551,7 +584,7 @@ export default class NovalistPlugin extends Plugin {
   async initializeProjectStructure(): Promise<void> {
     const root = this.settings.projectPath;
     if (!root) {
-      new Notice('Please set a project path in settings first.');
+      new Notice(t('notice.setProjectPath'));
       return;
     }
 
@@ -571,7 +604,7 @@ export default class NovalistPlugin extends Plugin {
     }
 
     await this.createTemplateFiles();
-    new Notice('Novel project structure initialized.');
+    new Notice(t('notice.projectInitialized'));
   }
 
   async createTemplateFiles(): Promise<void> {
@@ -647,7 +680,7 @@ export default class NovalistPlugin extends Plugin {
     const path = `${folder}/${fileName}.md`;
 
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new Notice('Character already exists.');
+      new Notice(t('notice.characterExists'));
       return;
     }
 
@@ -674,7 +707,7 @@ export default class NovalistPlugin extends Plugin {
     ].join('\n');
 
     await this.app.vault.create(path, content);
-    new Notice(`Character ${fileName} created.`);
+    new Notice(t('notice.characterCreated', { name: fileName }));
   }
 
   async createLocation(name: string, description: string): Promise<void> {
@@ -683,7 +716,7 @@ export default class NovalistPlugin extends Plugin {
     const path = `${folder}/${name}.md`;
 
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new Notice('Location already exists.');
+      new Notice(t('notice.locationExists'));
       return;
     }
 
@@ -699,7 +732,7 @@ ${description}
 `;
 
     await this.app.vault.create(path, content);
-    new Notice(`Location ${name} created.`);
+    new Notice(t('notice.locationCreated', { name }));
   }
 
   async createChapter(name: string, order: string): Promise<void> {
@@ -708,7 +741,7 @@ ${description}
     const path = `${folder}/${name}.md`;
 
     if (this.app.vault.getAbstractFileByPath(path)) {
-      new Notice('Chapter already exists.');
+      new Notice(t('notice.chapterExists'));
       return;
     }
 
@@ -730,7 +763,7 @@ order: ${orderValue}
 `;
 
     await this.app.vault.create(path, content);
-    new Notice(`Chapter ${name} created.`);
+    new Notice(t('notice.chapterCreated', { name }));
   }
 
   openCharacterModal(): void {
@@ -1231,12 +1264,12 @@ order: ${orderValue}
     }
   }
 
-  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; file: TFile }>> {
+  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }>> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; file: TFile }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }> = [];
     for (const file of files) {
       const content = await this.app.vault.read(file);
       const { frontmatter, body } = this.extractFrontmatterAndBody(content);
@@ -1244,10 +1277,12 @@ order: ${orderValue}
         ? frontmatter.guid.trim()
         : file.basename;
       const title = this.extractTitle(body) || file.basename;
+      const status = (frontmatter.status as ChapterStatus) || 'outline';
       chapters.push({
         id: guid,
         name: title,
         order: Number(frontmatter.order) || 999,
+        status,
         file
       });
     }
@@ -1268,20 +1303,22 @@ order: ${orderValue}
     }));
   }
 
-  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; file: TFile }> {
+  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; file: TFile }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }> = [];
     for (const file of files) {
       const cache = this.app.metadataCache.getFileCache(file);
       const frontmatter = cache?.frontmatter || {};
       const heading = cache?.headings?.find(h => h.level === 1)?.heading;
+      const status = (frontmatter.status as ChapterStatus) || 'outline';
       chapters.push({
         id: typeof frontmatter.guid === 'string' && frontmatter.guid.trim() ? frontmatter.guid.trim() : file.basename,
         name: heading || file.basename,
         order: Number(frontmatter.order) || 999,
+        status,
         file
       });
     }
@@ -1304,6 +1341,14 @@ order: ${orderValue}
       const nextFrontmatter = this.serializeFrontmatter(frontmatter);
       await this.app.vault.modify(file, nextFrontmatter + body);
     }
+  }
+
+  async updateChapterStatus(file: TFile, status: ChapterStatus): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const { frontmatter, body } = this.extractFrontmatterAndBody(content);
+    frontmatter.status = status;
+    const nextFrontmatter = this.serializeFrontmatter(frontmatter);
+    await this.app.vault.modify(file, nextFrontmatter + body);
   }
 
   detectCharacterRole(content: string, frontmatter: Record<string, string>): string {
@@ -1412,7 +1457,7 @@ order: ${orderValue}
 
     await this.app.vault.modify(file, newContent);
     
-    new Notice(`Updated ${file.basename} role to ${trimmedRole || 'Unassigned'}`);
+    new Notice(t('notice.updatedRole', { name: file.basename, role: trimmedRole || t('general.unassigned') }));
   }
 
   serializeFrontmatter(fm: Record<string, string | number>): string {
@@ -2225,6 +2270,18 @@ order: ${orderValue}
           // Parse sections from full character sheet
           const charSheet = parseCharacterSheet(content);
 
+          // Resolve physical attributes with chapter overrides
+          // Try both chapter name and chapter ID since overrides may be stored by either
+          let effectiveSheet = charSheet;
+          if (inChapter) {
+            const hasOverride = charSheet.chapterOverrides.find(
+              o => o.chapter === chapterName || o.chapter === chapterId
+            );
+            if (hasOverride) {
+              effectiveSheet = applyChapterOverride(charSheet, hasOverride.chapter);
+            }
+          }
+
           return {
             type: 'character',
             name: displayName,
@@ -2239,6 +2296,13 @@ order: ${orderValue}
             relationships: (chapterOverrideMatch?.overrides.relationships ?? charSheet.relationships).map(r => ({ role: r.role, character: r.character })),
             customProperties: displayCustomProps,
             chapterInfo,
+            eyeColor: effectiveSheet.eyeColor,
+            hairColor: effectiveSheet.hairColor,
+            hairLength: effectiveSheet.hairLength,
+            height: effectiveSheet.height,
+            build: effectiveSheet.build,
+            skinTone: effectiveSheet.skinTone,
+            distinguishingFeatures: effectiveSheet.distinguishingFeatures,
             sections: charSheet.sections.map(s => ({ title: s.title, content: s.content }))
           };
         } else {
@@ -2475,7 +2539,7 @@ order: ${orderValue}
     this.settings.commentThreads.push(thread);
     void this.saveSettings();
     this.syncAnnotationThreads();
-    new Notice('Comment added — type your message in the panel');
+    new Notice(t('notice.commentAdded'));
   }
 
   addCommentMessage(threadId: string, content: string): void {

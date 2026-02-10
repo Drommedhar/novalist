@@ -1,4 +1,6 @@
-﻿export interface NovalistSettings {
+﻿import { t } from '../i18n';
+
+export interface NovalistSettings {
   projectPath: string;
   autoReplacements: AutoReplacementPair[];
   language: LanguageKey;
@@ -24,6 +26,8 @@
   // Annotations / Comments
   enableAnnotations: boolean;
   commentThreads: CommentThread[];
+  // Plot Board
+  plotBoard: PlotBoardData;
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────
@@ -128,6 +132,17 @@ export interface LocationListData {
 }
 
 // Character Sheet Data Structure
+// ─── Chapter Status ─────────────────────────────────────────────────
+export type ChapterStatus = 'outline' | 'first-draft' | 'revised' | 'edited' | 'final';
+
+export const CHAPTER_STATUSES: { value: ChapterStatus; label: string; icon: string; color: string }[] = [
+  { value: 'outline',     get label() { return t('status.outline'); },     icon: '○', color: 'var(--text-faint)' },
+  { value: 'first-draft', get label() { return t('status.firstDraft'); },  icon: '◔', color: 'var(--text-warning, #e0a040)' },
+  { value: 'revised',     get label() { return t('status.revised'); },     icon: '◑', color: 'var(--text-accent)' },
+  { value: 'edited',      get label() { return t('status.edited'); },      icon: '◕', color: 'var(--interactive-accent)' },
+  { value: 'final',       get label() { return t('status.final'); },       icon: '●', color: 'var(--text-success, #40c060)' },
+];
+
 export interface CharacterRelationship {
   role: string;
   character: string; // wikilink format [[Name]]
@@ -151,6 +166,14 @@ export interface CharacterChapterOverride {
   age?: string;
   role?: string;
   faceShot?: string; // deprecated
+  // Physical attributes
+  eyeColor?: string;
+  hairColor?: string;
+  hairLength?: string;
+  height?: string;
+  build?: string;
+  skinTone?: string;
+  distinguishingFeatures?: string;
   images?: CharacterImage[];
   relationships?: CharacterRelationship[];
   customProperties?: Record<string, string>;
@@ -163,6 +186,14 @@ export interface CharacterSheetData {
   age: string;
   role: string;
   faceShot: string; // wikilink to image (deprecated, kept for compatibility)
+  // Physical attributes
+  eyeColor: string;
+  hairColor: string;
+  hairLength: string;
+  height: string;
+  build: string;
+  skinTone: string;
+  distinguishingFeatures: string;
   images: CharacterImage[]; // Multiple named images
   relationships: CharacterRelationship[];
   customProperties: Record<string, string>;
@@ -229,6 +260,18 @@ export interface DailyWritingGoal {
   date: string; // YYYY-MM-DD
   targetWords: number;
   actualWords: number;
+}
+
+// ─── Plot Board ─────────────────────────────────────────────────────
+export interface PlotBoardColumn {
+  id: string;
+  name: string;
+}
+
+export interface PlotBoardData {
+  columns: PlotBoardColumn[];
+  /** chapterId → columnId → cell text */
+  cells: Record<string, Record<string, string>>;
 }
 
 export interface WordCountGoals {

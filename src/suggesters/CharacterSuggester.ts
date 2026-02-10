@@ -9,6 +9,7 @@
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { InverseRelationshipModal } from '../modals/InverseRelationshipModal';
+import { t } from '../i18n';
 
 export class CharacterSuggester extends EditorSuggest<TFile> {
   plugin: NovalistPlugin;
@@ -134,7 +135,7 @@ export class CharacterSuggester extends EditorSuggest<TFile> {
              }
 
              if (deducedKey) {
-                 new Notice(`Auto-linked relationship as "${deducedKey}" based on existing siblings.`);
+                 new Notice(t('notice.autoLinkedRelationship', { key: deducedKey }));
                  void this.plugin.addRelationshipToFile(file, deducedKey, activeFile.basename);
              } else {
                  new InverseRelationshipModal(

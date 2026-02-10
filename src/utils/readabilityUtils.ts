@@ -11,6 +11,7 @@
  */
 
 import { LanguageKey } from '../types';
+import { t } from '../i18n';
 
 export interface ReadabilityScore {
   /** Score value (typically 0-100, higher = easier to read) */
@@ -322,21 +323,21 @@ function getReadabilityLevel(score: number, language?: LanguageKey): { level: Re
   
   if (isGulpease) {
     // Gulpease scale (0-100, but inverted - higher is easier)
-    if (score >= 80) return { level: 'very_easy', description: 'Very easy (Elementary school)' };
-    if (score >= 60) return { level: 'easy', description: 'Easy (Middle school)' };
-    if (score >= 40) return { level: 'moderate', description: 'Moderate (High school)' };
-    if (score >= 20) return { level: 'difficult', description: 'Difficult (College)' };
-    return { level: 'very_difficult', description: 'Very difficult (University/Professional)' };
+    if (score >= 80) return { level: 'very_easy', description: t('readability.veryEasyElementary') };
+    if (score >= 60) return { level: 'easy', description: t('readability.easyMiddle') };
+    if (score >= 40) return { level: 'moderate', description: t('readability.moderateHigh') };
+    if (score >= 20) return { level: 'difficult', description: t('readability.difficultCollegeLevel') };
+    return { level: 'very_difficult', description: t('readability.veryDifficultUni') };
   }
   
   // Standard Flesch-like scales (higher = easier)
-  if (score >= 90) return { level: 'very_easy', description: 'Very easy (5th grade)' };
-  if (score >= 80) return { level: 'easy', description: 'Easy (6th grade)' };
-  if (score >= 70) return { level: 'easy', description: 'Fairly easy (7th grade)' };
-  if (score >= 60) return { level: 'moderate', description: 'Standard (8th-9th grade)' };
-  if (score >= 50) return { level: 'moderate', description: 'Fairly difficult (10th-12th grade)' };
-  if (score >= 30) return { level: 'difficult', description: 'Difficult (College)' };
-  return { level: 'very_difficult', description: 'Very difficult (College graduate)' };
+  if (score >= 90) return { level: 'very_easy', description: t('readability.veryEasy5th') };
+  if (score >= 80) return { level: 'easy', description: t('readability.easy6th') };
+  if (score >= 70) return { level: 'easy', description: t('readability.fairlyEasy7th') };
+  if (score >= 60) return { level: 'moderate', description: t('readability.standard8th') };
+  if (score >= 50) return { level: 'moderate', description: t('readability.fairlyDifficult10th') };
+  if (score >= 30) return { level: 'difficult', description: t('readability.difficultCollege') };
+  return { level: 'very_difficult', description: t('readability.veryDifficultGrad') };
 }
 
 /**
@@ -355,11 +356,11 @@ export function calculateReadability(
     return {
       score: 0,
       level: 'very_difficult',
-      description: 'No readable content',
+      description: t('readability.noContent'),
       wordsPerSentence: 0,
       charsPerWord: 0,
       sentenceCount: 0,
-      method: 'N/A'
+      method: t('readability.na')
     };
   }
   
