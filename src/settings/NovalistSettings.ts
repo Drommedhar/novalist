@@ -95,5 +95,6 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   enableBookParagraphSpacing: false,
   enableToolbar: false,
   enableAnnotations: true,
-  commentThreads: []
+  commentThreads: [],
+  plotBoard: { columns: [], cells: {} }
 };

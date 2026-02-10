@@ -24,6 +24,8 @@
   // Annotations / Comments
   enableAnnotations: boolean;
   commentThreads: CommentThread[];
+  // Plot Board
+  plotBoard: PlotBoardData;
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────
@@ -229,6 +231,18 @@ export interface DailyWritingGoal {
   date: string; // YYYY-MM-DD
   targetWords: number;
   actualWords: number;
+}
+
+// ─── Plot Board ─────────────────────────────────────────────────────
+export interface PlotBoardColumn {
+  id: string;
+  name: string;
+}
+
+export interface PlotBoardData {
+  columns: PlotBoardColumn[];
+  /** chapterId → columnId → cell text */
+  cells: Record<string, Record<string, string>>;
 }
 
 export interface WordCountGoals {

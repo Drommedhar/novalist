@@ -28,6 +28,7 @@ import { CharacterMapView, CHARACTER_MAP_VIEW_TYPE } from './views/CharacterMapV
 import { LocationSheetView, LOCATION_SHEET_VIEW_TYPE } from './views/LocationSheetView';
 import { CharacterSheetView, CHARACTER_SHEET_VIEW_TYPE } from './views/CharacterSheetView';
 import { ExportView, EXPORT_VIEW_TYPE } from './views/ExportView';
+import { PlotBoardView, PLOT_BOARD_VIEW_TYPE } from './views/PlotBoardView';
 import { NovalistToolbarManager } from './utils/toolbarUtils';
 
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
@@ -116,6 +117,12 @@ export default class NovalistPlugin extends Plugin {
     this.registerView(
       EXPORT_VIEW_TYPE,
       (leaf) => new ExportView(leaf, this)
+    );
+
+    // Register plot board view
+    this.registerView(
+      PLOT_BOARD_VIEW_TYPE,
+      (leaf) => new PlotBoardView(leaf, this)
     );
 
     // Register annotation CM6 extension
@@ -207,6 +214,15 @@ export default class NovalistPlugin extends Plugin {
       name: 'Export novel',
       callback: () => {
         void this.activateExportView();
+      }
+    });
+
+    // Open plot board
+    this.addCommand({
+      id: 'open-plot-board',
+      name: 'Open plot board',
+      callback: () => {
+        void this.activatePlotBoardView();
       }
     });
 
@@ -538,6 +554,22 @@ export default class NovalistPlugin extends Plugin {
     const leaf = this.app.workspace.getLeaf('tab');
     await leaf.setViewState({
       type: EXPORT_VIEW_TYPE,
+      active: true
+    });
+
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async activatePlotBoardView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(PLOT_BOARD_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: PLOT_BOARD_VIEW_TYPE,
       active: true
     });
 

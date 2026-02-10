@@ -3183,3 +3183,204 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   color: var(--text-faint);
   font-style: italic;
 }
+
+/* ================================
+   Plot Board Styles
+   ================================ */
+
+.novalist-plot-board {
+  padding: 16px;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.novalist-plot-board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--interactive-accent);
+}
+
+.novalist-plot-board-title {
+  margin: 0;
+  color: var(--text-normal);
+}
+
+.novalist-plot-board-add-col {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.novalist-plot-board-wrapper {
+  overflow-x: auto;
+  flex: 1;
+}
+
+.novalist-plot-board-table {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.novalist-plot-board-table th,
+.novalist-plot-board-table td {
+  border: 1px solid var(--background-modifier-border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Header cells */
+.novalist-plot-board-th-index {
+  width: 40px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+}
+
+.novalist-plot-board-th-chapter {
+  min-width: 160px;
+  font-weight: 700;
+  background: var(--background-secondary);
+}
+
+.novalist-plot-board-th-custom {
+  min-width: 180px;
+  background: var(--background-secondary);
+}
+
+/* Column header label */
+.novalist-plot-board-col-label {
+  font-weight: 700;
+  cursor: default;
+}
+
+.novalist-plot-board-col-input {
+  width: 100%;
+  font-weight: 700;
+}
+
+.novalist-plot-board-col-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.novalist-plot-board-col-btn {
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.novalist-plot-board-col-btn:hover {
+  color: var(--text-normal);
+  border-color: var(--text-muted);
+}
+
+.novalist-plot-board-col-del:hover {
+  color: var(--text-error);
+  border-color: var(--text-error);
+}
+
+/* Body cells */
+.novalist-plot-board-td-index {
+  text-align: center;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.novalist-plot-board-td-chapter {
+  font-weight: 600;
+}
+
+.novalist-plot-board-chapter-link {
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.novalist-plot-board-chapter-link:hover {
+  text-decoration: underline;
+}
+
+/* Editable cells */
+.novalist-plot-board-td-cell {
+  padding: 0;
+}
+
+.novalist-plot-board-cell-display {
+  padding: 6px 10px;
+  min-height: 28px;
+  cursor: pointer;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transition: background 0.15s ease;
+}
+
+.novalist-plot-board-cell-display:hover {
+  background: var(--background-secondary);
+}
+
+.novalist-plot-board-cell-empty {
+  color: var(--text-faint);
+}
+
+.novalist-plot-board-cell-editor {
+  width: 100%;
+  min-height: 60px;
+  padding: 6px 10px;
+  border: none;
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+  border-radius: 0;
+  resize: vertical;
+  font-family: inherit;
+  font-size: inherit;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+/* New column prompt row */
+.novalist-plot-board-new-col-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.novalist-plot-board-new-col-input {
+  flex: 1;
+  padding: 4px 8px;
+}
+
+.novalist-plot-board-new-col-ok {
+  padding: 4px 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.novalist-plot-board-new-col-cancel {
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Alternating row colours */
+.novalist-plot-board-table tbody tr:nth-child(even) {
+  background: var(--background-secondary-alt, var(--background-secondary));
+}

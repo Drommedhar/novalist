@@ -118,6 +118,9 @@ export class NovalistToolbarManager {
     this.createButton(viewsGroup, 'git-graph', 'Map', () => {
       void this.plugin.activateCharacterMapView();
     });
+    this.createButton(viewsGroup, 'table', 'Plot board', () => {
+      void this.plugin.activatePlotBoardView();
+    });
 
     // Tools group
     const toolsGroup = container.createDiv('novalist-view-toolbar-group');
@@ -152,6 +155,7 @@ export class NovalistToolbarManager {
       'git-graph': '<circle cx="5" cy="6" r="3"/><path d="M5 9v6"/><circle cx="5" cy="18" r="3"/><path d="M12 3v18"/><circle cx="19" cy="6" r="3"/><path d="M16 15.7A9 9 0 0 0 19 9"/>',
       'bar-chart-2': '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
       'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+      'table': '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
       'refresh-cw': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>'
     };
 
