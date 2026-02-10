@@ -1,4 +1,4 @@
-﻿import {
+import {
   Plugin,
   TFile,
   MarkdownView,
@@ -38,6 +38,14 @@ import { ChapterDescriptionModal } from './modals/ChapterDescriptionModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole } from './utils/characterUtils';
+import {
+  annotationExtension,
+  setThreadsEffect,
+  threadsField,
+  nextAnnotationColor,
+  type AnnotationCallbacks
+} from './cm/annotationExtension';
+import type { CommentThread, CommentMessage } from './types';
 
 export default class NovalistPlugin extends Plugin {
   settings: NovalistSettings;
@@ -47,6 +55,7 @@ export default class NovalistPlugin extends Plugin {
   private hoverTimer: number | null = null;
   public knownRelationshipKeys: Set<string> = new Set();
   toolbarManager: NovalistToolbarManager;
+  private annotationExtension: import('@codemirror/state').Extension | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -108,7 +117,8 @@ export default class NovalistPlugin extends Plugin {
       (leaf) => new ExportView(leaf, this)
     );
 
-
+    // Register annotation CM6 extension
+    this.setupAnnotationExtension();
 
     // Command to open current character file in sheet view
     this.addCommand({
@@ -2329,5 +2339,164 @@ order: ${orderValue}
         node.replaceWith(fragment);
       }
     }
+  }
+
+  // ─── Annotation / Comment System ──────────────────────────────────
+
+  private setupAnnotationExtension(): void {
+    const callbacks: AnnotationCallbacks = {
+      onAddThread: (anchorText: string, from: number, to: number) => {
+        this.addCommentThread(anchorText, from, to);
+      },
+      onAddMessage: (threadId: string, content: string) => {
+        this.addCommentMessage(threadId, content);
+      },
+      onResolveThread: (threadId: string, resolved: boolean) => {
+        this.resolveCommentThread(threadId, resolved);
+      },
+      onDeleteThread: (threadId: string) => {
+        this.deleteCommentThread(threadId);
+      },
+      onDeleteMessage: (threadId: string, messageId: string) => {
+        this.deleteCommentMessage(threadId, messageId);
+      },
+      getActiveFilePath: () => {
+        const file = this.app.workspace.getActiveFile();
+        return file ? file.path : null;
+      }
+    };
+
+    this.annotationExtension = annotationExtension(callbacks);
+    this.registerEditorExtension(this.annotationExtension);
+
+    // Sync threads whenever the active file changes
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', () => {
+        // Small delay to let the editor initialize
+        setTimeout(() => this.syncAnnotationThreads(), 50);
+      })
+    );
+
+    // Also sync after file modifications (in case edits shift positions)
+    this.registerEvent(
+      this.app.workspace.on('editor-change', () => {
+        this.debouncedAnnotationSync();
+      })
+    );
+  }
+
+  private annotationSyncTimer: number | null = null;
+  private debouncedAnnotationSync(): void {
+    if (this.annotationSyncTimer) clearTimeout(this.annotationSyncTimer);
+    this.annotationSyncTimer = setTimeout(() => {
+      this.persistAnnotationPositions();
+    }, 2000) as unknown as number;
+  }
+
+  syncAnnotationThreads(): void {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) return;
+
+    const threads = (this.settings.commentThreads || [])
+      .filter(t => t.filePath === file.path);
+
+    // Dispatch into every CM6 editor showing this file
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
+        const cm = (leaf.view.editor as EditorWithCodeMirror).cm;
+        if (cm && 'dispatch' in cm) {
+          (cm as unknown as import('@codemirror/view').EditorView).dispatch({
+            effects: setThreadsEffect.of(threads)
+          });
+        }
+      }
+    });
+  }
+
+  /** Read back positions from the CM state into settings (they may have shifted). */
+  private persistAnnotationPositions(): void {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) return;
+
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!view) return;
+
+    const cm = (view.editor as EditorWithCodeMirror).cm;
+    if (!cm || !('state' in cm)) return;
+
+    const editorView = cm as unknown as import('@codemirror/view').EditorView;
+    const currentThreads = editorView.state.field(threadsField);
+
+    // Update positions for threads belonging to this file
+    const othersThreads = (this.settings.commentThreads || []).filter(t => t.filePath !== file.path);
+    const updatedThreads = currentThreads.map(t => ({
+      ...t,
+      filePath: file.path
+    }));
+    this.settings.commentThreads = [...othersThreads, ...updatedThreads];
+    void this.saveSettings();
+  }
+
+  private generateCommentId(): string {
+    return `comment-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  }
+
+  addCommentThread(anchorText: string, from: number, to: number): void {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) return;
+
+    const thread: CommentThread = {
+      id: this.generateCommentId(),
+      filePath: file.path,
+      anchorText,
+      from,
+      to,
+      messages: [],
+      resolved: false,
+      color: nextAnnotationColor(),
+      createdAt: new Date().toISOString()
+    };
+
+    if (!this.settings.commentThreads) this.settings.commentThreads = [];
+    this.settings.commentThreads.push(thread);
+    void this.saveSettings();
+    this.syncAnnotationThreads();
+    new Notice('Comment added — type your message in the panel');
+  }
+
+  addCommentMessage(threadId: string, content: string): void {
+    const thread = (this.settings.commentThreads || []).find(t => t.id === threadId);
+    if (!thread) return;
+
+    const message: CommentMessage = {
+      id: this.generateCommentId(),
+      content,
+      createdAt: new Date().toISOString()
+    };
+    thread.messages.push(message);
+    void this.saveSettings();
+    this.syncAnnotationThreads();
+  }
+
+  resolveCommentThread(threadId: string, resolved: boolean): void {
+    const thread = (this.settings.commentThreads || []).find(t => t.id === threadId);
+    if (!thread) return;
+    thread.resolved = resolved;
+    void this.saveSettings();
+    this.syncAnnotationThreads();
+  }
+
+  deleteCommentThread(threadId: string): void {
+    this.settings.commentThreads = (this.settings.commentThreads || []).filter(t => t.id !== threadId);
+    void this.saveSettings();
+    this.syncAnnotationThreads();
+  }
+
+  deleteCommentMessage(threadId: string, messageId: string): void {
+    const thread = (this.settings.commentThreads || []).find(t => t.id === threadId);
+    if (!thread) return;
+    thread.messages = thread.messages.filter(m => m.id !== messageId);
+    void this.saveSettings();
+    this.syncAnnotationThreads();
   }
 }

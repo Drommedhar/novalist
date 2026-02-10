@@ -1,0 +1,564 @@
+/* eslint-disable no-undef -- temporary debugging */
+// eslint-disable-next-line import/no-extraneous-dependencies -- provided by Obsidian at runtime
+import {
+  StateField,
+  StateEffect,
+  RangeSetBuilder,
+  Facet,
+  type Extension,
+  type EditorState
+} from '@codemirror/state';
+// eslint-disable-next-line import/no-extraneous-dependencies -- provided by Obsidian at runtime
+import {
+  Decoration,
+  ViewPlugin,
+  EditorView,
+  type DecorationSet,
+  type ViewUpdate,
+  type PluginValue
+} from '@codemirror/view';
+import { setIcon } from 'obsidian';
+import type { CommentThread } from '../types';
+
+// ─── Effects ────────────────────────────────────────────────────────
+/** Replace the full set of threads visible in this editor. */
+export const setThreadsEffect = StateEffect.define<CommentThread[]>();
+
+/** Mark a thread resolved / unresolved. */
+export const resolveThreadEffect = StateEffect.define<{ id: string; resolved: boolean }>();
+
+// ─── Facet: callbacks the ViewPlugin can call back into the plugin ──
+export interface AnnotationCallbacks {
+  onAddThread: (anchorText: string, from: number, to: number) => void;
+  onAddMessage: (threadId: string, content: string) => void;
+  onResolveThread: (threadId: string, resolved: boolean) => void;
+  onDeleteThread: (threadId: string) => void;
+  onDeleteMessage: (threadId: string, messageId: string) => void;
+  getActiveFilePath: () => string | null;
+}
+
+export const annotationCallbacks = Facet.define<AnnotationCallbacks, AnnotationCallbacks>({
+  combine: (values) => values[0] ?? {
+    onAddThread: () => {/* no-op */},
+    onAddMessage: () => {/* no-op */},
+    onResolveThread: () => {/* no-op */},
+    onDeleteThread: () => {/* no-op */},
+    onDeleteMessage: () => {/* no-op */},
+    getActiveFilePath: () => null
+  }
+});
+
+// ─── State field: list of threads ──────────────────────────────────
+export const threadsField = StateField.define<CommentThread[]>({
+  create: () => [],
+  update(threads, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setThreadsEffect)) return e.value;
+      if (e.is(resolveThreadEffect)) {
+        return threads.map(t =>
+          t.id === e.value.id ? { ...t, resolved: e.value.resolved } : t
+        );
+      }
+    }
+    // Map positions through document changes
+    if (tr.docChanged) {
+      return threads.map(t => {
+        const newFrom = tr.changes.mapPos(t.from, 1);
+        const newTo = tr.changes.mapPos(t.to, -1);
+        if (newFrom >= newTo) return null; // collapsed — remove
+        return { ...t, from: newFrom, to: newTo };
+      }).filter((t): t is CommentThread => t !== null);
+    }
+    return threads;
+  }
+});
+
+// ─── Decorations derived from threads state ─────────────────────────
+const highlightDecoration = (color: string, threadId: string) =>
+  Decoration.mark({
+    class: 'novalist-annotation-highlight',
+    attributes: {
+      style: `background-color: ${color}33; border-bottom: 2px solid ${color};`,
+      'data-thread-id': threadId
+    }
+  });
+
+const threadDecorations = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(prev, tr) {
+    // Only rebuild when threads actually changed (effect or doc change)
+    const hasRelevantChange = tr.docChanged || tr.effects.some(
+      e => e.is(setThreadsEffect) || e.is(resolveThreadEffect)
+    );
+    if (!hasRelevantChange) return prev;
+
+    const threads = tr.state.field(threadsField);
+    const sorted = threads
+      .filter(t => !t.resolved)
+      .sort((a, b) => a.from - b.from || a.to - b.to);
+
+    // If no threads and prev was already empty, keep same reference
+    if (sorted.length === 0 && prev === Decoration.none) return Decoration.none;
+
+    const builder = new RangeSetBuilder<Decoration>();
+    for (const t of sorted) {
+      if (t.from < t.to && t.to <= tr.state.doc.length) {
+        builder.add(t.from, t.to, highlightDecoration(t.color, t.id));
+      }
+    }
+    return builder.finish();
+  },
+  provide: (f) => EditorView.decorations.from(f)
+});
+
+// ─── Annotation colours palette ────────────────────────────────────
+const ANNOTATION_COLORS = [
+  '#fbbf24', // amber
+  '#60a5fa', // blue
+  '#34d399', // emerald
+  '#f472b6', // pink
+  '#a78bfa', // violet
+  '#fb923c', // orange
+  '#2dd4bf', // teal
+  '#e879f9'  // fuchsia
+];
+let colorIdx = 0;
+export function nextAnnotationColor(): string {
+  const c = ANNOTATION_COLORS[colorIdx % ANNOTATION_COLORS.length];
+  colorIdx++;
+  return c;
+}
+
+// ─── Helper: apply an Obsidian icon to an element ──────────────────
+function applyIcon(el: HTMLElement, iconName: string): void {
+  setIcon(el, iconName);
+}
+
+// ─── Helper: compute Y position of a document offset ───────────────
+function getTopForPos(view: EditorView, pos: number): number | null {
+  try {
+    const coords = view.coordsAtPos(pos);
+    if (!coords) return null;
+    const scrollerRect = view.scrollDOM.getBoundingClientRect();
+    return coords.top - scrollerRect.top + view.scrollDOM.scrollTop;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Selection tooltip: "+" button when text is selected ───────────
+// Pure DOM approach: domEventHandlers for events, fixed-position
+// element on document.body — zero interaction with CM6 internals.
+let tooltipEl: HTMLElement | null = null;
+let tooltipCleanup: (() => void) | null = null;
+
+function removeAnnotationTooltip(): void {
+  if (tooltipEl) {
+    tooltipEl.remove();
+    tooltipEl = null;
+  }
+  if (tooltipCleanup) {
+    tooltipCleanup();
+    tooltipCleanup = null;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- temporarily disabled for debugging
+function showAnnotationTooltip(view: EditorView): void {
+  const sel = view.state.selection.main;
+  if (sel.empty) { removeAnnotationTooltip(); return; }
+  try {
+    const coords = view.coordsAtPos(sel.to);
+    if (!coords) { removeAnnotationTooltip(); return; }
+    if (!tooltipEl) {
+      tooltipEl = document.createElement('div');
+      tooltipEl.className = 'novalist-annotation-tooltip';
+      const btn = document.createElement('button');
+      btn.className = 'novalist-annotation-tooltip-btn';
+      btn.setAttribute('aria-label', 'Add comment');
+      applyIcon(btn, 'plus');
+      tooltipEl.appendChild(btn);
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const cb = view.state.facet(annotationCallbacks);
+        const state = view.state;
+        const curSel = state.selection.main;
+        if (!curSel.empty) {
+          const text = state.sliceDoc(curSel.from, curSel.to);
+          cb.onAddThread(text, curSel.from, curSel.to);
+        }
+        removeAnnotationTooltip();
+      });
+      document.body.appendChild(tooltipEl);
+      // Auto-dismiss when clicking outside
+      const onDocClick = (ev: MouseEvent) => {
+        if (tooltipEl && !tooltipEl.contains(ev.target as Node)) {
+          removeAnnotationTooltip();
+        }
+      };
+      document.addEventListener('mousedown', onDocClick, true);
+      tooltipCleanup = () => document.removeEventListener('mousedown', onDocClick, true);
+    }
+    tooltipEl.setCssStyles({
+      top: `${coords.bottom + 4}px`,
+      left: `${coords.left}px`
+    });
+  } catch {
+    removeAnnotationTooltip();
+  }
+}
+
+const tooltipHandlers = EditorView.domEventHandlers({
+  mouseup(_e: MouseEvent, view: EditorView) {
+    // Test 2g: create tooltip DOM with plain text (no createSvgIcon/DOMParser)
+    setTimeout(() => {
+      const sel = view.state.selection.main;
+      if (sel.empty) { removeAnnotationTooltip(); return; }
+      try {
+        const coords = view.coordsAtPos(sel.to);
+        if (!coords) { removeAnnotationTooltip(); return; }
+        if (!tooltipEl) {
+          tooltipEl = document.createElement('div');
+          tooltipEl.className = 'novalist-annotation-tooltip';
+          const btn = document.createElement('button');
+          btn.className = 'novalist-annotation-tooltip-btn';
+          btn.setAttribute('aria-label', 'Add comment');
+          applyIcon(btn, 'plus');
+          tooltipEl.appendChild(btn);
+          document.body.appendChild(tooltipEl);
+          console.warn('[NovalistAnnotation] tooltip created and appended to body');
+        }
+        tooltipEl.setCssStyles({
+          top: `${coords.bottom + 4}px`,
+          left: `${coords.left}px`
+        });
+        console.warn('[NovalistAnnotation] tooltip positioned at', coords.left, coords.bottom);
+      } catch {
+        removeAnnotationTooltip();
+      }
+    }, 20);
+    return false;
+  },
+  keyup(_e: KeyboardEvent, _view: EditorView) {
+    return false;
+  }
+});
+
+// ─── Right-side Comments Panel ─────────────────────────────────────
+// DEBUGGING: Most logic commented out to find the crash.
+class AnnotationPanelPlugin implements PluginValue {
+  private wrapper: HTMLElement;
+  private container: HTMLElement;
+  private view: EditorView;
+  private activeThreadId: string | null = null;
+  private timerId: ReturnType<typeof setTimeout> | null = null;
+  private heightTimerId: ReturnType<typeof setTimeout> | null = null;
+  private lastThreadKey = '';
+  private scrollHandler: () => void;
+  private destroyed = false;
+  private updateCount = 0;
+  private renderCount = 0;
+
+  constructor(view: EditorView) {
+    console.warn('[NovalistAnnotation] PanelPlugin constructor');
+    this.view = view;
+
+    this.wrapper = document.createElement('div');
+    this.wrapper.className = 'novalist-annotation-panel-wrapper';
+
+    this.container = document.createElement('div');
+    this.container.className = 'novalist-annotation-panel';
+    this.wrapper.appendChild(this.container);
+
+    // Append OUTSIDE the CM6 DOM tree — as a sibling of .cm-editor.
+    const parent = view.dom.parentElement;
+    if (parent) {
+      parent.appendChild(this.wrapper);
+    } else {
+      view.dom.appendChild(this.wrapper);
+    }
+
+    this.scrollHandler = () => { if (!this.destroyed) this.syncScroll(); };
+    view.scrollDOM.addEventListener('scroll', this.scrollHandler, { passive: true });
+
+    // COMMENTED OUT: constructor render — suspected of triggering loop
+    // this.scheduleRender();
+  }
+
+  update(update: ViewUpdate): void {
+    if (this.destroyed) return;
+    this.updateCount++;
+    if (this.updateCount <= 5 || this.updateCount % 100 === 0) {
+      console.warn(`[NovalistAnnotation] update() #${this.updateCount}, docChanged=${update.docChanged}, selectionChanged=${!!update.selectionSet}`);
+    }
+    if (this.updateCount > 500) {
+      console.error('[NovalistAnnotation] update() called >500 times, likely infinite loop! Bailing.');
+      return;
+    }
+    const hasThreadEffect = update.transactions.some(tr =>
+      tr.effects.some(e => e.is(setThreadsEffect) || e.is(resolveThreadEffect))
+    );
+    if (update.docChanged || hasThreadEffect) {
+      console.warn(`[NovalistAnnotation] scheduling render (docChanged=${update.docChanged}, threadEffect=${hasThreadEffect})`);
+      // COMMENTED OUT: render — suspected of causing loop via addClass
+      // this.scheduleRender();
+    }
+  }
+
+  destroy(): void {
+    console.warn('[NovalistAnnotation] PanelPlugin destroy');
+    this.destroyed = true;
+    if (this.timerId !== null) clearTimeout(this.timerId);
+    if (this.heightTimerId !== null) clearTimeout(this.heightTimerId);
+    this.view.scrollDOM.removeEventListener('scroll', this.scrollHandler);
+    this.wrapper.remove();
+    // COMMENTED OUT: suspected of triggering CM6 relayout
+    // this.view.dom.removeClass('novalist-has-annotations');
+  }
+
+  private syncScroll(): void {
+    const scrollTop = this.view.scrollDOM.scrollTop;
+    this.container.setCssStyles({ transform: `translateY(${-scrollTop}px)` });
+  }
+
+  /** Defer render to a macro-task, safely outside CM6's RAF cycle. */
+  private scheduleRender(): void {
+    if (this.timerId !== null) clearTimeout(this.timerId);
+    this.timerId = setTimeout(() => {
+      this.timerId = null;
+      if (!this.destroyed) this.doRender();
+    }, 0);
+  }
+
+  private doRender(): void {
+    this.renderCount++;
+    console.warn(`[NovalistAnnotation] doRender() #${this.renderCount}`);
+    if (this.renderCount > 50) {
+      console.error('[NovalistAnnotation] doRender() called >50 times, bailing.');
+      return;
+    }
+    let threads: CommentThread[];
+    try {
+      threads = this.view.state.field(threadsField);
+    } catch {
+      return;
+    }
+    const unresolvedThreads = threads.filter(t => !t.resolved);
+
+    const key = unresolvedThreads
+      .map(t => `${t.id}:${t.from}:${t.to}:${t.messages.length}`)
+      .join('|');
+    if (key === this.lastThreadKey) return;
+    this.lastThreadKey = key;
+
+    const positions: Array<{ thread: CommentThread; top: number }> = [];
+    for (const thread of unresolvedThreads) {
+      const top = getTopForPos(this.view, thread.from);
+      if (top !== null) {
+        positions.push({ thread, top });
+      }
+    }
+    positions.sort((a, b) => a.top - b.top);
+    this.renderCards(positions);
+  }
+
+  private renderCards(cards: Array<{ thread: CommentThread; top: number }>): void {
+    console.warn(`[NovalistAnnotation] renderCards() count=${cards.length}`);
+    const state = this.view.state;
+    this.container.empty();
+
+    // COMMENTED OUT: addClass/removeClass suspected of causing CM6 relayout loop
+    // if (cards.length > 0) {
+    //   this.view.dom.addClass('novalist-has-annotations');
+    // } else {
+    //   this.view.dom.removeClass('novalist-has-annotations');
+    //   return;
+    // }
+    if (cards.length === 0) return;
+
+    const MIN_GAP = 8;
+    let lastBottom = 0;
+    for (const card of cards) {
+      let targetTop = card.top;
+      if (targetTop < lastBottom + MIN_GAP) {
+        targetTop = lastBottom + MIN_GAP;
+      }
+      const el = this.createCard(card.thread, state);
+      el.setCssStyles({ top: `${targetTop}px` });
+      this.container.appendChild(el);
+      lastBottom = targetTop + 120;
+    }
+
+    // COMMENTED OUT: height correction suspected of contributing to loop
+    // if (this.heightTimerId !== null) clearTimeout(this.heightTimerId);
+    // this.heightTimerId = setTimeout(() => {
+    //   this.heightTimerId = null;
+    //   if (this.destroyed) return;
+    //   let prevBottom = 0;
+    //   const children = this.container.children;
+    //   for (let i = 0; i < children.length; i++) {
+    //     const el = children[i] as HTMLElement;
+    //     let currentTop = parseFloat(el.style.top);
+    //     if (currentTop < prevBottom + MIN_GAP) {
+    //       currentTop = prevBottom + MIN_GAP;
+    //       el.setCssStyles({ top: `${currentTop}px` });
+    //     }
+    //     prevBottom = currentTop + el.offsetHeight;
+    //   }
+    //   this.syncScroll();
+    // }, 0);
+  }
+
+  private createCard(thread: CommentThread, state: EditorState): HTMLElement {
+    const cb = state.facet(annotationCallbacks);
+    const card = document.createElement('div');
+    card.className = 'novalist-annotation-card';
+    if (this.activeThreadId === thread.id) card.classList.add('is-active');
+    card.dataset.threadId = thread.id;
+    card.setCssStyles({ borderLeftColor: thread.color });
+
+    // ── Header: anchor text (clickable) ──
+    const header = card.createDiv('novalist-annotation-card-header');
+    header.setCssStyles({ borderBottomColor: `${thread.color}33` });
+    
+    const anchorSpan = header.createEl('span', {
+      cls: 'novalist-annotation-anchor-text',
+      text: thread.anchorText.length > 50
+        ? thread.anchorText.substring(0, 50) + '…'
+        : thread.anchorText
+    });
+    anchorSpan.setCssStyles({ color: thread.color });
+    anchorSpan.addEventListener('click', () => {
+      this.scrollToThread(thread);
+    });
+
+    // Action buttons in header
+    const actions = header.createDiv('novalist-annotation-card-actions');
+    
+    const resolveBtn = actions.createEl('button', {
+      cls: 'novalist-annotation-action-btn',
+      attr: { 'aria-label': 'Resolve' }
+    });
+    applyIcon(resolveBtn, 'check');
+    resolveBtn.addEventListener('click', () => {
+      cb.onResolveThread(thread.id, true);
+    });
+
+    const deleteBtn = actions.createEl('button', {
+      cls: 'novalist-annotation-action-btn novalist-annotation-action-btn--danger',
+      attr: { 'aria-label': 'Delete thread' }
+    });
+    applyIcon(deleteBtn, 'x');
+    deleteBtn.addEventListener('click', () => {
+      cb.onDeleteThread(thread.id);
+    });
+
+    // ── Messages (chat-like) ──
+    const messagesContainer = card.createDiv('novalist-annotation-messages');
+    for (const msg of thread.messages) {
+      const msgEl = messagesContainer.createDiv('novalist-annotation-message');
+      
+      const msgHeader = msgEl.createDiv('novalist-annotation-message-header');
+      const timeStr = this.formatTime(msg.createdAt);
+      msgHeader.createEl('span', { cls: 'novalist-annotation-message-time', text: timeStr });
+
+      const msgDeleteBtn = msgHeader.createEl('button', {
+        cls: 'novalist-annotation-action-btn novalist-annotation-action-btn--small',
+        attr: { 'aria-label': 'Delete message' }
+      });
+      applyIcon(msgDeleteBtn, 'x');
+      msgDeleteBtn.addEventListener('click', () => {
+        cb.onDeleteMessage(thread.id, msg.id);
+      });
+
+      msgEl.createDiv({ cls: 'novalist-annotation-message-text', text: msg.content });
+    }
+
+    // ── Input for new message ──
+    const inputRow = card.createDiv('novalist-annotation-input-row');
+    const input = inputRow.createEl('input', {
+      cls: 'novalist-annotation-input',
+      attr: { placeholder: 'Add a comment…', type: 'text' }
+    });
+    const sendBtn = inputRow.createEl('button', {
+      cls: 'novalist-annotation-send-btn',
+      attr: { 'aria-label': 'Send' }
+    });
+    applyIcon(sendBtn, 'send');
+
+    const sendMessage = () => {
+      const text = input.value.trim();
+      if (!text) return;
+      cb.onAddMessage(thread.id, text);
+      input.value = '';
+    };
+
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    // Prevent editor from stealing focus
+    card.addEventListener('mousedown', (e) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLButtonElement ||
+        (e.target instanceof HTMLElement && e.target.closest('button'))
+      ) {
+        e.stopPropagation();
+      }
+    });
+
+    return card;
+  }
+
+  private scrollToThread(thread: CommentThread): void {
+    const view = this.view;
+    const from = thread.from;
+    const to = thread.to;
+    if (from >= 0 && to <= view.state.doc.length) {
+      view.dispatch({
+        selection: { anchor: from, head: to },
+        effects: EditorView.scrollIntoView(from, { y: 'center' })
+      });
+      view.focus();
+    }
+  }
+
+  private formatTime(iso: string): string {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const diffMs = now.getTime() - d.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return d.toLocaleDateString();
+    } catch {
+      return '';
+    }
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- temporarily disabled for debugging
+const annotationPanelPlugin = ViewPlugin.fromClass(AnnotationPanelPlugin);
+
+// ─── Public: create the full extension ─────────────────────────────
+export function annotationExtension(callbacks: AnnotationCallbacks): Extension {
+  console.warn('[NovalistAnnotation] extension created — TEST 2: state + decorations + tooltip');
+  return [
+    annotationCallbacks.of(callbacks),
+    threadsField,
+    threadDecorations,
+    tooltipHandlers,
+    // annotationPanelPlugin // DISABLED — test 3
+  ];
+}

@@ -2656,3 +2656,346 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-toolbar-tracker.novalist-hidden {
   display: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Annotation / Comment System
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Text highlight on annotated ranges ── */
+.novalist-annotation-highlight {
+  background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+  border-bottom: 2px solid var(--interactive-accent);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+.novalist-annotation-highlight:hover {
+  filter: brightness(0.92);
+}
+
+/* ── Selection tooltip ("+" button) ── */
+/* Tooltip is appended to document.body with position:fixed */
+.novalist-annotation-tooltip {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: auto;
+  animation: novalist-annotation-fade-in 0.15s ease;
+}
+
+.novalist-annotation-tooltip-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.novalist-annotation-tooltip-btn > .svg-icon,
+.novalist-annotation-tooltip-btn > svg {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  stroke-width: 2.5px;
+}
+.novalist-annotation-tooltip-btn:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+}
+.novalist-annotation-tooltip-btn:active {
+  transform: scale(0.95);
+}
+
+/* ── Right-side panel container ── */
+/* Wrapper lives outside .cm-editor to avoid CM6 mutation observation */
+.novalist-annotation-panel-wrapper {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 288px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.novalist-annotation-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  padding-right: 8px;
+}
+
+/* Add right padding to the editor content when annotations are present */
+.novalist-has-annotations .cm-scroller {
+  padding-right: 296px !important;
+}
+
+/* ── Comment card ── */
+.novalist-annotation-card {
+  position: absolute;
+  right: 8px;
+  width: 264px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  pointer-events: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: hidden;
+  transition: box-shadow 0.15s ease, top 0.25s ease;
+  animation: novalist-annotation-slide-in 0.2s ease;
+}
+.novalist-annotation-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+}
+.novalist-annotation-card.is-active {
+  border-color: var(--interactive-accent);
+}
+
+/* ── Collapse / expand ── */
+.novalist-annotation-card-body {
+  overflow: hidden;
+}
+.novalist-annotation-card.is-collapsed .novalist-annotation-card-body {
+  display: none;
+}
+
+.novalist-annotation-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+.novalist-annotation-toggle-btn > .svg-icon,
+.novalist-annotation-toggle-btn > svg {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+}
+.novalist-annotation-toggle-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.novalist-annotation-msg-count {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+.novalist-annotation-msg-count > .svg-icon,
+.novalist-annotation-msg-count > svg {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+}
+.novalist-annotation-card:not(.is-collapsed) .novalist-annotation-msg-count {
+  display: none;
+}
+
+/* ── Card header ── */
+.novalist-annotation-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--background-secondary);
+  border-bottom: 1px solid color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+}
+
+.novalist-annotation-anchor-text {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--interactive-accent);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.novalist-annotation-anchor-text:hover {
+  text-decoration: underline;
+}
+
+.novalist-annotation-card-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.novalist-annotation-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.novalist-annotation-action-btn > .svg-icon,
+.novalist-annotation-action-btn > svg {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+}
+.novalist-annotation-action-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.novalist-annotation-action-btn--danger:hover {
+  color: var(--text-error);
+}
+.novalist-annotation-action-btn--small {
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.novalist-annotation-action-btn--small > .svg-icon,
+.novalist-annotation-action-btn--small > svg {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+}
+.novalist-annotation-message:hover .novalist-annotation-action-btn--small {
+  opacity: 1;
+}
+
+/* ── Messages container ── */
+.novalist-annotation-messages {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0;
+}
+.novalist-annotation-messages::-webkit-scrollbar {
+  width: 4px;
+}
+.novalist-annotation-messages::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+}
+
+/* ── Individual message ── */
+.novalist-annotation-message {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+.novalist-annotation-message:last-child {
+  border-bottom: none;
+}
+
+.novalist-annotation-message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.novalist-annotation-message-time {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.novalist-annotation-message-text {
+  color: var(--text-normal);
+  word-break: break-word;
+}
+
+/* ── Input row ── */
+.novalist-annotation-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.novalist-annotation-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.novalist-annotation-input:focus {
+  border-color: var(--interactive-accent);
+}
+.novalist-annotation-input::placeholder {
+  color: var(--text-faint);
+}
+
+.novalist-annotation-send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: none;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s ease, transform 0.1s ease;
+}
+.novalist-annotation-send-btn > .svg-icon,
+.novalist-annotation-send-btn > svg {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+}
+.novalist-annotation-send-btn:hover {
+  filter: brightness(1.1);
+  transform: scale(1.05);
+}
+.novalist-annotation-send-btn:active {
+  transform: scale(0.95);
+}
+
+/* ── Animations ── */
+@keyframes novalist-annotation-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes novalist-annotation-slide-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}

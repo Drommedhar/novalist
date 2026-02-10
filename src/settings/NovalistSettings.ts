@@ -94,5 +94,7 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
     dailyHistory: []
   },
   enableBookParagraphSpacing: false,
-  enableToolbar: false
+  enableToolbar: false,
+  enableAnnotations: true,
+  commentThreads: []
 };

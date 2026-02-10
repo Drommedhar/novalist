@@ -22,6 +22,28 @@
   enableBookParagraphSpacing: boolean;
   // Toolbar
   enableToolbar: boolean;
+  // Annotations / Comments
+  enableAnnotations: boolean;
+  commentThreads: CommentThread[];
+}
+
+// ─── Comment / Annotation System ────────────────────────────────────
+export interface CommentMessage {
+  id: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface CommentThread {
+  id: string;
+  filePath: string;
+  anchorText: string;
+  from: number;
+  to: number;
+  messages: CommentMessage[];
+  resolved: boolean;
+  color: string;
+  createdAt: string;
 }
 
 export interface AutoReplacementPair {
