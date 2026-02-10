@@ -2242,11 +2242,7 @@ order: ${orderValue}
             sections: charSheet.sections.map(s => ({ title: s.title, content: s.content }))
           };
         } else {
-          const body = this.stripFrontmatter(content);
           const locationName = file.basename;
-          const locType = this.parseLocationTypeFromContent(content);
-          const desc = this.getSectionLines(body, 'Description').join(' ').trim();
-          const locImages = this.parseImagesSection(content);
 
           // Parse sections from full location sheet
           const locSheet = parseLocationSheet(content);
@@ -2255,10 +2251,10 @@ order: ${orderValue}
             type: 'location',
             name: locationName,
             entityFilePath: file.path,
-            images: locImages,
-            locationType: locType,
-            description: desc,
-            customProperties: this.parseLocationCustomProperties(content),
+            images: locSheet.images.map(i => ({ name: i.name, path: i.path })),
+            locationType: locSheet.type,
+            description: locSheet.description,
+            customProperties: locSheet.customProperties,
             sections: locSheet.sections.map(s => ({ title: s.title, content: s.content }))
           };
         }
