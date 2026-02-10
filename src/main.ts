@@ -41,7 +41,7 @@ import { ChapterDescriptionModal } from './modals/ChapterDescriptionModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole } from './utils/characterUtils';
-import { parseCharacterSheet } from './utils/characterSheetUtils';
+import { parseCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
 import { parseLocationSheet } from './utils/locationSheetUtils';
 import {
   annotationExtension,
@@ -2268,6 +2268,18 @@ order: ${orderValue}
           // Parse sections from full character sheet
           const charSheet = parseCharacterSheet(content);
 
+          // Resolve physical attributes with chapter overrides
+          // Try both chapter name and chapter ID since overrides may be stored by either
+          let effectiveSheet = charSheet;
+          if (inChapter) {
+            const hasOverride = charSheet.chapterOverrides.find(
+              o => o.chapter === chapterName || o.chapter === chapterId
+            );
+            if (hasOverride) {
+              effectiveSheet = applyChapterOverride(charSheet, hasOverride.chapter);
+            }
+          }
+
           return {
             type: 'character',
             name: displayName,
@@ -2282,6 +2294,13 @@ order: ${orderValue}
             relationships: (chapterOverrideMatch?.overrides.relationships ?? charSheet.relationships).map(r => ({ role: r.role, character: r.character })),
             customProperties: displayCustomProps,
             chapterInfo,
+            eyeColor: effectiveSheet.eyeColor,
+            hairColor: effectiveSheet.hairColor,
+            hairLength: effectiveSheet.hairLength,
+            height: effectiveSheet.height,
+            build: effectiveSheet.build,
+            skinTone: effectiveSheet.skinTone,
+            distinguishingFeatures: effectiveSheet.distinguishingFeatures,
             sections: charSheet.sections.map(s => ({ title: s.title, content: s.content }))
           };
         } else {

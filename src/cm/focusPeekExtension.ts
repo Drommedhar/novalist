@@ -50,6 +50,14 @@ export interface EntityPeekData {
   relationships?: PeekRelationship[];
   customProperties?: Record<string, string>;
   chapterInfo?: string;
+  // Physical attributes
+  eyeColor?: string;
+  hairColor?: string;
+  hairLength?: string;
+  height?: string;
+  build?: string;
+  skinTone?: string;
+  distinguishingFeatures?: string;
   // Location fields
   locationType?: string;
   description?: string;
@@ -443,6 +451,28 @@ class FocusPeekPlugin implements PluginValue {
             e.stopPropagation();
             void this.navigateToEntity(charName);
           });
+        }
+      }
+    }
+
+    // ── Physical attributes (only those with a value)
+    if (data.type === 'character') {
+      const physicalAttrs: { label: string; value: string | undefined }[] = [
+        { label: 'Eyes', value: data.eyeColor },
+        { label: 'Hair', value: data.hairColor },
+        { label: 'Hair length', value: data.hairLength },
+        { label: 'Height', value: data.height },
+        { label: 'Build', value: data.build },
+        { label: 'Skin', value: data.skinTone },
+        { label: 'Distinguishing', value: data.distinguishingFeatures },
+      ];
+      const filled = physicalAttrs.filter((a): a is { label: string; value: string } => Boolean(a.value?.trim()));
+      if (filled.length > 0) {
+        const physRow = details.createDiv('novalist-peek-kv novalist-peek-physical');
+        for (const attr of filled) {
+          const item = physRow.createDiv('novalist-peek-kv-item');
+          item.createEl('span', { text: attr.label, cls: 'novalist-peek-kv-key' });
+          item.createEl('span', { text: attr.value, cls: 'novalist-peek-kv-val' });
         }
       }
     }
