@@ -80,7 +80,7 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   customLanguageLabel: 'Custom',
   customLanguageDefaults: [],
   enableSidebarView: true,
-  enableCustomExplorer: false,
+  enableCustomExplorer: true,
   characterFolder: 'Characters',
   locationFolder: 'Locations',
   imageFolder: 'Images',
@@ -96,7 +96,7 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
     dailyHistory: []
   },
   enableBookParagraphSpacing: false,
-  enableToolbar: false,
+  enableToolbar: true,
   enableAnnotations: true,
   commentThreads: [],
   plotBoard: { columns: [], cells: {} }

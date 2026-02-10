@@ -1,8 +1,7 @@
 ﻿import {
   ItemView,
   TFile,
-  WorkspaceLeaf,
-  ButtonComponent
+  WorkspaceLeaf
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { CharacterData, CharacterChapterInfo, LocationData } from '../types';
@@ -14,7 +13,6 @@ export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
 export class NovalistSidebarView extends ItemView {
   plugin: NovalistPlugin;
   currentChapterFile: TFile | null = null;
-  private activeTab: 'actions' | 'context' = 'context';
 
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
     super(leaf);
@@ -63,46 +61,6 @@ export class NovalistSidebarView extends ItemView {
     // Header
     container.createEl('h3', { text: t('sidebar.displayName'), cls: 'novalist-sidebar-header' });
 
-    // Tabs
-    const tabs = container.createDiv('novalist-tabs');
-    const setTab = (tab: 'actions' | 'context') => {
-      this.activeTab = tab;
-      void this.render();
-    };
-
-    const tabOrder: Array<{ id: 'actions' | 'context'; label: string }> = [
-      { id: 'actions', label: t('sidebar.actions') },
-      { id: 'context', label: t('sidebar.overview') }
-    ];
-
-    for (const tab of tabOrder) {
-      const btn = tabs.createEl('button', {
-        text: tab.label,
-        cls: `novalist-tab ${this.activeTab === tab.id ? 'is-active' : ''}`
-      });
-      btn.addEventListener('click', () => setTab(tab.id));
-    }
-
-    if (this.activeTab === 'actions') {
-      const actionsSection = container.createDiv('novalist-section');
-      actionsSection.createEl('h4', { text: t('sidebar.quickActions'), cls: 'novalist-section-title' });
-
-      const btnContainer = actionsSection.createDiv('novalist-actions');
-
-      new ButtonComponent(btnContainer)
-        .setButtonText(t('sidebar.addCharacter'))
-        .onClick(() => this.plugin.openCharacterModal());
-
-      new ButtonComponent(btnContainer)
-        .setButtonText(t('sidebar.addLocation'))
-        .onClick(() => this.plugin.openLocationModal());
-
-      new ButtonComponent(btnContainer)
-        .setButtonText(t('sidebar.addChapter'))
-        .onClick(() => this.plugin.openChapterDescriptionModal());
-
-      return;
-    }
 
     if (!this.currentChapterFile) {
       container.createEl('p', { text: t('sidebar.openChapter'), cls: 'novalist-empty' });

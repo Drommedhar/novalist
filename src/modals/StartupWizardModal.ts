@@ -1,6 +1,5 @@
 import { App, Modal, Setting, setIcon } from 'obsidian';
 import NovalistPlugin from '../main';
-import { TourGuide } from '../utils/TourGuide';
 import { getLanguageLabels, LANGUAGE_DEFAULTS, cloneAutoReplacements } from '../settings/NovalistSettings';
 import { LanguageKey } from '../types';
 import { t } from '../i18n';
@@ -154,105 +153,14 @@ export class StartupWizardModal extends Modal {
     btnContainer.addClass('novalist-wizard-actions');
 
     new Setting(btnContainer)
-      .addButton(btn => btn
-        .setButtonText(t('wizard.finishTour'))
+        .addButton(btn => btn
+        .setButtonText(t('wizard.finish'))
         .setCta()
         .onClick(async () => {
-            this.plugin.settings.startupWizardShown = true;
-            await this.plugin.saveSettings();
-            this.close();
-            this.startTour();
+          this.plugin.settings.startupWizardShown = true;
+          await this.plugin.saveSettings();
+          this.close();
         }));
-  }
-
-  startTour() {
-    const tour = new TourGuide(this.app, [
-        {
-            selector: '.workspace-ribbon-glyph[aria-label="Novalist"]',
-            title: t('tour.quickAccessTitle'),
-            content: t('tour.quickAccessContent'),
-            position: 'right',
-            onShow: async () => {
-                // Ensure sidebar is closed initially to make the toggle clear?
-                // Or just show it.
-                // void this.plugin.activateView();
-            }
-        },
-        // Sidebar Tour
-        {
-            selector: '.workspace-tab-header[data-type="novalist-sidebar"]',
-            title: t('tour.sidebarTitle'),
-            content: t('tour.sidebarContent'),
-            position: 'left',
-            onShow: async () => {
-                await this.plugin.activateView();
-            }
-        },
-        {
-            selector: '.novalist-tab-header-container .novalist-tab:nth-child(2)',
-            title: t('tour.contextTabTitle'),
-            content: t('tour.contextTabContent'),
-            position: 'left',
-            onShow: async () => {
-                await this.plugin.activateView();
-                // The tabs are inside .novalist-tabs -> button.novalist-tab
-                // The order is Actions, Overview. So Overview is nth-child(2).
-            }
-        },
-        {
-            selector: '.novalist-tabs .novalist-tab:nth-child(2)', // Overview
-            title: t('tour.overviewTitle'),
-            content: t('tour.overviewContent'),
-            position: 'bottom'
-        },
-        {
-            selector: '.novalist-tabs .novalist-tab:nth-child(1)', // Actions
-            title: t('tour.actionsTitle'),
-            content: t('tour.actionsContent'),
-            position: 'bottom'
-        },
-        // Explorer Tour
-        {
-            selector: '.workspace-tab-header[data-type="novalist-explorer"]',
-            title: t('tour.explorerTitle'),
-            content: t('tour.explorerContent'),
-            position: 'right',
-            onShow: async () => {
-                if (this.plugin.settings.enableCustomExplorer) {
-                    await this.plugin.activateExplorerView();
-                }
-            }
-        },
-        {
-            selector: '.novalist-explorer-tab:nth-child(1)',
-            title: t('tour.chaptersTitle'),
-            content: t('tour.chaptersContent'),
-            position: 'bottom',
-            onShow: async () => {
-                 if (this.plugin.settings.enableCustomExplorer) {
-                    await this.plugin.activateExplorerView();
-                }
-            }
-        },
-        {
-            selector: '.novalist-explorer-tab:nth-child(2)',
-            title: t('tour.charactersTitle'),
-            content: t('tour.charactersContent'),
-            position: 'bottom'
-        },
-        {
-            selector: '.novalist-explorer-tab:nth-child(3)',
-            title: t('tour.locationsTitle'),
-            content: t('tour.locationsContent'),
-            position: 'bottom'
-        }
-    ].filter(step => {
-        if ((step.title === t('tour.explorerTitle') || step.selector.includes('novalist-explorer')) 
-            && !this.plugin.settings.enableCustomExplorer) return false;
-        return true;
-    }));
-    
-    tour.start();
   }
 
   onClose() {

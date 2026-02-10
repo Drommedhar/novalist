@@ -31,14 +31,10 @@ export class NovalistToolbarManager {
   }
 
   /**
-   * Toggle based on setting
+   * Enable toolbars and listeners.
    */
   update(): void {
-    if (this.plugin.settings.enableToolbar) {
-      this.enable();
-    } else {
-      this.disable();
-    }
+    this.enable();
   }
 
   private injectAll(): void {

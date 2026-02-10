@@ -208,31 +208,6 @@ export class NovalistSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName(t('settings.showToolbar'))
-      .setDesc(t('settings.showToolbarDesc'))
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.enableToolbar)
-        .onChange(async (value) => {
-          this.plugin.settings.enableToolbar = value;
-          await this.plugin.saveSettings();
-          this.plugin.updateToolbar();
-        }));
-
-    new Setting(containerEl)
-      .setName(t('settings.advanced'))
-      .setHeading();
-
-    new Setting(containerEl)
-        .setName(t('settings.enableCustomExplorer'))
-        .setDesc(t('settings.enableCustomExplorerDesc'))
-        .addToggle(toggle => toggle
-            .setValue(this.plugin.settings.enableCustomExplorer)
-            .onChange(async (value) => {
-                this.plugin.settings.enableCustomExplorer = value;
-                await this.plugin.saveSettings();
-            }));
-
-    new Setting(containerEl)
       .setName(t('settings.writingGoals'))
       .setHeading();
 

@@ -274,9 +274,7 @@ export default class NovalistPlugin extends Plugin {
 
     // Layout changes
     this.registerEvent(this.app.workspace.on('layout-change', () => {
-        if (this.settings.enableCustomExplorer) {
-            void this.activateExplorerView();
-        }
+      void this.activateExplorerView();
     }));
 
     // Auto-open character and location files in sheet view
@@ -381,6 +379,8 @@ export default class NovalistPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const data = await this.loadData() as NovalistSettings | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+    this.settings.enableToolbar = true;
+    this.settings.enableCustomExplorer = true;
   }
 
   async saveSettings(): Promise<void> {
