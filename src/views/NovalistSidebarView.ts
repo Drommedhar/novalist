@@ -157,7 +157,12 @@ export class NovalistSidebarView extends ItemView {
           if (gender) {
             const pill = props.createDiv('novalist-overview-pill novalist-gender-pill');
             const genderColor = this.getGenderColor(gender);
-            if (genderColor) pill.style.setProperty('--novalist-gender-color', genderColor);
+            if (genderColor) {
+              pill.setCssProps({
+                '--novalist-gender-color': genderColor,
+                '--novalist-gender-text': 'var(--text-on-accent)'
+              });
+            }
             pill.createEl('span', { text: 'Gender', cls: 'novalist-overview-pill-label' });
             pill.createEl('span', { text: gender, cls: 'novalist-overview-pill-value' });
           }

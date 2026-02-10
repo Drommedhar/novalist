@@ -184,7 +184,7 @@
 
 .novalist-overview-pill.novalist-gender-pill .novalist-overview-pill-label {
   background: var(--novalist-gender-color, var(--background-secondary));
-  color: var(--text-on-accent);
+  color: var(--novalist-gender-text, var(--text-muted));
 }
 
 .novalist-overview-pill-value {
