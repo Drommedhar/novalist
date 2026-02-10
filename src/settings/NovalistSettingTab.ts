@@ -221,16 +221,6 @@ export class NovalistSettingTab extends PluginSettingTab {
       .setHeading();
 
     new Setting(containerEl)
-        .setName('Enable hover preview')
-        .setDesc('Shows a small info bubble when hovering over character names.')
-        .addToggle(toggle => toggle
-            .setValue(this.plugin.settings.enableHoverPreview)
-            .onChange(async (value) => {
-                this.plugin.settings.enableHoverPreview = value;
-                await this.plugin.saveSettings();
-            }));
-
-    new Setting(containerEl)
         .setName('Enable custom explorer')
         .setDesc('Replaces standard file explorer with a specialized novel project view.')
         .addToggle(toggle => toggle

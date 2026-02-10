@@ -4,7 +4,6 @@
   language: LanguageKey;
   customLanguageLabel: string;
   customLanguageDefaults: AutoReplacementPair[];
-  enableHoverPreview: boolean;
   enableSidebarView: boolean;
   enableCustomExplorer: boolean;
   characterFolder: string;

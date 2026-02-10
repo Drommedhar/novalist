@@ -2,6 +2,8 @@ import {
   Plugin,
   TFile,
   MarkdownView,
+  MarkdownRenderer,
+  Component,
   Editor,
   Notice,
   EditorPosition,
@@ -37,6 +39,8 @@ import { ChapterDescriptionModal } from './modals/ChapterDescriptionModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole } from './utils/characterUtils';
+import { parseCharacterSheet } from './utils/characterSheetUtils';
+import { parseLocationSheet } from './utils/locationSheetUtils';
 import {
   annotationExtension,
   setThreadsEffect,
@@ -45,6 +49,7 @@ import {
   type AnnotationCallbacks
 } from './cm/annotationExtension';
 import { statisticsPanelExtension, type StatisticsPanelConfig, type ChapterOverviewStat } from './cm/statisticsPanelExtension';
+import { focusPeekExtension, type FocusPeekCallbacks, type EntityPeekData } from './cm/focusPeekExtension';
 import { countWords, getTodayDate, getOrCreateDailyGoal } from './utils/statisticsUtils';
 import { calculateReadability } from './utils/readabilityUtils';
 import type { CommentThread, CommentMessage } from './types';
@@ -53,8 +58,6 @@ export default class NovalistPlugin extends Plugin {
   settings: NovalistSettings;
   private entityIndex: Map<string, { path: string; display: string }> = new Map();
   private entityRegex: RegExp | null = null;
-  private lastHoverEntity: string | null = null;
-  private hoverTimer: number | null = null;
   public knownRelationshipKeys: Set<string> = new Set();
   toolbarManager: NovalistToolbarManager;
   private annotationExtension: import('@codemirror/state').Extension | null = null;
@@ -120,6 +123,9 @@ export default class NovalistPlugin extends Plugin {
 
     // Register statistics bottom panel CM6 extension
     this.setupStatisticsPanel();
+
+    // Register focus peek CM6 extension (inline entity cards)
+    this.setupFocusPeek();
 
     // Command to open current character file in sheet view
     this.addCommand({
@@ -206,15 +212,6 @@ export default class NovalistPlugin extends Plugin {
 
 
 
-    // Open focused entity in sidebar (edit mode)
-    this.addCommand({
-      id: 'open-entity-in-sidebar',
-      name: 'Open entity in sidebar',
-      callback: () => {
-        void this.openEntityFromEditor();
-      }
-    });
-
     // Add new character command
     this.addCommand({
       id: 'add-character',
@@ -252,157 +249,6 @@ export default class NovalistPlugin extends Plugin {
         this.handleAutoReplacement();
       })
     );
-
-    // Track cursor position for focus view
-    let lastCursorEntity: string | null = null;
-    const trackedEditors = new Set<HTMLElement>();
-    
-    const checkCursorPosition = () => {
-      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!activeView) return;
-      
-      const entity = this.getEntityAtCursor(activeView.editor);
-      if (entity) {
-        if (lastCursorEntity !== entity.display) {
-          lastCursorEntity = entity.display;
-          this.lastHoverEntity = entity.display;
-          void this.openEntityInSidebar(entity.display, { forceFocus: false });
-        }
-      } else {
-        if (lastCursorEntity !== null) {
-          lastCursorEntity = null;
-          this.lastHoverEntity = null;
-          this.clearFocus();
-        }
-      }
-    };
-    
-    this.registerEvent(
-      this.app.workspace.on('active-leaf-change', () => {
-        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (!activeView) return;
-        
-        // Access CodeMirror instance for cursor tracking
-        const cm = (activeView.editor as EditorWithCodeMirror).cm;
-        if (!cm) return;
-        
-        // Only track each editor once
-        if (trackedEditors.has(cm.dom)) return;
-        trackedEditors.add(cm.dom);
-        
-        // Listen to CodeMirror events
-        cm.dom.addEventListener('mouseup', () => setTimeout(checkCursorPosition, 10));
-        cm.dom.addEventListener('keyup', (evt: KeyboardEvent) => {
-          // Check on arrow keys and other navigation keys
-          const navKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
-          if (navKeys.includes(evt.key)) {
-            setTimeout(checkCursorPosition, 10);
-          }
-        });
-      })
-    );
-
-    // Handle hover preview
-    this.registerDomEvent(document, 'mousemove', (evt: MouseEvent) => {
-      if (!this.settings.enableHoverPreview) return;
-      
-      // Check if we're in a text editor or markdown view
-      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-      const activeFile = this.app.workspace.getActiveFile();
-      
-      // Try to get editor position - works in both source and preview modes
-      let entity: { path: string; display: string } | null = null;
-      
-      if (activeView) {
-        try {
-          const editor = activeView.editor as EditorWithCodeMirror;
-          const pos = this.getPosAtCoords(editor, evt.clientX, evt.clientY);
-          if (pos !== null) {
-            const lineText = editor.getLine(pos.line);
-            entity = this.findEntityAtPosition(lineText, pos.ch);
-          }
-        } catch {
-          // If editor methods fail (e.g., in preview mode), try getting word at cursor
-          const selection = window.getSelection();
-          if (selection && selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
-            const word = range.toString().trim();
-            if (word) {
-              entity = this.entityIndex.get(word) || null;
-              // Try partial match
-              if (!entity) {
-                for (const [name, info] of this.entityIndex.entries()) {
-                  if (name.toLowerCase().startsWith(word.toLowerCase())) {
-                    entity = info;
-                    break;
-                  }
-                }
-              }
-            }
-          }
-        }
-      } else if (activeFile && this.isChapterFile(activeFile)) {
-        // In chapter files (even in character sheet view), check for entity under cursor
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const word = range.toString().trim() || this.getWordAtPoint(evt.clientX, evt.clientY);
-          if (word) {
-            entity = this.entityIndex.get(word) || null;
-            if (!entity) {
-              for (const [name, info] of this.entityIndex.entries()) {
-                if (name.toLowerCase().startsWith(word.toLowerCase())) {
-                  entity = info;
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-
-      if (entity) {
-        if (this.lastHoverEntity !== entity.display) {
-          this.lastHoverEntity = entity.display;
-          if (this.hoverTimer) clearTimeout(this.hoverTimer);
-          this.hoverTimer = (setTimeout(() => {
-            void this.openEntityInSidebar(entity.display, { forceFocus: false });
-          }, 300) as unknown as number);
-        }
-      } else {
-        if (this.lastHoverEntity !== null) {
-          // Check if caret is still on the focus target before clearing
-          const caretEntity = activeView ? this.getEntityAtCursor(activeView.editor) : null;
-          if (caretEntity?.display === this.lastHoverEntity) {
-            // Caret is on focus target, don't clear
-            this.lastHoverEntity = null;
-            if (this.hoverTimer) clearTimeout(this.hoverTimer);
-          } else {
-            // Caret is not on focus target, clear it
-            this.lastHoverEntity = null;
-            if (this.hoverTimer) clearTimeout(this.hoverTimer);
-            this.clearFocus();
-          }
-        }
-      }
-    });
-
-    // Handle click to open entity
-    this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-      if (evt.ctrlKey || evt.metaKey) {
-        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (!activeView) return;
-
-        const editor = activeView.editor as EditorWithCodeMirror;
-        const entity = this.getEntityAtCoords(editor, evt.clientX, evt.clientY);
-
-        if (entity) {
-          evt.preventDefault();
-          evt.stopPropagation();
-          void this.focusEntityByName(entity.display, true);
-        }
-      }
-    }, true);
 
     // Register Markdown post-processor for linkification in preview
     this.registerMarkdownPostProcessor((el) => {
@@ -643,8 +489,7 @@ export default class NovalistPlugin extends Plugin {
     if (rightLeaf) {
         await rightLeaf.setViewState({
             type: NOVELIST_SIDEBAR_VIEW_TYPE,
-            active: true,
-            state: { focus: false }
+            active: true
         });
         void this.app.workspace.revealLeaf(rightLeaf);
     }
@@ -697,20 +542,6 @@ export default class NovalistPlugin extends Plugin {
     });
 
     void this.app.workspace.revealLeaf(leaf);
-  }
-
-  getSidebarView(): NovalistSidebarView | null {
-    const leaf = this.app.workspace.getLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE)[0];
-    return leaf ? (leaf.view as NovalistSidebarView) : null;
-  }
-
-  ensureSidebarView(): NovalistSidebarView | null {
-    let view = this.getSidebarView();
-    if (!view) {
-      void this.activateView();
-      view = this.getSidebarView();
-    }
-    return view;
   }
 
   // ==========================================
@@ -2184,84 +2015,8 @@ order: ${orderValue}
     void this.app.workspace.revealLeaf(leaf);
   }
 
-  openEntityFromEditor(): void {
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!activeView) return;
-    const editor = activeView.editor as EditorWithCodeMirror;
-    const entity = this.getEntityAtCursor(editor);
-    if (entity) {
-      this.focusEntityByName(entity.display, true);
-    }
-  }
-
-  focusEntityByName(name: string, reveal: boolean): boolean {
-    let cleanName = name.replace(/^\[{2}/, '').replace(/\]{2}$/, '').split('|')[0].trim();
-    // Remove extension if present in the link/path
-    if (cleanName.toLowerCase().endsWith('.md')) {
-        cleanName = cleanName.substring(0, cleanName.length - 3);
-    }
-    
-    if (!cleanName) return false;
-
-    // Try exact match first
-    let info = this.entityIndex.get(cleanName);
-    
-    // If not found, try to find a partial match (starts with) - useful for names like "Liam" -> "Liam Calder"
-    if (!info) {
-        // Case insensitive search for keys that start with the cleanName
-        const target = cleanName.toLowerCase();
-        const potentialMatch = Array.from(this.entityIndex.entries())
-            .find(([key]) => key.toLowerCase().startsWith(target));
-        
-        if (potentialMatch) {
-            info = potentialMatch[1];
-        }
-    }
-
-    if (info) {
-      const file = this.app.vault.getAbstractFileByPath(info.path);
-      if (file instanceof TFile) {
-        const sidebar = this.ensureSidebarView();
-        if (sidebar) {
-            sidebar.setSelectedEntity({
-                type: info.path.includes(this.settings.characterFolder) ? 'character' : 'location',
-                file,
-                display: info.display
-            }, { forceFocus: reveal });
-        }
-        return true;
-      }
-    }
-    return false;
-  }
-
-  clearFocus(): void {
-    const sidebar = this.getSidebarView();
-    if (sidebar) {
-      if (sidebar.shouldKeepFocus()) return;
-      sidebar.setSelectedEntity(null);
-    }
-  }
-
   normalizeEntityName(name: string): string {
     return name.trim();
-  }
-
-  openEntityInSidebar(name: string, options?: { forceFocus?: boolean }): void {
-    const info = this.entityIndex.get(name);
-    if (info) {
-      const file = this.app.vault.getAbstractFileByPath(info.path);
-      if (file instanceof TFile) {
-        const sidebar = this.ensureSidebarView();
-        if (sidebar) {
-          sidebar.setSelectedEntity({
-            type: info.path.includes(this.settings.characterFolder) ? 'character' : 'location',
-            file,
-            display: info.display
-          }, options);
-        }
-      }
-    }
   }
 
   linkifyElement(el: HTMLElement): void {
@@ -2304,10 +2059,6 @@ order: ${orderValue}
           link.textContent = match.name;
           link.addClass('novalist-mention');
           link.dataset.href = match.name;
-          link.addEventListener('click', (evt) => {
-            evt.preventDefault();
-            this.focusEntityByName(match.name, true);
-          });
           fragment.append(link);
           lastIdx = match.end;
         }
@@ -2395,6 +2146,179 @@ order: ${orderValue}
     this.registerEvent(this.app.vault.on('delete', () => {
       this.refreshProjectWordCount();
     }));
+  }
+
+  private setupFocusPeek(): void {
+    const callbacks: FocusPeekCallbacks = {
+      getEntityAtPosition: (lineText: string, ch: number) => {
+        const info = this.findEntityAtPosition(lineText, ch);
+        if (!info) return null;
+        const isChar = info.path.includes(this.settings.characterFolder);
+        return { display: info.display, type: isChar ? 'character' : 'location' };
+      },
+      getEntityPeekData: async (name: string): Promise<EntityPeekData | null> => {
+        const info = this.entityIndex.get(name);
+        if (!info) return null;
+        const file = this.app.vault.getAbstractFileByPath(info.path);
+        if (!(file instanceof TFile)) return null;
+        const isChar = info.path.includes(this.settings.characterFolder);
+
+        const content = await this.app.vault.cachedRead(file);
+
+        if (isChar) {
+          const sheet = this.parseCharacterSheetForSidebar(content);
+          if (!sheet) return null;
+
+          // Determine active chapter context
+          const activeFile = this.app.workspace.getActiveFile();
+          const inChapter = activeFile && this.isChapterFile(activeFile);
+          const chapterId = inChapter ? this.getChapterIdForFile(activeFile) : '';
+          const chapterName = inChapter ? this.getChapterNameForFile(activeFile) : '';
+
+          // Apply chapter overrides to base properties (mirrors sidebar logic)
+          let displayName = sheet.name;
+          let displaySurname = sheet.surname;
+          let displayGender = sheet.gender;
+          let displayAge = sheet.age;
+          let displayRole = sheet.role;
+          let displayCustomProps = sheet.customProperties;
+          let chapterOverrideMatch: { overrides: { name?: string; surname?: string; gender?: string; age?: string; role?: string; relationships?: { role: string; character: string }[] }; customProperties?: Record<string, string> } | undefined;
+
+          if (inChapter) {
+            const overrides = this.parseCharacterSheetChapterOverrides(content);
+            const match = overrides.find(
+              o => o.chapter === chapterId || o.chapter === chapterName
+            );
+            if (match) {
+              chapterOverrideMatch = match;
+              if (match.overrides.name) displayName = match.overrides.name;
+              if (match.overrides.surname) displaySurname = match.overrides.surname;
+              if (match.overrides.gender) displayGender = match.overrides.gender;
+              if (match.overrides.age) displayAge = match.overrides.age;
+              if (match.overrides.role) displayRole = match.overrides.role;
+              if (match.customProperties && Object.keys(match.customProperties).length > 0) {
+                displayCustomProps = { ...sheet.customProperties, ...match.customProperties };
+              }
+            }
+          }
+
+          // Chapter-specific info
+          let chapterInfo: string | undefined;
+          if (inChapter) {
+            const parsed = await this.parseCharacterFile(file);
+            const ci = parsed.chapterInfos.find(
+              c => c.chapter === chapterId || c.chapter === chapterName
+            );
+            if (ci?.info) chapterInfo = ci.info;
+          }
+
+          const roleColor = this.settings.roleColors[normalizeCharacterRole(displayRole)] || '';
+          const genderColor = this.settings.genderColors[displayGender?.trim()] || '';
+
+          // Resolve images (chapter overrides take priority)
+          let images = this.parseCharacterSheetImages(content);
+          if (inChapter) {
+            const chapterImages = this.parseCharacterSheetChapterImages(content, chapterId, chapterName);
+            if (chapterImages && chapterImages.length > 0) images = chapterImages;
+          }
+
+          // Parse sections from full character sheet
+          const charSheet = parseCharacterSheet(content);
+
+          return {
+            type: 'character',
+            name: displayName,
+            entityFilePath: file.path,
+            images,
+            surname: displaySurname,
+            gender: displayGender,
+            age: displayAge,
+            role: displayRole,
+            roleColor,
+            genderColor,
+            relationships: (chapterOverrideMatch?.overrides.relationships ?? charSheet.relationships).map(r => ({ role: r.role, character: r.character })),
+            customProperties: displayCustomProps,
+            chapterInfo,
+            sections: charSheet.sections.map(s => ({ title: s.title, content: s.content }))
+          };
+        } else {
+          const body = this.stripFrontmatter(content);
+          const locationName = file.basename;
+          const locType = this.parseLocationTypeFromContent(content);
+          const desc = this.getSectionLines(body, 'Description').join(' ').trim();
+          const locImages = this.parseImagesSection(content);
+
+          // Parse sections from full location sheet
+          const locSheet = parseLocationSheet(content);
+
+          return {
+            type: 'location',
+            name: locationName,
+            entityFilePath: file.path,
+            images: locImages,
+            locationType: locType,
+            description: desc,
+            customProperties: this.parseLocationCustomProperties(content),
+            sections: locSheet.sections.map(s => ({ title: s.title, content: s.content }))
+          };
+        }
+      },
+      resolveImageSrc: (imagePath: string, entityFilePath: string): string | null => {
+        const resolved = this.resolveImagePath(imagePath, entityFilePath);
+        if (!resolved) return null;
+        return this.app.vault.getResourcePath(resolved);
+      },
+      onOpenFile: (name: string) => {
+        const info = this.entityIndex.get(name);
+        if (info) {
+          const file = this.app.vault.getAbstractFileByPath(info.path);
+          if (file instanceof TFile) {
+            void this.app.workspace.getLeaf('tab').openFile(file);
+          }
+        }
+      },
+      renderMarkdown: async (markdown: string, container: HTMLElement, sourcePath: string) => {
+        const comp = new Component();
+        comp.load();
+        try {
+          await MarkdownRenderer.render(this.app, markdown, container, sourcePath, comp);
+        } finally {
+          comp.unload();
+        }
+      },
+      loadLocalStorage: (key: string): string | null => {
+        return this.app.loadLocalStorage(key) as string | null;
+      },
+      saveLocalStorage: (key: string, value: string): void => {
+        this.app.saveLocalStorage(key, value);
+      }
+    };
+
+    this.registerEditorExtension(focusPeekExtension(callbacks));
+  }
+
+  private parseLocationTypeFromContent(content: string): string {
+    const sheetLines = this.getSectionLines(content, 'LocationSheet');
+    for (const line of sheetLines) {
+      const match = line.match(/^\s*Type:\s*(.+)$/);
+      if (match) return match[1].trim();
+    }
+    return '';
+  }
+
+  private parseLocationCustomProperties(content: string): Record<string, string> {
+    const sheetLines = this.getSectionLines(content, 'LocationSheet');
+    const props: Record<string, string> = {};
+    let inCustom = false;
+    for (const line of sheetLines) {
+      if (line.trim() === 'CustomProperties:') { inCustom = true; continue; }
+      if (inCustom) {
+        if (/^\S/.test(line) && !line.trim().startsWith('-') && !line.trim().startsWith('*')) break;
+        const match = line.match(/^[-*]\s*(.+?)\s*:\s*(.+)$/);
+        if (match) props[match[1].trim()] = match[2].trim();
+      }
+    }
+    return props;
   }
 
   private refreshProjectWordCount(): void {

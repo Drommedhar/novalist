@@ -194,21 +194,14 @@ export class StartupWizardModal extends Modal {
             position: 'left',
             onShow: async () => {
                 await this.plugin.activateView();
-                // We need to wait for render. The tabs are actually inside .novalist-tabs not .novalist-tab-header-container
-                // The class in NovalistSidebarView is .novalist-tabs -> button.novalist-tab
-                // The order is Actions, Context, Focus. So Context is nth-child(2).
+                // The tabs are inside .novalist-tabs -> button.novalist-tab
+                // The order is Actions, Overview. So Overview is nth-child(2).
             }
         },
         {
-            selector: '.novalist-tabs .novalist-tab:nth-child(2)', // Context
+            selector: '.novalist-tabs .novalist-tab:nth-child(2)', // Overview
             title: 'Overview',
             content: 'This tab gives you a quick overview of all entities in the current scene.',
-            position: 'bottom'
-        },
-        {
-            selector: '.novalist-tabs .novalist-tab:nth-child(3)', // Focus
-            title: 'Focus view',
-            content: 'Click here to see detailed information about a selected character or location.',
             position: 'bottom'
         },
         {

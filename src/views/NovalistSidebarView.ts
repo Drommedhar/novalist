@@ -2,14 +2,10 @@
   ItemView,
   TFile,
   WorkspaceLeaf,
-  DropdownComponent,
-  MarkdownRenderer,
   ButtonComponent
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { CharacterData, CharacterChapterInfo, LocationData } from '../types';
-import { parseCharacterSheet } from '../utils/characterSheetUtils';
-import { parseLocationSheet } from '../utils/locationSheetUtils';
 import { normalizeCharacterRole } from '../utils/characterUtils';
 
 export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
@@ -17,13 +13,7 @@ export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
 export class NovalistSidebarView extends ItemView {
   plugin: NovalistPlugin;
   currentChapterFile: TFile | null = null;
-  selectedEntity: { type: 'character' | 'location'; file: TFile; display: string } | null = null;
-  private activeTab: 'actions' | 'context' | 'focus' = 'context';
-  private lastNonFocusTab: 'actions' | 'context' = 'context';
-  private lastFocusKey: string | null = null;
-  private autoFocusActive = true;
-  private focusPinned = false;
-  private selectedImageByPath: Map<string, string> = new Map();
+  private activeTab: 'actions' | 'context' = 'context';
 
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
     super(leaf);
@@ -69,39 +59,19 @@ export class NovalistSidebarView extends ItemView {
     container.empty();
     container.addClass('novalist-sidebar');
 
-    container.onclick = (evt) => {
-      const target = evt.target;
-      if (!(target instanceof HTMLElement)) return;
-      const link = target.closest('a');
-      if (!link || !container.contains(link)) return;
-
-      const href = link.getAttribute('data-href') || link.getAttribute('href') || link.textContent || '';
-      if (!href) return;
-
-      const handled = this.plugin.focusEntityByName(href, true);
-      if (handled) {
-        evt.preventDefault();
-        evt.stopPropagation();
-      }
-    };
-
     // Header
     container.createEl('h3', { text: 'Novalist context', cls: 'novalist-sidebar-header' });
 
     // Tabs
     const tabs = container.createDiv('novalist-tabs');
-    const setTab = (tab: 'actions' | 'context' | 'focus') => {
-      this.autoFocusActive = true;
+    const setTab = (tab: 'actions' | 'context') => {
       this.activeTab = tab;
-      this.focusPinned = tab === 'focus';
-      if (tab !== 'focus') this.lastNonFocusTab = tab;
       void this.render();
     };
 
-    const tabOrder: Array<{ id: 'actions' | 'context' | 'focus'; label: string }> = [
+    const tabOrder: Array<{ id: 'actions' | 'context'; label: string }> = [
       { id: 'actions', label: 'Actions' },
-      { id: 'context', label: 'Overview' },
-      { id: 'focus', label: 'Focus' }
+      { id: 'context', label: 'Overview' }
     ];
 
     for (const tab of tabOrder) {
@@ -110,228 +80,6 @@ export class NovalistSidebarView extends ItemView {
         cls: `novalist-tab ${this.activeTab === tab.id ? 'is-active' : ''}`
       });
       btn.addEventListener('click', () => setTab(tab.id));
-    }
-
-    if (!this.selectedEntity && this.activeTab === 'focus') {
-      this.activeTab = this.lastNonFocusTab;
-      this.focusPinned = false;
-    }
-
-    if (this.activeTab === 'focus') {
-      const details = container.createDiv('novalist-section novalist-selected-entity');
-
-      if (!this.selectedEntity) {
-        details.createEl('p', { text: 'No focused item.', cls: 'novalist-empty' });
-      } else {
-        const selectedEntity = this.selectedEntity;
-        const content = await this.plugin.app.vault.read(selectedEntity.file);
-        let body = this.plugin.stripFrontmatter(content);
-        const title = this.plugin.extractTitle(body);
-        if (title) {
-          details.createEl('h3', { text: title, cls: 'novalist-focus-title' });
-          body = this.plugin.removeTitle(body);
-        }
-
-        let images: Array<{ name: string; path: string }> = [];
-        let characterSheet = null as ReturnType<typeof parseCharacterSheet> | null;
-        let locationSheet = null as ReturnType<typeof parseLocationSheet> | null;
-        
-        // Check for chapter-specific image overrides
-        let chapterImages: Array<{ name: string; path: string }> | null = null;
-        if (this.currentChapterFile) {
-          const chapterId = this.plugin.getChapterIdForFile(this.currentChapterFile);
-          const chapterName = this.plugin.getChapterNameForFile(this.currentChapterFile);
-          chapterImages = this.plugin.parseCharacterSheetChapterImages(content, chapterId, chapterName);
-        }
-        
-        const renderImages = () => {
-          // Use chapter override images if available, otherwise use default images
-          const displayImages = chapterImages && chapterImages.length > 0 ? chapterImages : images;
-          if (displayImages.length === 0) return;
-          
-          const imageRow = details.createDiv('novalist-image-row');
-          imageRow.createEl('span', { text: 'Images', cls: 'novalist-image-label' });
-
-          const dropdown = new DropdownComponent(imageRow);
-          for (const img of displayImages) {
-            dropdown.addOption(img.name, img.name);
-          }
-
-          const key = selectedEntity.file.path;
-          const selected = this.selectedImageByPath.get(key) || displayImages[0].name;
-          dropdown.setValue(selected);
-
-          const imageContainer = details.createDiv('novalist-image-preview');
-          const renderImage = (name: string) => {
-            const img = displayImages.find(i => i.name === name) || displayImages[0];
-            this.selectedImageByPath.set(key, img.name);
-            imageContainer.empty();
-
-            const file = this.plugin.resolveImagePath(img.path, selectedEntity.file.path);
-            if (!file) {
-              imageContainer.createEl('p', { text: 'Image not found.', cls: 'novalist-empty' });
-              return;
-            }
-
-            const src = this.plugin.app.vault.getResourcePath(file);
-            imageContainer.createEl('img', { attr: { src, alt: img.name } });
-          };
-
-          dropdown.onChange((val) => {
-            renderImage(val);
-          });
-
-          renderImage(selected);
-        };
-
-        // Helper to render a group of key-value properties as pills
-        const renderProps = (
-          parent: HTMLElement,
-          props: Array<{ label: string; value: string; cls?: string; color?: string; colorVar?: string }>
-        ) => {
-          if (props.length === 0) return;
-          const row = parent.createDiv('novalist-focus-props');
-          for (const p of props) {
-            const pill = row.createDiv('novalist-focus-prop');
-            if (p.cls) pill.addClass(p.cls);
-            if (p.color) {
-              const varName = p.colorVar || '--novalist-role-color';
-              pill.style.setProperty(varName, p.color);
-            }
-            pill.createEl('span', { text: p.label, cls: 'novalist-focus-prop-label' });
-            pill.createEl('span', { text: p.value, cls: 'novalist-focus-prop-value' });
-          }
-        };
-
-        // Helper to render a titled group with custom children
-        const renderGroup = (parent: HTMLElement, title: string): HTMLElement => {
-          const group = parent.createDiv('novalist-focus-group');
-          group.createEl('div', { text: title, cls: 'novalist-focus-group-title' });
-          return group;
-        };
-
-        if (selectedEntity.type === 'character') {
-          characterSheet = parseCharacterSheet(content);
-          images = characterSheet.images;
-
-          const chapterId = this.currentChapterFile ? this.plugin.getChapterIdForFile(this.currentChapterFile) : '';
-          const chapterName = this.currentChapterFile ? this.plugin.getChapterNameForFile(this.currentChapterFile) : '';
-          const override = characterSheet.chapterOverrides.find(
-            (o) => o.chapter === chapterId || o.chapter === chapterName
-          );
-
-          const displayData = {
-            ...characterSheet,
-            ...override,
-            customProperties: override?.customProperties
-              ? { ...characterSheet.customProperties, ...override.customProperties }
-              : characterSheet.customProperties,
-            relationships: override?.relationships ?? characterSheet.relationships,
-            images: override?.images ?? characterSheet.images
-          };
-
-          renderImages();
-
-          // Basic properties as pills
-          const basicProps: Array<{ label: string; value: string; cls?: string; color?: string }> = [];
-          if (displayData.gender) {
-            const genderColor = this.getGenderColor(displayData.gender);
-            basicProps.push({
-              label: 'Gender',
-              value: displayData.gender,
-              cls: 'novalist-gender-prop',
-              color: genderColor,
-              colorVar: '--novalist-gender-color'
-            });
-          }
-          if (displayData.age) basicProps.push({ label: 'Age', value: displayData.age });
-          if (displayData.role) {
-            const roleColor = this.getRoleColor(displayData.role);
-            basicProps.push({
-              label: 'Role',
-              value: displayData.role,
-              cls: 'novalist-role-prop',
-              color: roleColor,
-              colorVar: '--novalist-role-color'
-            });
-          }
-          renderProps(details, basicProps);
-
-          // Custom properties
-          if (displayData.customProperties && Object.keys(displayData.customProperties).length > 0) {
-            const group = renderGroup(details, 'Properties');
-            const list = group.createDiv('novalist-focus-kv-list');
-            for (const [key, val] of Object.entries(displayData.customProperties)) {
-              if (!val) continue;
-              const row = list.createDiv('novalist-focus-kv-row');
-              row.createEl('span', { text: key, cls: 'novalist-focus-kv-key' });
-              row.createEl('span', { text: val, cls: 'novalist-focus-kv-value' });
-            }
-          }
-
-          // Relationships
-          if (displayData.relationships && displayData.relationships.length > 0) {
-            const group = renderGroup(details, 'Relationships');
-            const list = group.createDiv('novalist-focus-rel-list');
-            for (const rel of displayData.relationships) {
-              const row = list.createDiv('novalist-focus-rel-row');
-              row.createEl('span', { text: rel.role, cls: 'novalist-focus-rel-role' });
-              const nameEl = row.createDiv('novalist-focus-rel-name');
-              await MarkdownRenderer.render(this.app, rel.character, nameEl, '', this);
-            }
-          }
-
-          // Free-form sections via MarkdownRenderer
-          if (displayData.sections && displayData.sections.length > 0) {
-            for (const section of displayData.sections) {
-              const group = renderGroup(details, section.title);
-              const md = group.createDiv('novalist-markdown');
-              await MarkdownRenderer.render(this.app, section.content, md, '', this);
-            }
-          }
-        }
-
-        if (selectedEntity.type === 'location') {
-          locationSheet = parseLocationSheet(content);
-          images = locationSheet.images;
-
-          renderImages();
-
-          // Basic properties
-          const basicProps: Array<{ label: string; value: string }> = [];
-          if (locationSheet.type) basicProps.push({ label: 'Type', value: locationSheet.type });
-          renderProps(details, basicProps);
-
-          // Description
-          if (locationSheet.description) {
-            const descGroup = renderGroup(details, 'Description');
-            descGroup.createEl('p', { text: locationSheet.description, cls: 'novalist-focus-description' });
-          }
-
-          // Custom properties
-          if (Object.keys(locationSheet.customProperties).length > 0) {
-            const group = renderGroup(details, 'Properties');
-            const list = group.createDiv('novalist-focus-kv-list');
-            for (const [key, val] of Object.entries(locationSheet.customProperties)) {
-              if (!val) continue;
-              const row = list.createDiv('novalist-focus-kv-row');
-              row.createEl('span', { text: key, cls: 'novalist-focus-kv-key' });
-              row.createEl('span', { text: val, cls: 'novalist-focus-kv-value' });
-            }
-          }
-
-          // Free-form sections
-          if (locationSheet.sections.length > 0) {
-            for (const section of locationSheet.sections) {
-              const group = renderGroup(details, section.title);
-              const md = group.createDiv('novalist-markdown');
-              await MarkdownRenderer.render(this.app, section.content, md, '', this);
-            }
-          }
-        }
-      }
-
-      return;
     }
 
     if (this.activeTab === 'actions') {
@@ -429,10 +177,6 @@ export class NovalistSidebarView extends ItemView {
             const infoEl = card.createDiv('novalist-overview-card-chapter-info');
             infoEl.createEl('span', { text: chapterInfo.info });
           }
-
-          card.addEventListener('click', () => {
-            void this.plugin.focusEntityByName(`${charData.name} ${charData.surname}`.trim(), true);
-          });
         }
       }
     }
@@ -462,10 +206,6 @@ export class NovalistSidebarView extends ItemView {
           if (locData.description) {
             card.createEl('p', { text: locData.description, cls: 'novalist-overview-card-desc' });
           }
-
-          card.addEventListener('click', () => {
-            void this.plugin.focusEntityByName(locData.name, true);
-          });
         }
       }
     }
@@ -476,43 +216,6 @@ export class NovalistSidebarView extends ItemView {
     return Promise.resolve();
   }
 
-  setSelectedEntity(
-    entity: { type: 'character' | 'location'; file: TFile; display: string } | null,
-    options?: { forceFocus?: boolean }
-  ): void {
-    const nextKey = entity ? entity.file.path : null;
-    const changed = nextKey !== this.lastFocusKey;
-    this.lastFocusKey = nextKey;
-    this.selectedEntity = entity;
-
-    if (entity) {
-      // Switching to an entity - go to focus tab
-      if (this.autoFocusActive || options?.forceFocus) {
-        if (this.activeTab !== 'focus') {
-          this.lastNonFocusTab = this.activeTab;
-        }
-        this.activeTab = 'focus';
-        if (options?.forceFocus) {
-          this.focusPinned = true;
-        }
-      }
-    } else {
-      // Clearing focus - go back to last non-focus tab
-      if (this.activeTab === 'focus') {
-        this.activeTab = this.lastNonFocusTab;
-      }
-      this.focusPinned = false;
-      this.selectedEntity = null;
-    }
-
-    if (changed || options?.forceFocus) {
-      void this.render();
-    } else if (entity === null && this.activeTab === this.lastNonFocusTab) {
-      // Only re-render when clearing focus if we actually changed tabs
-      void this.render();
-    }
-  }
-
   private getRoleColor(roleLabel: string): string {
     const normalized = normalizeCharacterRole(roleLabel);
     return this.plugin.settings.roleColors[normalized] || '';
@@ -521,9 +224,5 @@ export class NovalistSidebarView extends ItemView {
   private getGenderColor(genderLabel: string): string {
     const trimmed = genderLabel.trim();
     return this.plugin.settings.genderColors[trimmed] || '';
-  }
-
-  shouldKeepFocus(): boolean {
-    return this.activeTab === 'focus' && this.selectedEntity !== null && this.focusPinned;
   }
 }

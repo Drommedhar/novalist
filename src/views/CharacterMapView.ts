@@ -541,7 +541,7 @@ export class CharacterMapView extends ItemView {
         const id = (evt.target as cytoscape.NodeSingular).id();
         const file = charFiles.get(id);
         if (file) {
-            void this.plugin.focusEntityByName(file.basename, true);
+            void this.app.workspace.getLeaf().openFile(file);
         }
     });
   }

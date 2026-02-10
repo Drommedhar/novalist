@@ -70,19 +70,6 @@
   box-sizing: border-box;
 }
 
-.novalist-selected-entity {
-  background: var(--background-primary-alt);
-  border: 1px solid var(--background-modifier-border);
-  flex: 1 1 auto;
-  width: calc(100% + 20px);
-  max-width: none;
-  box-sizing: border-box;
-  margin-bottom: 0;
-  margin-left: -10px;
-  margin-right: -10px;
-  border-radius: 0 0 8px 8px;
-}
-
 .novalist-section-title {
   margin: 0 0 10px 0;
   font-size: 16px;
@@ -90,69 +77,6 @@
   display: flex;
   align-items: center;
   gap: 5px;
-}
-
-.novalist-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.novalist-item {
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  padding: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.novalist-item:hover {
-  border-color: var(--interactive-accent);
-  transform: translateX(3px);
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.novalist-item-header {
-  font-size: 15px;
-  margin-bottom: 5px;
-  color: var(--text-normal);
-}
-
-.novalist-item-info {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 8px;
-}
-
-.novalist-tag {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.novalist-chapter-info {
-  font-size: 13px;
-  color: var(--text-muted);
-  border-top: 1px dashed var(--background-modifier-border);
-  padding-top: 5px;
-  margin-top: 5px;
-}
-
-.novalist-chapter-info em {
-  color: var(--text-accent);
-  display: block;
-  margin-bottom: 3px;
-}
-
-.novalist-empty {
-  color: var(--text-muted);
-  font-style: italic;
-  text-align: center;
-  padding: 10px;
 }
 
 .novalist-actions {
@@ -165,198 +89,6 @@
   flex: 1;
   min-width: 100px;
   font-weight: 600;
-}
-
-.novalist-markdown {
-  line-height: 1.55;
-}
-
-.novalist-image-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.novalist-image-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.novalist-image-preview {
-  margin-bottom: 12px;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
-}
-
-.novalist-image-preview img {
-  display: block;
-  width: 100%;
-  height: auto;
-  max-height: 220px;
-  object-fit: contain;
-  cursor: pointer;
-}
-
-.novalist-image-preview img.novalist-image {
-  background: var(--background-primary);
-}
-
-/* Focus view title */
-.novalist-focus-title {
-  margin: 0 0 8px;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-normal);
-  padding-bottom: 6px;
-  border-bottom: 2px solid var(--interactive-accent);
-}
-
-/* Focus property pills */
-.novalist-focus-props {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 10px 0;
-}
-
-.novalist-focus-prop {
-  display: flex;
-  align-items: center;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  overflow: hidden;
-  font-size: 12px;
-}
-
-.novalist-focus-prop-label {
-  padding: 3px 7px;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.novalist-focus-prop.novalist-role-prop .novalist-focus-prop-label {
-  background: var(--novalist-role-color, var(--interactive-accent));
-}
-
-.novalist-focus-prop.novalist-gender-prop .novalist-focus-prop-label {
-  background: var(--novalist-gender-color, var(--interactive-accent));
-}
-
-.novalist-focus-prop-value {
-  padding: 3px 8px;
-  color: var(--text-normal);
-}
-
-/* Focus groups (Relationships, Properties, Sections) */
-.novalist-focus-group {
-  margin-top: 10px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
-.novalist-focus-group-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-accent);
-  margin-bottom: 8px;
-}
-
-/* Key-value list (custom properties) */
-.novalist-focus-kv-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.novalist-focus-kv-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 13px;
-  padding: 2px 0;
-  border-bottom: 1px dashed var(--background-modifier-border);
-}
-
-.novalist-focus-kv-row:last-child {
-  border-bottom: none;
-}
-
-.novalist-focus-kv-key {
-  font-weight: 600;
-  color: var(--text-muted);
-  min-width: 70px;
-  flex-shrink: 0;
-}
-
-.novalist-focus-kv-value {
-  color: var(--text-normal);
-}
-
-/* Relationship list */
-.novalist-focus-rel-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.novalist-focus-rel-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  padding: 3px 0;
-  border-bottom: 1px dashed var(--background-modifier-border);
-}
-
-.novalist-focus-rel-row:last-child {
-  border-bottom: none;
-}
-
-.novalist-focus-rel-role {
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: capitalize;
-  flex-shrink: 0;
-}
-
-.novalist-focus-rel-name {
-  color: var(--text-normal);
-}
-
-.novalist-focus-rel-name p {
-  margin: 0;
-  display: inline;
-}
-
-/* Focus description */
-.novalist-focus-description {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-normal);
-  line-height: 1.5;
-}
-
-/* Section markdown inside focus groups */
-.novalist-focus-group .novalist-markdown {
-  font-size: 13px;
 }
 
 /* ================================
@@ -2981,4 +2713,473 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 
 .novalist-stats-popup-na {
   color: var(--text-faint);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Entity Peek Card (inline focus preview)
+   ══════════════════════════════════════════════════════════════════════ */
+
+.novalist-peek-card {
+  position: fixed;
+  z-index: 1000;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  padding: 0.833em 1em;
+  min-width: 220px;
+  font-size: 12px;
+  line-height: 1.45;
+  animation: novalist-peek-in 0.12s ease;
+  pointer-events: auto;
+  resize: both;
+  overflow: auto;
+}
+
+@keyframes novalist-peek-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Header ── */
+.novalist-peek-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.novalist-peek-type-icon {
+  display: flex;
+  color: var(--text-faint);
+}
+.novalist-peek-type-icon > .svg-icon,
+.novalist-peek-type-icon > svg {
+  width: 1.167em;
+  height: 1.167em;
+}
+
+.novalist-peek-name {
+  font-weight: 700;
+  font-size: 1.083em;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 15em;
+}
+
+.novalist-peek-badge {
+  font-size: 0.75em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 0.083em 0.417em;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.novalist-peek-badge--character {
+  background: var(--novalist-peek-badge-bg, rgba(var(--color-blue-rgb, 68, 138, 255), 0.15));
+  color: var(--text-on-accent, #fff);
+}
+/* When no custom role color is set, fall back to subtle blue */
+.novalist-peek-badge--character:not([style*='--novalist-peek-badge-bg']) {
+  background: rgba(var(--color-blue-rgb, 68, 138, 255), 0.15);
+  color: var(--color-blue, #448aff);
+}
+.novalist-peek-badge--location {
+  background: rgba(var(--color-green-rgb, 76, 175, 80), 0.15);
+  color: var(--color-green, #4caf50);
+}
+
+.novalist-peek-spacer {
+  flex: 1;
+}
+
+.novalist-peek-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.833em;
+  height: 1.833em;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.novalist-peek-action:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+}
+.novalist-peek-action.is-active {
+  color: var(--interactive-accent);
+}
+.novalist-peek-action > .svg-icon,
+.novalist-peek-action > svg {
+  width: 1.083em;
+  height: 1.083em;
+}
+
+/* ── Card body: side-by-side image + details ── */
+.novalist-peek-body {
+  display: flex;
+  gap: 0.833em;
+  align-items: flex-start;
+}
+
+/* When no image present, details fill the full width */
+.novalist-peek-details {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Property pills ── */
+.novalist-peek-props {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.333em;
+  margin-bottom: 0.5em;
+}
+
+.novalist-peek-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.167em 0.583em;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  font-size: 0.917em;
+  white-space: nowrap;
+}
+.novalist-peek-pill-value {
+  font-weight: 600;
+  color: var(--novalist-pill-color, var(--text-normal));
+}
+.novalist-peek-pill--dim {
+  opacity: 0.7;
+}
+.novalist-peek-pill-icon {
+  display: flex;
+  color: var(--text-faint);
+}
+.novalist-peek-pill-icon > .svg-icon,
+.novalist-peek-pill-icon > svg {
+  width: 0.917em;
+  height: 0.917em;
+}
+
+/* ── Relationships (compact list) ── */
+.novalist-peek-rel {
+  padding: 0.333em 0.667em 0.167em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.novalist-peek-rel-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  padding: 0.083em 0;
+  font-size: 0.917em;
+  line-height: 1.4;
+}
+
+.novalist-peek-rel-role {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.833em;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.novalist-peek-rel-role::after {
+  content: ' →';
+  font-weight: 400;
+}
+
+.novalist-peek-rel-name {
+  color: var(--text-normal);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Clickable entity links inside the peek card */
+.novalist-peek-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--text-faint);
+  text-underline-offset: 0.15em;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+.novalist-peek-link:hover {
+  color: var(--text-accent);
+  text-decoration-color: var(--text-accent);
+}
+
+/* Back button in header */
+.novalist-peek-back {
+  flex-shrink: 0;
+}
+
+.novalist-peek-rel-more {
+  display: block;
+  font-size: 0.833em;
+  color: var(--text-faint);
+  font-style: italic;
+  padding: 0.167em 0;
+}
+
+/* ── Custom properties (key-value) ── */
+.novalist-peek-kv {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.333em 0.667em;
+  margin-bottom: 0.5em;
+  padding-top: 0.333em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.novalist-peek-kv-item {
+  display: flex;
+  gap: 0.333em;
+  font-size: 0.917em;
+}
+
+.novalist-peek-kv-key {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.novalist-peek-kv-key::after {
+  content: ':';
+}
+
+.novalist-peek-kv-val {
+  color: var(--text-normal);
+}
+
+.novalist-peek-kv-more {
+  font-size: 0.833em;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* ── Chapter info ── */
+.novalist-peek-chapter {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.417em;
+  padding: 0.417em 0 0.167em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.novalist-peek-chapter-icon {
+  display: flex;
+  color: var(--interactive-accent);
+  flex-shrink: 0;
+  margin-top: 0.083em;
+}
+.novalist-peek-chapter-icon > .svg-icon,
+.novalist-peek-chapter-icon > svg {
+  width: 1em;
+  height: 1em;
+}
+
+.novalist-peek-chapter-text {
+  font-size: 0.917em;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── Location description ── */
+.novalist-peek-desc {
+  padding-top: 0.333em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.novalist-peek-desc-text {
+  font-size: 0.917em;
+  color: var(--text-muted);
+  line-height: 1.4;
+  font-style: italic;
+}
+
+/* ── Image preview (portrait-friendly, side column) ── */
+.novalist-peek-image-area {
+  flex-shrink: 0;
+  width: 8.333em;
+}
+
+.novalist-peek-image-row {
+  display: flex;
+  align-items: center;
+  gap: 0.333em;
+  margin-bottom: 0.333em;
+}
+
+.novalist-peek-image-select {
+  flex: 1;
+  font-size: 0.833em;
+  padding: 0.083em 0.333em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.novalist-peek-image-container {
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  line-height: 0;
+}
+
+.novalist-peek-image-container img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 15em;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.novalist-peek-image-missing {
+  display: block;
+  padding: 0.5em 0.667em;
+  font-size: 0.833em;
+  color: var(--text-faint);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* ── Peek sections ── */
+.novalist-peek-sections {
+  padding: 0.333em 0.667em 0.5em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.novalist-peek-sections-header {
+  display: flex;
+  align-items: center;
+  gap: 0.333em;
+  margin-bottom: 0.333em;
+}
+
+.novalist-peek-sections-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.novalist-peek-sections-icon > .svg-icon,
+.novalist-peek-sections-icon > svg {
+  width: 1em;
+  height: 1em;
+}
+
+.novalist-peek-sections-title {
+  font-size: 0.917em;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.novalist-peek-sections-select {
+  flex: 1;
+  font-size: 0.917em;
+  padding: 0.083em 0.333em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  min-width: 0;
+}
+
+.novalist-peek-sections-content {
+  max-height: 10em;
+  overflow-y: auto;
+  padding-right: 0.167em;
+  font-size: 0.917em;
+  line-height: 1.45;
+  color: var(--text-normal);
+}
+
+.novalist-peek-sections-content p {
+  margin: 0 0 0.333em;
+}
+
+.novalist-peek-sections-content p:last-child {
+  margin-bottom: 0;
+}
+
+.novalist-peek-sections-content ul,
+.novalist-peek-sections-content ol {
+  margin: 0 0 0.333em;
+  padding-left: 1.5em;
+}
+
+.novalist-peek-sections-content h1,
+.novalist-peek-sections-content h2,
+.novalist-peek-sections-content h3,
+.novalist-peek-sections-content h4,
+.novalist-peek-sections-content h5,
+.novalist-peek-sections-content h6 {
+  font-size: 1em;
+  font-weight: 700;
+  margin: 0.333em 0 0.167em;
+}
+
+.novalist-peek-sections-content blockquote {
+  margin: 0 0 0.333em;
+  padding-left: 0.667em;
+  border-left: 2px solid var(--text-faint);
+  color: var(--text-muted);
+}
+
+.novalist-peek-sections-content code {
+  font-size: 0.909em;
+  padding: 0.083em 0.25em;
+  border-radius: 3px;
+  background: var(--background-secondary);
+}
+
+.novalist-peek-sections-content pre {
+  margin: 0 0 0.333em;
+  padding: 0.333em 0.5em;
+  border-radius: 4px;
+  background: var(--background-secondary);
+  overflow-x: auto;
+}
+
+.novalist-peek-sections-content pre code {
+  padding: 0;
+  background: none;
+}
+
+/* Wiki-links rendered by MarkdownRenderer inside sections */
+.novalist-peek-sections-content a.internal-link,
+.novalist-peek-card a.internal-link {
+  cursor: pointer;
+  color: var(--text-accent);
+  text-decoration: underline;
+  text-decoration-color: var(--text-faint);
+  text-underline-offset: 0.15em;
+  transition: text-decoration-color 0.15s ease;
+}
+.novalist-peek-sections-content a.internal-link:hover,
+.novalist-peek-card a.internal-link:hover {
+  text-decoration-color: var(--text-accent);
+}
+
+.novalist-peek-sections-empty {
+  font-size: 0.833em;
+  color: var(--text-faint);
+  font-style: italic;
 }

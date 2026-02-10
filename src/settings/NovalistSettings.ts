@@ -76,7 +76,6 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   language: 'de-low',
   customLanguageLabel: 'Custom',
   customLanguageDefaults: [],
-  enableHoverPreview: true,
   enableSidebarView: true,
   enableCustomExplorer: false,
   characterFolder: 'Characters',
