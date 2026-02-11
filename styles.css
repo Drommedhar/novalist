@@ -2948,7 +2948,7 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   width: 100%;
   height: auto;
   max-height: 15em;
-  object-fit: cover;
+  object-fit: contain;
   object-position: top center;
 }
 
