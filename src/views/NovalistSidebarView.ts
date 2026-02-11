@@ -4,7 +4,7 @@
   WorkspaceLeaf
 } from 'obsidian';
 import type NovalistPlugin from '../main';
-import { CharacterData, CharacterChapterInfo, LocationData } from '../types';
+import { CharacterData, CharacterChapterInfo, LocationData, PlotBoardColumn } from '../types';
 import { normalizeCharacterRole } from '../utils/characterUtils';
 import { t } from '../i18n';
 
@@ -145,6 +145,9 @@ export class NovalistSidebarView extends ItemView {
       }
     }
 
+    // Plot Board Section
+    this.renderPlotBoardSection(contextContent);
+
     // Locations Section
     if (chapterData.locations.length > 0) {
       const locationItems: Array<LocationData> = [];
@@ -178,6 +181,32 @@ export class NovalistSidebarView extends ItemView {
   onClose(): Promise<void> {
     // Cleanup
     return Promise.resolve();
+  }
+
+  private renderPlotBoardSection(parent: HTMLElement): void {
+    if (!this.currentChapterFile) return;
+
+    const board = this.plugin.settings.plotBoard;
+    const columns: PlotBoardColumn[] = board.columns;
+    if (columns.length === 0) return;
+
+    const chapterId = this.plugin.getChapterIdForFileSync(this.currentChapterFile);
+    const cellData = board.cells[chapterId];
+    if (!cellData) return;
+
+    // Only show columns that have data for this chapter
+    const filledColumns = columns.filter(col => cellData[col.id]?.trim());
+    if (filledColumns.length === 0) return;
+
+    const section = parent.createDiv('novalist-overview-section');
+    section.createEl('div', { text: t('sidebar.plotBoard'), cls: 'novalist-overview-section-title' });
+
+    const list = section.createDiv('novalist-overview-plot-list');
+    for (const col of filledColumns) {
+      const row = list.createDiv('novalist-overview-plot-item');
+      row.createEl('span', { text: col.name, cls: 'novalist-overview-plot-label' });
+      row.createEl('span', { text: cellData[col.id], cls: 'novalist-overview-plot-value' });
+    }
   }
 
   private getRoleColor(roleLabel: string): string {

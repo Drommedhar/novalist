@@ -50,7 +50,7 @@ A structured form editor for location files with fields for name, type, descript
 
 ### Context Sidebar
 
-A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters and locations, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, and location descriptions. Accessible via the toolbar, ribbon icon, or command palette.
+A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters and locations, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, and location descriptions. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. Accessible via the toolbar, ribbon icon, or command palette.
 
 ### Character Map
 

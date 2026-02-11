@@ -171,6 +171,7 @@ export default {
   'sidebar.gender': 'Gender',
   'sidebar.age': 'Age',
   'sidebar.rel': 'Rel',
+  'sidebar.plotBoard': 'Plot board',
 
   // ── Explorer view ──────────────────────────────────────────────────
   'explorer.displayName': 'Novalist explorer',

@@ -167,6 +167,7 @@ export default {
   'sidebar.gender': 'Geschlecht',
   'sidebar.age': 'Alter',
   'sidebar.rel': 'Bez',
+  'sidebar.plotBoard': 'Handlungstafel',
 
   // ── Explorer view ──────────────────────────────────────────────────
   'explorer.displayName': 'Novalist-Explorer',

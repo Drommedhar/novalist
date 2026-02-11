@@ -192,6 +192,37 @@
   color: var(--text-normal);
 }
 
+/* ── Plot board in sidebar ── */
+.novalist-overview-plot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.novalist-overview-plot-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+}
+
+.novalist-overview-plot-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.novalist-overview-plot-value {
+  font-size: 12px;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+}
+
 .novalist-overview-card-chapter-info {
   margin-top: 6px;
   padding-top: 6px;
