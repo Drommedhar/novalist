@@ -152,6 +152,26 @@ export class PlotBoardView extends ItemView {
         const td = tr.createEl('td', { cls: 'novalist-plot-board-td-cell' });
         this.renderCell(td, ch.id, col.id);
       }
+
+      // Scene rows (nested under chapter)
+      if (ch.scenes && ch.scenes.length > 0) {
+        for (const scene of ch.scenes) {
+          const sceneTr = tbody.createEl('tr', { cls: 'novalist-plot-board-scene-row' });
+          sceneTr.createEl('td', { cls: 'novalist-plot-board-td-index' }); // empty index cell
+          const sceneNameTd = sceneTr.createEl('td', { cls: 'novalist-plot-board-td-chapter novalist-plot-board-td-scene' });
+          const sceneLink = sceneNameTd.createEl('a', { text: scene, cls: 'novalist-plot-board-scene-link' });
+          sceneLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            void this.plugin.openSceneInFile(ch.file, scene);
+          });
+
+          const sceneKey = `${ch.id}:${scene}`;
+          for (const col of columns) {
+            const td = sceneTr.createEl('td', { cls: 'novalist-plot-board-td-cell' });
+            this.renderCell(td, sceneKey, col.id);
+          }
+        }
+      }
     }
   }
 

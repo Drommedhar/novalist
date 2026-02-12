@@ -14,6 +14,7 @@ export default {
   'cmd.addCharacter': 'Add new character',
   'cmd.addLocation': 'Add new location',
   'cmd.addChapter': 'Add new chapter',
+  'cmd.addScene': 'Add new scene',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Please set a project path in settings first.',
@@ -37,6 +38,7 @@ export default {
   'notice.failedInverseRelationship': 'Failed to add inverse relationship to {name}',
   'notice.propertyExists': "Property '{key}' already exists.",
   'notice.enterRelationshipLabel': 'Please enter a relationship label.',
+  'notice.sceneCreated': 'Scene {name} created.',
   'notice.exportFailed': 'Export failed: {error}',
 
   // ── Settings tab ───────────────────────────────────────────────────
@@ -127,6 +129,10 @@ export default {
   'modal.inversePlaceholder': 'e.g. Child, Sibling...',
   'modal.update': 'Update',
 
+  // Scene modal
+  'modal.createScene': 'Create new scene',
+  'modal.sceneName': 'Scene name',
+
   // ── Startup wizard ─────────────────────────────────────────────────
   'wizard.welcomeTitle': 'Welcome to Novalist',
   'wizard.welcomeSubtitle': 'The all-in-one novel writing environment for Obsidian.',
@@ -183,6 +189,7 @@ export default {
   'explorer.noLocations': 'No locations found.',
   'explorer.delete': 'Delete',
   'explorer.unassigned': 'Unassigned',
+  'explorer.addScene': 'Add scene',
   'explorer.genderTooltip': 'Gender: {gender}',
 
   // ── Character map view ─────────────────────────────────────────────
@@ -246,6 +253,9 @@ export default {
   'charSheet.noOverrides': 'No chapter-specific overrides set. Select a chapter above to create overrides.',
   'charSheet.defaultNoOverride': 'Default (no override)',
   'charSheet.selectChapterDesc': 'Select a chapter to preview or edit chapter-specific overrides',
+  'charSheet.previewScene': 'Preview/edit for scene',
+  'charSheet.selectSceneDesc': 'Select a scene within the chapter for scene-specific overrides',
+  'charSheet.chapterLevel': 'Entire chapter (no scene filter)',
   'charSheet.editingOverrides': 'Editing overrides for: {chapter}',
   'charSheet.previewChapter': 'Preview/edit for chapter',
   'charSheet.suggestedRelationships': 'Suggested relationship types: ',

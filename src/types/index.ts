@@ -117,6 +117,7 @@ export interface ChapterListData {
   name: string;
   order: number;
   file: TFile;
+  scenes?: string[];
 }
 
 export interface CharacterListData {
@@ -158,8 +159,16 @@ export interface CharacterImage {
   path: string; // wikilink format [[path/to/image.png]]
 }
 
+export interface SceneData {
+  name: string;
+  chapterId: string;
+  chapterName: string;
+  file: TFile;
+}
+
 export interface CharacterChapterOverride {
   chapter: string;
+  scene?: string;
   name?: string;
   surname?: string;
   gender?: string;

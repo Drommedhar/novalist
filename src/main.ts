@@ -20,7 +20,8 @@ import {
   ChapterListData,
   CharacterListData,
   LocationListData,
-  ChapterStatus
+  ChapterStatus,
+  SceneData
 } from './types';
 import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS } from './settings/NovalistSettings';
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
@@ -38,6 +39,7 @@ import { ImageSuggester } from './suggesters/ImageSuggester';
 import { CharacterModal } from './modals/CharacterModal';
 import { LocationModal } from './modals/LocationModal';
 import { ChapterDescriptionModal } from './modals/ChapterDescriptionModal';
+import { SceneNameModal } from './modals/SceneNameModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole } from './utils/characterUtils';
@@ -51,7 +53,7 @@ import {
   nextAnnotationColor,
   type AnnotationCallbacks
 } from './cm/annotationExtension';
-import { statisticsPanelExtension, type StatisticsPanelConfig, type ChapterOverviewStat } from './cm/statisticsPanelExtension';
+import { statisticsPanelExtension, type StatisticsPanelConfig, type ChapterOverviewStat, type SceneOverviewStat } from './cm/statisticsPanelExtension';
 import { focusPeekExtension, type FocusPeekCallbacks, type EntityPeekData } from './cm/focusPeekExtension';
 import { countWords, getTodayDate, getOrCreateDailyGoal } from './utils/statisticsUtils';
 import { calculateReadability } from './utils/readabilityUtils';
@@ -253,6 +255,20 @@ export default class NovalistPlugin extends Plugin {
       name: t('cmd.addChapter'),
       callback: () => {
         this.openChapterDescriptionModal();
+      }
+    });
+
+    // Add scene to current chapter
+    this.addCommand({
+      id: 'add-scene',
+      name: t('cmd.addScene'),
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isChapterFile(file);
+        if (checking) return canRun;
+        if (canRun && file) {
+          this.promptSceneName(file);
+        }
       }
     });
 
@@ -766,6 +782,89 @@ order: ${orderValue}
     new Notice(t('notice.chapterCreated', { name }));
   }
 
+  async createScene(chapterFile: TFile, sceneName: string): Promise<void> {
+    const content = await this.app.vault.read(chapterFile);
+    const newScene = `\n\n## ${sceneName}\n\n`;
+    await this.app.vault.modify(chapterFile, content + newScene);
+    new Notice(t('notice.sceneCreated', { name: sceneName }));
+  }
+
+  getScenesForChapter(file: TFile): string[] {
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!cache?.headings) return [];
+    return cache.headings
+      .filter(h => h.level === 2)
+      .map(h => h.heading);
+  }
+
+  async getScenesForChapterAsync(file: TFile): Promise<string[]> {
+    const content = await this.app.vault.read(file);
+    const scenes: string[] = [];
+    const regex = /^##\s+(.+)$/gm;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+      scenes.push(match[1].trim());
+    }
+    return scenes;
+  }
+
+  getCurrentSceneForLine(file: TFile, line: number): string | null {
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!cache?.headings) return null;
+    const h2s = cache.headings.filter(h => h.level === 2);
+    if (h2s.length === 0) return null;
+
+    // Find the last H2 whose line is <= the cursor line (0-based positions)
+    let currentScene: string | null = null;
+    for (const h of h2s) {
+      if (h.position.start.line <= line) {
+        currentScene = h.heading;
+      } else {
+        break;
+      }
+    }
+    return currentScene;
+  }
+
+  getSceneDataForChapter(file: TFile): SceneData[] {
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!cache?.headings) return [];
+    const chapterId = this.getChapterIdForFileSync(file);
+    const chapterName = this.getChapterNameForFileSync(file);
+    return cache.headings
+      .filter(h => h.level === 2)
+      .map(h => ({
+        name: h.heading,
+        chapterId,
+        chapterName,
+        file
+      }));
+  }
+
+  async openSceneInFile(file: TFile, sceneName: string): Promise<void> {
+    const existingLeaf = this.app.workspace.getLeavesOfType('markdown')
+      .find((leaf) => (leaf.view as MarkdownView).file?.path === file.path);
+
+    const leaf = existingLeaf ?? this.app.workspace.getLeaf(true);
+    await leaf.openFile(file);
+    await this.app.workspace.revealLeaf(leaf);
+
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (cache?.headings) {
+      const heading = cache.headings.find(h => h.level === 2 && h.heading === sceneName);
+      if (heading) {
+        const view = leaf.view;
+        if (view instanceof MarkdownView) {
+          view.editor.setCursor({ line: heading.position.start.line, ch: 0 });
+          view.editor.scrollIntoView({
+            from: { line: heading.position.start.line, ch: 0 },
+            to: { line: heading.position.start.line, ch: 0 }
+          }, true);
+        }
+      }
+    }
+  }
+
   openCharacterModal(): void {
     new CharacterModal(this.app, this).open();
   }
@@ -776,6 +875,13 @@ order: ${orderValue}
 
   openChapterDescriptionModal(): void {
     new ChapterDescriptionModal(this.app, this).open();
+  }
+
+  promptSceneName(chapterFile: TFile): void {
+    const modal = new SceneNameModal(this.app, (name) => {
+      void this.createScene(chapterFile, name);
+    });
+    modal.open();
   }
 
   async parseCharacterFile(file: TFile): Promise<CharacterData> {
@@ -912,7 +1018,7 @@ order: ${orderValue}
     };
   }
 
-  parseCharacterSheetChapterOverrides(content: string): Array<{ chapter: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> {
+  parseCharacterSheetChapterOverrides(content: string): Array<{ chapter: string; scene?: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> {
     const sheetLines = this.getSectionLines(content, 'CharacterSheet');
     if (sheetLines.length === 0) return [];
     
@@ -921,7 +1027,7 @@ order: ${orderValue}
     if (chapterOverridesIdx === -1) return [];
     
     const chapterText = sheetContent.substring(chapterOverridesIdx + '\nChapterOverrides:'.length);
-    const results: Array<{ chapter: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> = [];
+    const results: Array<{ chapter: string; scene?: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> = [];
     
     // Split by "Chapter: " to get individual chapter blocks
     const chapterBlocks = chapterText.split(/\nChapter:\s*/).filter(Boolean);
@@ -931,6 +1037,7 @@ order: ${orderValue}
       const chapter = lines[0].trim();
       const overrides: Record<string, string> = {};
       const customProperties: Record<string, string> = {};
+      let scene: string | undefined;
       
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -941,6 +1048,11 @@ order: ${orderValue}
         if (simpleMatch) {
           const key = simpleMatch[1].trim().toLowerCase();
           const value = simpleMatch[2].trim();
+          
+          if (key === 'scene') {
+            scene = value;
+            continue;
+          }
           
           // Skip nested list items (they have more indentation or are section headers)
           if (key === 'images' || key === 'relationships') {
@@ -986,7 +1098,7 @@ order: ${orderValue}
       
 
       if (chapter) {
-        results.push({ chapter, overrides, info: '', customProperties });
+        results.push({ chapter, scene, overrides, info: '', customProperties });
       }
     }
     
@@ -1264,12 +1376,12 @@ order: ${orderValue}
     }
   }
 
-  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }>> {
+  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile; scenes: string[] }>> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile; scenes: string[] }> = [];
     for (const file of files) {
       const content = await this.app.vault.read(file);
       const { frontmatter, body } = this.extractFrontmatterAndBody(content);
@@ -1278,12 +1390,14 @@ order: ${orderValue}
         : file.basename;
       const title = this.extractTitle(body) || file.basename;
       const status = (frontmatter.status as ChapterStatus) || 'outline';
+      const scenes = await this.getScenesForChapterAsync(file);
       chapters.push({
         id: guid,
         name: title,
         order: Number(frontmatter.order) || 999,
         status,
-        file
+        file,
+        scenes
       });
     }
 
@@ -1299,27 +1413,30 @@ order: ${orderValue}
     return chapters.map((chapter) => ({
       name: chapter.name,
       order: chapter.order,
-      file: chapter.file
+      file: chapter.file,
+      scenes: this.getScenesForChapter(chapter.file)
     }));
   }
 
-  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }> {
+  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile; scenes: string[] }> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile; scenes: string[] }> = [];
     for (const file of files) {
       const cache = this.app.metadataCache.getFileCache(file);
       const frontmatter = cache?.frontmatter || {};
       const heading = cache?.headings?.find(h => h.level === 1)?.heading;
       const status = (frontmatter.status as ChapterStatus) || 'outline';
+      const scenes = this.getScenesForChapter(file);
       chapters.push({
         id: typeof frontmatter.guid === 'string' && frontmatter.guid.trim() ? frontmatter.guid.trim() : file.basename,
         name: heading || file.basename,
         order: Number(frontmatter.order) || 999,
         status,
-        file
+        file,
+        scenes
       });
     }
 
@@ -2220,6 +2337,16 @@ order: ${orderValue}
           const chapterId = inChapter ? this.getChapterIdForFile(activeFile) : '';
           const chapterName = inChapter ? this.getChapterNameForFile(activeFile) : '';
 
+          // Determine active scene context
+          let currentScene: string | null = null;
+          if (inChapter) {
+            const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
+            if (mdView?.editor) {
+              const cursorLine = mdView.editor.getCursor().line;
+              currentScene = this.getCurrentSceneForLine(activeFile, cursorLine);
+            }
+          }
+
           // Apply chapter overrides to base properties (mirrors sidebar logic)
           let displayName = sheet.name;
           let displaySurname = sheet.surname;
@@ -2231,9 +2358,15 @@ order: ${orderValue}
 
           if (inChapter) {
             const overrides = this.parseCharacterSheetChapterOverrides(content);
-            const match = overrides.find(
-              o => o.chapter === chapterId || o.chapter === chapterName
-            );
+            // Try scene-specific override first, then chapter-level
+            let match = currentScene
+              ? overrides.find(o => (o.chapter === chapterId || o.chapter === chapterName) && o.scene === currentScene)
+              : undefined;
+            if (!match) {
+              match = overrides.find(
+                o => (o.chapter === chapterId || o.chapter === chapterName) && !o.scene
+              );
+            }
             if (match) {
               chapterOverrideMatch = match;
               if (match.overrides.name) displayName = match.overrides.name;
@@ -2270,15 +2403,23 @@ order: ${orderValue}
           // Parse sections from full character sheet
           const charSheet = parseCharacterSheet(content);
 
-          // Resolve physical attributes with chapter overrides
+          // Resolve physical attributes with chapter/scene overrides
           // Try both chapter name and chapter ID since overrides may be stored by either
           let effectiveSheet = charSheet;
           if (inChapter) {
-            const hasOverride = charSheet.chapterOverrides.find(
-              o => o.chapter === chapterName || o.chapter === chapterId
-            );
+            // Scene-specific override takes priority
+            let hasOverride = currentScene
+              ? charSheet.chapterOverrides.find(
+                  o => (o.chapter === chapterName || o.chapter === chapterId) && o.scene === currentScene
+                )
+              : undefined;
+            if (!hasOverride) {
+              hasOverride = charSheet.chapterOverrides.find(
+                o => (o.chapter === chapterName || o.chapter === chapterId) && !o.scene
+              );
+            }
             if (hasOverride) {
-              effectiveSheet = applyChapterOverride(charSheet, hasOverride.chapter);
+              effectiveSheet = applyChapterOverride(charSheet, hasOverride.chapter, hasOverride.scene);
             }
           }
 
@@ -2409,10 +2550,29 @@ order: ${orderValue}
         const words = countWords(content);
         totalWords += words;
         const readability = calculateReadability(content, this.settings.language);
+
+        // Calculate per-scene word counts
+        const scenes: SceneOverviewStat[] = [];
+        const h2Regex = /^##\s+(.+)$/gm;
+        let h2Match: RegExpExecArray | null;
+        const h2Positions: Array<{ name: string; start: number }> = [];
+        while ((h2Match = h2Regex.exec(content)) !== null) {
+          h2Positions.push({ name: h2Match[1], start: h2Match.index });
+        }
+        if (h2Positions.length > 0) {
+          for (let i = 0; i < h2Positions.length; i++) {
+            const start = h2Positions[i].start;
+            const end = i + 1 < h2Positions.length ? h2Positions[i + 1].start : content.length;
+            const sceneContent = content.slice(start, end);
+            scenes.push({ name: h2Positions[i].name, words: countWords(sceneContent) });
+          }
+        }
+
         chapterStats.push({
           name: ch.name,
           words,
-          readability: readability.score > 0 ? readability : null
+          readability: readability.score > 0 ? readability : null,
+          scenes: scenes.length > 0 ? scenes : undefined
         });
         remaining--;
         if (remaining === 0) {

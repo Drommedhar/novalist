@@ -3411,3 +3411,86 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   font-weight: 600;
 }
 
+/* ── Scene support ──────────────────────────────────────────────── */
+
+/* Explorer: scene items under chapters */
+.novalist-explorer-scenes {
+  padding-left: 20px;
+}
+
+.novalist-explorer-scene-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s ease;
+}
+
+.novalist-explorer-scene-item:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.novalist-explorer-scene-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sidebar: scene context indicator */
+.novalist-sidebar-scene-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  border-left: 3px solid var(--interactive-accent);
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.novalist-sidebar-scene-label {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+/* Statistics popup: scene rows */
+.novalist-stats-popup-scene-row td {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.novalist-stats-popup-scene-name {
+  padding-left: 16px !important;
+  font-style: italic;
+}
+
+/* Plot board: scene rows */
+.novalist-plot-board-scene-row {
+  background: var(--background-secondary);
+}
+
+.novalist-plot-board-td-scene {
+  padding-left: 24px !important;
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.novalist-plot-board-scene-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.novalist-plot-board-scene-link:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+

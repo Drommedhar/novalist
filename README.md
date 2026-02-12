@@ -24,7 +24,7 @@ An always-visible toolbar is injected into every editor tab header. It provides 
 
 A specialized file explorer in the left panel with three tabs:
 
-- **Chapters** — Listed in order. Drag and drop to reorder (updates frontmatter automatically). Status icons indicate progress. Right-click to delete.
+- **Chapters** — Listed in order. Drag and drop to reorder (updates frontmatter automatically). Status icons indicate progress. Scenes within each chapter are listed as nested sub-items. Right-click a chapter to add a scene or delete.
 - **Characters** — Grouped by role with collapsible sections. Drag characters between groups to reassign roles. Multi-select with Ctrl/Shift+click. Gender badges shown with configurable colors.
 - **Locations** — A simple navigable list. Click to open, right-click to delete.
 
@@ -40,7 +40,7 @@ A structured form editor that replaces the raw Markdown view for character files
 - **Relationships** — Character links with role labels. An inline suggester helps you pick characters, and the plugin automatically prompts you to define the inverse relationship on the target character.
 - **Custom properties** — Arbitrary key-value pairs you can add and remove freely
 - **Free-form sections** — User-defined Markdown sections (e.g. Backstory, Notes)
-- **Chapter overrides** — Select a chapter and override any field for that point in the story, letting you track how a character changes over time
+- **Chapter overrides** — Select a chapter and optionally a scene within that chapter, then override any field for that point in the story. Scene-level overrides take priority over chapter-level overrides, letting you track granular character changes across scenes.
 
 Renaming a character in the sheet automatically renames the underlying file. A **Save** button writes changes, and **Edit Source** switches to the raw Markdown.
 
@@ -50,7 +50,7 @@ A structured form editor for location files with fields for name, type, descript
 
 ### Context Sidebar
 
-A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters and locations, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, and location descriptions. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. Accessible via the toolbar, ribbon icon, or command palette.
+A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters and locations, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, and location descriptions. When you are inside a scene (an `## heading` section), the sidebar shows the current scene name and applies any scene-specific character overrides. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. Accessible via the toolbar, ribbon icon, or command palette.
 
 ### Character Map
 
@@ -58,11 +58,11 @@ An interactive graph visualization of character relationships powered by Cytosca
 
 ### Plot Board
 
-A spreadsheet-style planning tool with your chapters as rows and user-defined columns. Use it to outline plot threads, themes, arcs, or any per-chapter metadata. Add, rename, reorder, and delete columns. Click a cell to edit, Ctrl/Cmd+Enter to commit. Chapter names link directly to the chapter file.
+A spreadsheet-style planning tool with your chapters as rows and user-defined columns. Use it to outline plot threads, themes, arcs, or any per-chapter metadata. Scenes within each chapter appear as indented sub-rows with their own editable cells. Add, rename, reorder, and delete columns. Click a cell to edit, Ctrl/Cmd+Enter to commit. Chapter and scene names link directly to the corresponding file position.
 
 ### Export
 
-Export selected chapters to **EPUB**, **DOCX**, or **Markdown**. Configure a title, author, and whether to include a title page. Select individual chapters or use Select All / Select None. Exported chapters have frontmatter stripped, wikilinks converted to plain text, and are sorted by order.
+Export selected chapters to **EPUB**, **DOCX**, or **Markdown**. Configure a title, author, and whether to include a title page. Select individual chapters or use Select All / Select None. Exported chapters have frontmatter stripped, wikilinks converted to plain text, and are sorted by order. Scene headings (`## heading`) within chapters are preserved and rendered as sub-headings in the output.
 
 ### Smart Quotes & Auto-Replacement
 
@@ -74,14 +74,14 @@ A Google Docs-style commenting system. Select text in the editor, click the "+" 
 
 ### Focus Peek
 
-Hover your cursor over a character or location name in the editor and an inline card appears after a short delay showing the entity's details — portrait, attributes, relationships, and more. Pin the card to keep it visible while you write. Click character links inside a peek to navigate between entities with breadcrumb back-navigation. The card is resizable, and the size is remembered.
+Hover your cursor over a character or location name in the editor and an inline card appears after a short delay showing the entity's details — portrait, attributes, relationships, and more. Pin the card to keep it visible while you write. Click character links inside a peek to navigate between entities with breadcrumb back-navigation. The card is resizable, and the size is remembered. When inside a scene, the peek card applies scene-specific character overrides with the standard cascade: scene override > chapter override > base data.
 
 ### Statistics Panel
 
 A persistent bottom bar on every chapter editor showing real-time writing metrics:
 
 - **File stats** — Word count, character count, reading time, readability score with a color-coded level badge
-- **Project overview** — Total words, chapter/character/location counts, average words per chapter. Click to expand a per-chapter breakdown with word-count bar charts and readability badges.
+- **Project overview** — Total words, chapter/character/location counts, average words per chapter. Click to expand a per-chapter breakdown with word-count bar charts and readability badges. Chapters with scenes show per-scene word counts as indented sub-rows.
 - **Goal progress** — Daily and project word goal progress bars with percentages
 
 Readability scoring supports multiple languages with language-specific syllable counting and uses Flesch-Kincaid or equivalent formulas.
@@ -97,6 +97,10 @@ Novalist tracks how many words you write each day against a configurable daily g
 ### Automatic Image Organization
 
 When you paste or drop an image into a project file, Novalist automatically moves it to your configured `Images/` folder, handling name collisions and preserving link integrity.
+
+### Scenes
+
+Scenes are subsections within a chapter file, created as `## heading` (H2) Markdown headings. Use the command palette (`Add new scene`) or right-click a chapter in the explorer to add a new scene. Scene names appear in the explorer nested under their chapter, in the plot board as sub-rows, and in the statistics breakdown. Character sheet overrides can target a specific scene for fine-grained tracking of character changes. The override cascade is: scene override > chapter override > base character data.
 
 ### Book Paragraph Spacing
 
@@ -135,6 +139,7 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 | Add new character | Create a new character file |
 | Add new location | Create a new location file |
 | Add new chapter | Create a new chapter file |
+| Add new scene | Add a scene heading to the current chapter |
 
 ## Internationalization
 

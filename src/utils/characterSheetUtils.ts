@@ -205,6 +205,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
             const value = match[2].trim();
             
             switch (key) {
+              case 'scene': override.scene = value; break;
               case 'name': override.name = value; break;
               case 'surname': override.surname = value; break;
               case 'gender': override.gender = value; break;
@@ -441,6 +442,7 @@ export function serializeCharacterSheet(data: CharacterSheetData): string {
   if (data.chapterOverrides.length > 0) {
     for (const override of data.chapterOverrides) {
       result += `Chapter: ${sanitize(override.chapter)}\n`;
+      if (override.scene) result += `- Scene: ${sanitize(override.scene)}\n`;
       if (override.name) result += `- Name: ${sanitize(override.name)}\n`;
       if (override.surname) result += `- Surname: ${sanitize(override.surname)}\n`;
       if (override.gender) result += `- Gender: ${sanitize(override.gender)}\n`;
@@ -529,9 +531,21 @@ export function getKnownSectionTitles(plugin: { app: { vault: { getFiles: () => 
  */
 export function applyChapterOverride(
   data: CharacterSheetData,
-  chapterName: string
+  chapterName: string,
+  sceneName?: string,
+  chapterId?: string
 ): CharacterSheetData {
-  const override = data.chapterOverrides.find(o => o.chapter === chapterName);
+  const matchesChapter = (o: CharacterChapterOverride): boolean =>
+    o.chapter === chapterName || (!!chapterId && o.chapter === chapterId);
+
+  // Try scene-specific override first, then chapter-level
+  let override: CharacterChapterOverride | undefined;
+  if (sceneName) {
+    override = data.chapterOverrides.find(o => matchesChapter(o) && o.scene === sceneName);
+  }
+  if (!override) {
+    override = data.chapterOverrides.find(o => matchesChapter(o) && !o.scene);
+  }
   if (!override) return data;
   
   return {

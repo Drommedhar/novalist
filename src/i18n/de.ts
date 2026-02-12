@@ -14,6 +14,7 @@ export default {
   'cmd.addCharacter': 'Neuen Charakter anlegen',
   'cmd.addLocation': 'Neuen Ort anlegen',
   'cmd.addChapter': 'Neues Kapitel anlegen',
+  'cmd.addScene': 'Neue Szene anlegen',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Bitte zuerst einen Projektpfad in den Einstellungen festlegen.',
@@ -37,6 +38,7 @@ export default {
   'notice.failedInverseRelationship': 'Umkehrbeziehung zu {name} konnte nicht hinzugefügt werden',
   'notice.propertyExists': "Eigenschaft '{key}' existiert bereits.",
   'notice.enterRelationshipLabel': 'Bitte geben Sie eine Beziehungsbezeichnung ein.',
+  'notice.sceneCreated': 'Szene {name} erstellt.',
   'notice.exportFailed': 'Export fehlgeschlagen: {error}',
 
   // ── Settings tab ───────────────────────────────────────────────────
@@ -123,6 +125,10 @@ export default {
   'modal.inversePlaceholder': 'z. B. Kind, Geschwister …',
   'modal.update': 'Aktualisieren',
 
+  // Scene modal
+  'modal.createScene': 'Neue Szene erstellen',
+  'modal.sceneName': 'Szenenname',
+
   // ── Startup wizard ─────────────────────────────────────────────────
   'wizard.welcomeTitle': 'Willkommen bei Novalist',
   'wizard.welcomeSubtitle': 'Die All-in-one-Schreibumgebung für Romane in Obsidian.',
@@ -179,6 +185,7 @@ export default {
   'explorer.noLocations': 'Keine Orte gefunden.',
   'explorer.delete': 'Löschen',
   'explorer.unassigned': 'Nicht zugewiesen',
+  'explorer.addScene': 'Szene hinzufügen',
   'explorer.genderTooltip': 'Geschlecht: {gender}',
 
   // ── Character map view ─────────────────────────────────────────────
@@ -242,6 +249,9 @@ export default {
   'charSheet.noOverrides': 'Keine kapitelspezifischen Überschreibungen gesetzt. Wählen Sie oben ein Kapitel, um Überschreibungen zu erstellen.',
   'charSheet.defaultNoOverride': 'Standard (keine Überschreibung)',
   'charSheet.selectChapterDesc': 'Wählen Sie ein Kapitel zur Vorschau oder Bearbeitung von kapitelspezifischen Überschreibungen',
+  'charSheet.previewScene': 'Vorschau/Bearbeiten für Szene',
+  'charSheet.selectSceneDesc': 'Wählen Sie eine Szene innerhalb des Kapitels für szenenspezifische Überschreibungen',
+  'charSheet.chapterLevel': 'Gesamtes Kapitel (kein Szenenfilter)',
   'charSheet.editingOverrides': 'Überschreibungen bearbeiten für: {chapter}',
   'charSheet.previewChapter': 'Vorschau/Bearbeiten für Kapitel',
   'charSheet.suggestedRelationships': 'Vorgeschlagene Beziehungstypen: ',

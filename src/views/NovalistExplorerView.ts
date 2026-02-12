@@ -91,7 +91,8 @@ export class NovalistExplorerView extends ItemView {
         name: chapter.name,
         order: chapter.order,
         status: chapter.status,
-        file: chapter.file
+        file: chapter.file,
+        scenes: chapter.scenes
       }));
       this.renderChapterList(list, chapterItems, t('explorer.noChapters'));
       return;
@@ -111,6 +112,17 @@ export class NovalistExplorerView extends ItemView {
     evt.preventDefault();
     const menu = new Menu();
 
+    if (this.plugin.isChapterFile(file)) {
+      menu.addItem((item) => {
+        item
+          .setTitle(t('explorer.addScene'))
+          .setIcon('plus')
+          .onClick(() => {
+            this.plugin.promptSceneName(file);
+          });
+      });
+    }
+
     menu.addItem((item) => {
       item
         .setTitle(t('explorer.delete'))
@@ -125,7 +137,7 @@ export class NovalistExplorerView extends ItemView {
 
   private renderChapterList(
     list: HTMLElement,
-    items: (ChapterListData & { status?: ChapterStatus })[],
+    items: (ChapterListData & { status?: ChapterStatus; scenes?: string[] })[],
     emptyMessage: string
   ) {
     if (items.length === 0) {
@@ -196,6 +208,18 @@ export class NovalistExplorerView extends ItemView {
         void this.plugin.updateChapterOrder(reordered.map((entry) => entry.file));
         void this.render();
       });
+
+      // Render scenes under the chapter
+      if (item.scenes && item.scenes.length > 0) {
+        const sceneContainer = list.createDiv('novalist-explorer-scenes');
+        for (const sceneName of item.scenes) {
+          const sceneRow = sceneContainer.createDiv('novalist-explorer-scene-item');
+          sceneRow.createEl('span', { text: sceneName, cls: 'novalist-explorer-scene-label' });
+          sceneRow.addEventListener('click', () => {
+            void this.openSceneInChapter(item.file, sceneName);
+          });
+        }
+      }
     });
   }
 
@@ -511,5 +535,30 @@ export class NovalistExplorerView extends ItemView {
     const leaf = existingLeaf ?? this.app.workspace.getLeaf(true);
     await leaf.openFile(file);
     await this.app.workspace.revealLeaf(leaf);
+  }
+
+  private async openSceneInChapter(file: TFile, sceneName: string): Promise<void> {
+    const existingLeaf = this.app.workspace.getLeavesOfType('markdown')
+      .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
+
+    const leaf = existingLeaf ?? this.app.workspace.getLeaf(true);
+    await leaf.openFile(file);
+    await this.app.workspace.revealLeaf(leaf);
+
+    // Scroll to the scene heading
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (cache?.headings) {
+      const heading = cache.headings.find(h => h.level === 2 && h.heading === sceneName);
+      if (heading) {
+        const view = leaf.view;
+        if (view instanceof MarkdownView) {
+          view.editor.setCursor({ line: heading.position.start.line, ch: 0 });
+          view.editor.scrollIntoView({
+            from: { line: heading.position.start.line, ch: 0 },
+            to: { line: heading.position.start.line, ch: 0 }
+          }, true);
+        }
+      }
+    }
   }
 }

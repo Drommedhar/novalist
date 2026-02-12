@@ -201,6 +201,7 @@ export class CharacterSheetView extends TextFileView {
   private previewComponent = new Component();
   private knownSections: Set<string> = new Set();
   private currentChapter: string | null = null;
+  private currentScene: string | null = null;
   private enableOverrides: boolean = false;
   private chapterLabelById: Map<string, string> = new Map();
 
@@ -354,27 +355,60 @@ export class CharacterSheetView extends TextFileView {
         
         dropdown.onChange(value => {
           this.currentChapter = value || null;
+          this.currentScene = null;
           this.enableOverrides = !!value;
           void this.render();
         });
       });
 
+    // Scene selector (only if a chapter is selected and has scenes)
     if (this.currentChapter && this.enableOverrides) {
+      const selectedChapter = chapters.find(ch => ch.id === this.currentChapter);
+      if (selectedChapter && selectedChapter.scenes.length > 0) {
+        new Setting(container)
+          .setName(t('charSheet.previewScene'))
+          .setDesc(t('charSheet.selectSceneDesc'))
+          .addDropdown(dropdown => {
+            dropdown.addOption('', t('charSheet.chapterLevel'));
+            for (const scene of selectedChapter.scenes) {
+              dropdown.addOption(scene, scene);
+            }
+            dropdown.setValue(this.currentScene || '');
+            
+            dropdown.onChange(value => {
+              this.currentScene = value || null;
+              void this.render();
+            });
+          });
+      }
+
       const overrideInfo = container.createDiv('character-sheet-override-info');
+      const label = this.currentScene
+        ? `${this.getChapterLabel(this.currentChapter)} > ${this.currentScene}`
+        : this.getChapterLabel(this.currentChapter);
       overrideInfo.createEl('span', { 
-        text: t('charSheet.editingOverrides', { chapter: this.getChapterLabel(this.currentChapter) }),
+        text: t('charSheet.editingOverrides', { chapter: label }),
         cls: 'character-sheet-override-badge'
       });
       
       new ButtonComponent(container)
         .setButtonText(t('charSheet.clearOverride'))
         .onClick(() => {
-          const label = this.getChapterLabel(this.currentChapter);
+          const chapterLabel = this.getChapterLabel(this.currentChapter);
           this.data.chapterOverrides = this.data.chapterOverrides.filter(
-            o => o.chapter !== this.currentChapter && o.chapter !== label
+            o => {
+              const matchesChapter = o.chapter === this.currentChapter || o.chapter === chapterLabel;
+              if (!matchesChapter) return true;
+              if (this.currentScene) return o.scene !== this.currentScene;
+              return !!o.scene; // Keep scene-level overrides when clearing chapter-level
+            }
           );
-          this.currentChapter = null;
-          this.enableOverrides = false;
+          if (this.currentScene) {
+            this.currentScene = null;
+          } else {
+            this.currentChapter = null;
+            this.enableOverrides = false;
+          }
           void this.render();
         });
     }
@@ -1127,7 +1161,10 @@ export class CharacterSheetView extends TextFileView {
     const list = section.createDiv('character-sheet-overrides-list');
     for (const override of this.data.chapterOverrides) {
       const item = list.createDiv('character-sheet-override-item');
-      item.createEl('strong', { text: this.getChapterLabel(override.chapter) });
+      const label = override.scene
+        ? `${this.getChapterLabel(override.chapter)} > ${override.scene}`
+        : this.getChapterLabel(override.chapter);
+      item.createEl('strong', { text: label });
       
       const details: string[] = [];
       if (override.name) details.push(`name: ${override.name}`);
@@ -1156,7 +1193,7 @@ export class CharacterSheetView extends TextFileView {
         .setTooltip(t('charSheet.removeOverride'))
         .onClick(() => {
           this.data.chapterOverrides = this.data.chapterOverrides.filter(
-            o => o.chapter !== override.chapter
+            o => !(o.chapter === override.chapter && o.scene === override.scene)
           );
           void this.render();
         });
@@ -1188,12 +1225,30 @@ export class CharacterSheetView extends TextFileView {
   private getOverrideForCurrentChapter(): CharacterChapterOverride | undefined {
     if (!this.currentChapter) return undefined;
 
-    let override = this.data.chapterOverrides.find(o => o.chapter === this.currentChapter);
-    if (!override) {
-      const label = this.getChapterLabel(this.currentChapter);
-      override = this.data.chapterOverrides.find(o => o.chapter === label);
-      if (override) {
-        override.chapter = this.currentChapter;
+    // Find scene-specific override first, then chapter-level
+    let override: CharacterChapterOverride | undefined;
+    if (this.currentScene) {
+      override = this.data.chapterOverrides.find(
+        o => o.chapter === this.currentChapter && o.scene === this.currentScene
+      );
+      if (!override) {
+        const label = this.getChapterLabel(this.currentChapter);
+        override = this.data.chapterOverrides.find(
+          o => o.chapter === label && o.scene === this.currentScene
+        );
+      }
+    } else {
+      override = this.data.chapterOverrides.find(
+        o => o.chapter === this.currentChapter && !o.scene
+      );
+      if (!override) {
+        const label = this.getChapterLabel(this.currentChapter);
+        override = this.data.chapterOverrides.find(
+          o => o.chapter === label && !o.scene
+        );
+        if (override) {
+          override.chapter = this.currentChapter;
+        }
       }
     }
 
@@ -1219,7 +1274,7 @@ export class CharacterSheetView extends TextFileView {
     if (this.enableOverrides && this.currentChapter) {
       let override = this.getOverrideForCurrentChapter();
       if (!override) {
-        override = { chapter: this.currentChapter };
+        override = { chapter: this.currentChapter, scene: this.currentScene || undefined };
         this.data.chapterOverrides.push(override);
       }
       (override as Record<string, string>)[field] = value;
@@ -1242,7 +1297,7 @@ export class CharacterSheetView extends TextFileView {
     if (this.enableOverrides && this.currentChapter) {
       let override = this.getOverrideForCurrentChapter();
       if (!override) {
-        override = { chapter: this.currentChapter };
+        override = { chapter: this.currentChapter, scene: this.currentScene || undefined };
         this.data.chapterOverrides.push(override);
       }
       override.relationships = relationships;
@@ -1253,7 +1308,7 @@ export class CharacterSheetView extends TextFileView {
 
   private getEffectiveCustomProperties(): Record<string, string> {
     if (this.enableOverrides && this.currentChapter) {
-      const override = this.data.chapterOverrides.find(o => o.chapter === this.currentChapter);
+      const override = this.getOverrideForCurrentChapter();
       if (override?.customProperties !== undefined) {
         return { ...this.data.customProperties, ...override.customProperties };
       }
@@ -1263,9 +1318,9 @@ export class CharacterSheetView extends TextFileView {
 
   private setEffectiveCustomProperties(props: Record<string, string>): void {
     if (this.enableOverrides && this.currentChapter) {
-      let override = this.data.chapterOverrides.find(o => o.chapter === this.currentChapter);
+      let override = this.getOverrideForCurrentChapter();
       if (!override) {
-        override = { chapter: this.currentChapter };
+        override = { chapter: this.currentChapter, scene: this.currentScene || undefined };
         this.data.chapterOverrides.push(override);
       }
       override.customProperties = props;
@@ -1277,7 +1332,7 @@ export class CharacterSheetView extends TextFileView {
   private getEffectiveImages(): CharacterImage[] {
     let sourceImages: CharacterImage[];
     if (this.enableOverrides && this.currentChapter) {
-      const override = this.data.chapterOverrides.find(o => o.chapter === this.currentChapter);
+      const override = this.getOverrideForCurrentChapter();
       if (override?.images !== undefined) {
         sourceImages = override.images;
       } else {
@@ -1292,9 +1347,9 @@ export class CharacterSheetView extends TextFileView {
 
   private setEffectiveImages(images: CharacterImage[]): void {
     if (this.enableOverrides && this.currentChapter) {
-      let override = this.data.chapterOverrides.find(o => o.chapter === this.currentChapter);
+      let override = this.getOverrideForCurrentChapter();
       if (!override) {
-        override = { chapter: this.currentChapter };
+        override = { chapter: this.currentChapter, scene: this.currentScene || undefined };
         this.data.chapterOverrides.push(override);
       }
       override.images = images;

@@ -7,10 +7,16 @@ import { countWords, countCharacters, estimateReadingTime, formatWordCount, calc
 import { calculateReadability, getReadabilityColor, formatReadabilityScore, type ReadabilityScore } from '../utils/readabilityUtils';
 
 // ─── Facet: configuration from the plugin ──────────────────────────
+export interface SceneOverviewStat {
+  name: string;
+  words: number;
+}
+
 export interface ChapterOverviewStat {
   name: string;
   words: number;
   readability: ReadabilityScore | null;
+  scenes?: SceneOverviewStat[];
 }
 
 export interface ProjectOverview {
@@ -116,6 +122,20 @@ function showChapterPopup(overview: ProjectOverview, anchor: HTMLElement): void 
         });
       } else {
         readTd.createEl('span', { text: '–', cls: 'novalist-stats-popup-na' });
+      }
+
+      // Scene rows (indented under chapter)
+      if (ch.scenes && ch.scenes.length > 0) {
+        for (const scene of ch.scenes) {
+          const sceneRow = tbody.createEl('tr', { cls: 'novalist-stats-popup-scene-row' });
+          sceneRow.createEl('td', { text: `  ${scene.name}`, cls: 'novalist-stats-popup-name novalist-stats-popup-scene-name' });
+          const sceneWordsTd = sceneRow.createEl('td', { cls: 'novalist-stats-popup-words' });
+          sceneWordsTd.createEl('span', { text: formatWordCount(scene.words) });
+          const sceneBar = sceneWordsTd.createDiv('novalist-stats-popup-bar');
+          const sceneFill = sceneBar.createDiv('novalist-stats-popup-bar-fill');
+          sceneFill.style.width = `${(scene.words / maxWords) * 100}%`;
+          sceneRow.createEl('td', { cls: 'novalist-stats-popup-read' });
+        }
       }
     }
   }
