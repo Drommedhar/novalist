@@ -134,17 +134,26 @@ export class NovalistSidebarView extends ItemView {
           ci => ci.chapter === chapterId || ci.chapter === chapterName
         );
 
-        // Apply character sheet overrides (scene-aware) — same logic as focus peek
+        // Apply character sheet overrides (Scene > Chapter > Act > Base)
         if (charFile) {
           const content = await this.app.vault.read(charFile);
           const overrides = this.plugin.parseCharacterSheetChapterOverrides(content);
           if (overrides.length > 0) {
-            // Try scene-specific override first, then chapter-level
+            const currentAct = this.currentChapterFile
+              ? this.plugin.getActForFileSync(this.currentChapterFile)
+              : null;
+
+            // Scene-specific override
             let match = this.currentScene
               ? overrides.find(o => (o.chapter === chapterId || o.chapter === chapterName) && o.scene === this.currentScene)
               : undefined;
+            // Chapter-level override (no scene, no act-only)
             if (!match) {
-              match = overrides.find(o => (o.chapter === chapterId || o.chapter === chapterName) && !o.scene);
+              match = overrides.find(o => (o.chapter === chapterId || o.chapter === chapterName) && !o.scene && !o.act);
+            }
+            // Act-level override (act matches, no chapter, no scene)
+            if (!match && currentAct) {
+              match = overrides.find(o => o.act === currentAct && !o.chapter && !o.scene);
             }
             if (match) {
               if (match.overrides.name) charData.name = match.overrides.name;

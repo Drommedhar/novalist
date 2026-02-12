@@ -15,6 +15,7 @@ export default {
   'cmd.addLocation': 'Add new location',
   'cmd.addChapter': 'Add new chapter',
   'cmd.addScene': 'Add new scene',
+  'cmd.addAct': 'Add new act',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Please set a project path in settings first.',
@@ -39,6 +40,10 @@ export default {
   'notice.propertyExists': "Property '{key}' already exists.",
   'notice.enterRelationshipLabel': 'Please enter a relationship label.',
   'notice.sceneCreated': 'Scene {name} created.',
+  'notice.actCreated': 'Act {name} created.',
+  'notice.actExists': 'An act with that name already exists.',
+  'notice.chapterAssignedToAct': 'Chapter assigned to act {name}.',
+  'notice.chapterRemovedFromAct': 'Chapter removed from act.',
   'notice.exportFailed': 'Export failed: {error}',
 
   // ── Settings tab ───────────────────────────────────────────────────
@@ -133,6 +138,10 @@ export default {
   'modal.createScene': 'Create new scene',
   'modal.sceneName': 'Scene name',
 
+  // Act modal
+  'modal.createAct': 'Create new act',
+  'modal.actName': 'Act name',
+
   // ── Startup wizard ─────────────────────────────────────────────────
   'wizard.welcomeTitle': 'Welcome to Novalist',
   'wizard.welcomeSubtitle': 'The all-in-one novel writing environment for Obsidian.',
@@ -190,6 +199,12 @@ export default {
   'explorer.delete': 'Delete',
   'explorer.unassigned': 'Unassigned',
   'explorer.addScene': 'Add scene',
+  'explorer.addAct': 'Add act',
+  'explorer.assignToAct': 'Assign to act',
+  'explorer.removeFromAct': 'Remove from act',
+  'explorer.deleteAct': 'Delete act',
+  'explorer.renameAct': 'Rename act',
+  'explorer.noAct': 'No act',
   'explorer.genderTooltip': 'Gender: {gender}',
 
   // ── Character map view ─────────────────────────────────────────────
@@ -253,9 +268,12 @@ export default {
   'charSheet.noOverrides': 'No chapter-specific overrides set. Select a chapter above to create overrides.',
   'charSheet.defaultNoOverride': 'Default (no override)',
   'charSheet.selectChapterDesc': 'Select a chapter to preview or edit chapter-specific overrides',
+  'charSheet.previewAct': 'Preview/edit for act',
+  'charSheet.selectActDesc': 'Select an act for act-wide overrides (applies to all chapters in the act)',
   'charSheet.previewScene': 'Preview/edit for scene',
   'charSheet.selectSceneDesc': 'Select a scene within the chapter for scene-specific overrides',
   'charSheet.chapterLevel': 'Entire chapter (no scene filter)',
+  'charSheet.actLevel': 'Act-level override (no chapter filter)',
   'charSheet.editingOverrides': 'Editing overrides for: {chapter}',
   'charSheet.previewChapter': 'Preview/edit for chapter',
   'charSheet.suggestedRelationships': 'Suggested relationship types: ',

@@ -168,6 +168,7 @@ export interface SceneData {
 
 export interface CharacterChapterOverride {
   chapter: string;
+  act?: string;
   scene?: string;
   name?: string;
   surname?: string;

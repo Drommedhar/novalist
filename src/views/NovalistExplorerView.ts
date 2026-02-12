@@ -1,5 +1,8 @@
 ﻿import {
   ItemView,
+  Modal,
+  Notice,
+  Setting,
   TFile,
   WorkspaceLeaf,
   MarkdownView,
@@ -91,6 +94,7 @@ export class NovalistExplorerView extends ItemView {
         name: chapter.name,
         order: chapter.order,
         status: chapter.status,
+        act: chapter.act,
         file: chapter.file,
         scenes: chapter.scenes
       }));
@@ -121,6 +125,35 @@ export class NovalistExplorerView extends ItemView {
             this.plugin.promptSceneName(file);
           });
       });
+
+      // Assign to act submenu
+      const acts = this.plugin.getActNames();
+      const currentAct = this.plugin.getActForFileSync(file);
+      if (acts.length > 0) {
+        menu.addSeparator();
+        for (const act of acts) {
+          menu.addItem((item) => {
+            item
+              .setTitle(`${act}${act === currentAct ? ' ✓' : ''}`)
+              .setIcon('bookmark')
+              .onClick(async () => {
+                await this.plugin.assignChapterToAct(file, act);
+                void this.render();
+              });
+          });
+        }
+        if (currentAct) {
+          menu.addItem((item) => {
+            item
+              .setTitle(t('explorer.removeFromAct'))
+              .setIcon('x')
+              .onClick(async () => {
+                await this.plugin.removeChapterFromAct(file);
+                void this.render();
+              });
+          });
+        }
+      }
     }
 
     menu.addItem((item) => {
@@ -137,7 +170,7 @@ export class NovalistExplorerView extends ItemView {
 
   private renderChapterList(
     list: HTMLElement,
-    items: (ChapterListData & { status?: ChapterStatus; scenes?: string[] })[],
+    items: (ChapterListData & { status?: ChapterStatus; act?: string; scenes?: string[] })[],
     emptyMessage: string
   ) {
     if (items.length === 0) {
@@ -145,10 +178,149 @@ export class NovalistExplorerView extends ItemView {
       return;
     }
 
-    items.forEach((item, index) => {
-      const row = list.createDiv('novalist-explorer-item');
+    // Collect unique acts preserving order
+    const actOrder: string[] = [];
+    const actSeen = new Set<string>();
+    for (const item of items) {
+      if (item.act && !actSeen.has(item.act)) {
+        actSeen.add(item.act);
+        actOrder.push(item.act);
+      }
+    }
+
+    const hasActs = actOrder.length > 0;
+    const unassigned = items.filter(it => !it.act);
+    let globalIndex = 0;
+
+    // Add Act button
+    const addActBtn = list.createDiv('novalist-explorer-add-act');
+    addActBtn.createEl('button', { text: t('explorer.addAct'), cls: 'novalist-explorer-add-act-btn' })
+      .addEventListener('click', () => {
+        this.promptActName();
+      });
+
+    // Render grouped acts
+    for (const actName of actOrder) {
+      const actItems = items.filter(it => it.act === actName);
+      const groupKey = `act:${actName}`;
+      const isCollapsed = this.getGroupCollapsed(groupKey);
+
+      const actHeader = list.createDiv('novalist-group-header novalist-act-header');
+      actHeader.dataset.act = actName;
+      if (isCollapsed) actHeader.addClass('is-collapsed');
+      actHeader.createEl('span', { text: actName, cls: 'novalist-group-title' });
+
+      const actContainer = list.createDiv('novalist-group-container novalist-act-container');
+      if (isCollapsed) actContainer.addClass('is-collapsed');
+
+      actHeader.addEventListener('click', () => {
+        const nextCollapsed = !this.getGroupCollapsed(groupKey);
+        this.setGroupCollapsed(groupKey, nextCollapsed);
+        actHeader.toggleClass('is-collapsed', nextCollapsed);
+        actContainer.toggleClass('is-collapsed', nextCollapsed);
+      });
+
+      // Act header context menu
+      actHeader.addEventListener('contextmenu', (evt) => {
+        evt.preventDefault();
+        const menu = new Menu();
+        menu.addItem((item) => {
+          item.setTitle(t('explorer.renameAct')).setIcon('pencil').onClick(() => {
+            this.promptActRename(actName);
+          });
+        });
+        menu.addItem((item) => {
+          item.setTitle(t('explorer.deleteAct')).setIcon('trash').onClick(async () => {
+            await this.plugin.deleteAct(actName);
+            void this.render();
+          });
+        });
+        menu.showAtMouseEvent(evt);
+      });
+
+      // Drop on act header to assign chapters
+      actHeader.addEventListener('dragover', (evt) => {
+        evt.preventDefault();
+        actHeader.addClass('is-drop-target');
+      });
+      actHeader.addEventListener('dragleave', () => {
+        actHeader.removeClass('is-drop-target');
+      });
+      actHeader.addEventListener('drop', (evt) => {
+        evt.preventDefault();
+        actHeader.removeClass('is-drop-target');
+        const sourcePath = evt.dataTransfer?.getData('text/plain');
+        if (!sourcePath) return;
+        const sourceItem = items.find(i => i.file.path === sourcePath);
+        if (sourceItem && sourceItem.act !== actName) {
+          void this.plugin.assignChapterToAct(sourceItem.file, actName).then(() => this.render());
+        }
+      });
+
+      for (const item of actItems) {
+        globalIndex++;
+        this.renderChapterRow(actContainer, item, globalIndex, items);
+      }
+    }
+
+    // Render unassigned chapters
+    if (hasActs && unassigned.length > 0) {
+      const noActHeader = list.createDiv('novalist-group-header novalist-act-header novalist-act-unassigned');
+      const groupKey = 'act:__unassigned__';
+      const isCollapsed = this.getGroupCollapsed(groupKey);
+      if (isCollapsed) noActHeader.addClass('is-collapsed');
+      noActHeader.createEl('span', { text: t('explorer.noAct'), cls: 'novalist-group-title' });
+      const noActContainer = list.createDiv('novalist-group-container');
+      if (isCollapsed) noActContainer.addClass('is-collapsed');
+
+      noActHeader.addEventListener('click', () => {
+        const nextCollapsed = !this.getGroupCollapsed(groupKey);
+        this.setGroupCollapsed(groupKey, nextCollapsed);
+        noActHeader.toggleClass('is-collapsed', nextCollapsed);
+        noActContainer.toggleClass('is-collapsed', nextCollapsed);
+      });
+
+      // Drop on unassigned header to remove from act
+      noActHeader.addEventListener('dragover', (evt) => {
+        evt.preventDefault();
+        noActHeader.addClass('is-drop-target');
+      });
+      noActHeader.addEventListener('dragleave', () => {
+        noActHeader.removeClass('is-drop-target');
+      });
+      noActHeader.addEventListener('drop', (evt) => {
+        evt.preventDefault();
+        noActHeader.removeClass('is-drop-target');
+        const sourcePath = evt.dataTransfer?.getData('text/plain');
+        if (!sourcePath) return;
+        const sourceItem = items.find(i => i.file.path === sourcePath);
+        if (sourceItem?.act) {
+          void this.plugin.removeChapterFromAct(sourceItem.file).then(() => this.render());
+        }
+      });
+
+      for (const item of unassigned) {
+        globalIndex++;
+        this.renderChapterRow(noActContainer, item, globalIndex, items);
+      }
+    } else if (!hasActs) {
+      // No acts at all — flat list as before
+      for (const item of items) {
+        globalIndex++;
+        this.renderChapterRow(list, item, globalIndex, items);
+      }
+    }
+  }
+
+  private renderChapterRow(
+    parent: HTMLElement,
+    item: ChapterListData & { status?: ChapterStatus; act?: string; scenes?: string[] },
+    index: number,
+    allItems: (ChapterListData & { status?: ChapterStatus; act?: string; scenes?: string[] })[]
+  ) {
+      const row = parent.createDiv('novalist-explorer-item');
       row.setAttribute('draggable', 'true');
-      row.createEl('span', { text: `${index + 1}. ${item.name}`, cls: 'novalist-explorer-label' });
+      row.createEl('span', { text: `${index}. ${item.name}`, cls: 'novalist-explorer-label' });
 
       // Status icon (right side, read-only indicator)
       const status = item.status || 'outline';
@@ -173,14 +345,14 @@ export class NovalistExplorerView extends ItemView {
         row.addClass('is-dragging');
         if (evt.dataTransfer) {
           evt.dataTransfer.effectAllowed = 'move';
-          evt.dataTransfer.setData('text/plain', String(index));
+          evt.dataTransfer.setData('text/plain', item.file.path);
         }
       });
 
       row.addEventListener('dragend', () => {
         this.dragChapterIndex = null;
         row.removeClass('is-dragging');
-        list.querySelectorAll('.is-drop-target').forEach((el) => el.removeClass('is-drop-target'));
+        parent.querySelectorAll('.is-drop-target').forEach((el) => el.removeClass('is-drop-target'));
       });
 
       row.addEventListener('dragover', (evt) => {
@@ -195,14 +367,30 @@ export class NovalistExplorerView extends ItemView {
       row.addEventListener('drop', (evt) => {
         evt.preventDefault();
         row.removeClass('is-drop-target');
-        const fallback = evt.dataTransfer?.getData('text/plain');
-        const sourceIndex = this.dragChapterIndex ?? (fallback ? Number(fallback) : NaN);
-        if (Number.isNaN(sourceIndex)) return;
-        if (sourceIndex === index) return;
+        const sourcePath = evt.dataTransfer?.getData('text/plain');
+        if (!sourcePath) return;
+        const sourceItem = allItems.find(i => i.file.path === sourcePath);
+        if (!sourceItem) return;
 
-        const reordered = [...items];
-        const [moved] = reordered.splice(sourceIndex, 1);
-        reordered.splice(index, 0, moved);
+        // If dropping onto a chapter in a different act, assign to that act
+        if (sourceItem.act !== item.act) {
+          if (item.act) {
+            void this.plugin.assignChapterToAct(sourceItem.file, item.act).then(() => this.render());
+          } else {
+            void this.plugin.removeChapterFromAct(sourceItem.file).then(() => this.render());
+          }
+          return;
+        }
+
+        // Same act: reorder within the group
+        const groupItems = allItems.filter(i => (i.act || '') === (item.act || ''));
+        const sourceIdx = groupItems.indexOf(sourceItem);
+        const targetIdx = groupItems.indexOf(item);
+        if (sourceIdx === -1 || targetIdx === -1 || sourceIdx === targetIdx) return;
+
+        const reordered = [...groupItems];
+        const [moved] = reordered.splice(sourceIdx, 1);
+        reordered.splice(targetIdx, 0, moved);
         this.dragChapterIndex = null;
 
         void this.plugin.updateChapterOrder(reordered.map((entry) => entry.file));
@@ -211,7 +399,7 @@ export class NovalistExplorerView extends ItemView {
 
       // Render scenes under the chapter
       if (item.scenes && item.scenes.length > 0) {
-        const sceneContainer = list.createDiv('novalist-explorer-scenes');
+        const sceneContainer = parent.createDiv('novalist-explorer-scenes');
         for (const sceneName of item.scenes) {
           const sceneRow = sceneContainer.createDiv('novalist-explorer-scene-item');
           sceneRow.createEl('span', { text: sceneName, cls: 'novalist-explorer-scene-label' });
@@ -220,7 +408,6 @@ export class NovalistExplorerView extends ItemView {
           });
         }
       }
-    });
   }
 
   private renderCharacterGroupedList(
@@ -464,6 +651,67 @@ export class NovalistExplorerView extends ItemView {
         });
       }
     }
+  }
+
+  private promptActName(): void {
+    const modal = new (class extends Modal {
+      private actName = '';
+      constructor(app: import('obsidian').App, private onDone: (name: string) => void) { super(app); }
+      onOpen() {
+        this.titleEl.setText(t('modal.createAct'));
+        new Setting(this.contentEl)
+          .setName(t('modal.actName'))
+          .addText(text => {
+            text.onChange(v => { this.actName = v; });
+            text.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+              if (e.key === 'Enter') { e.preventDefault(); this.submit(); }
+            });
+          });
+        new Setting(this.contentEl)
+          .addButton(btn => btn.setButtonText(t('modal.create')).setCta().onClick(() => this.submit()));
+      }
+      submit() { if (this.actName.trim()) { this.onDone(this.actName.trim()); } this.close(); }
+    })(this.app, (name: string) => {
+      const existing = this.plugin.getActNames();
+      if (existing.includes(name)) {
+        new Notice(t('notice.actExists'));
+        return;
+      }
+      new Notice(t('notice.actCreated', { name }));
+      const chapters = this.plugin.getChapterDescriptionsSync();
+      const first = chapters.find(ch => !ch.act);
+      if (first) {
+        void this.plugin.assignChapterToAct(first.file, name).then(() => this.render());
+      } else {
+        void this.render();
+      }
+    });
+    modal.open();
+  }
+
+  private promptActRename(oldName: string): void {
+    const modal = new (class extends Modal {
+      private actName = oldName;
+      constructor(app: import('obsidian').App, private onDone: (name: string) => void) { super(app); }
+      onOpen() {
+        this.titleEl.setText(t('explorer.renameAct'));
+        new Setting(this.contentEl)
+          .setName(t('modal.actName'))
+          .addText(text => {
+            text.setValue(this.actName);
+            text.onChange(v => { this.actName = v; });
+            text.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+              if (e.key === 'Enter') { e.preventDefault(); this.submit(); }
+            });
+          });
+        new Setting(this.contentEl)
+          .addButton(btn => btn.setButtonText(t('modal.update')).setCta().onClick(() => this.submit()));
+      }
+      submit() { if (this.actName.trim()) { this.onDone(this.actName.trim()); } this.close(); }
+    })(this.app, (newName: string) => {
+      void this.plugin.renameAct(oldName, newName).then(() => this.render());
+    });
+    modal.open();
   }
 
   private getGroupKey(roleLabel: string, unassignedLabel: string): string {

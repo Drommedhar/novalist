@@ -24,7 +24,7 @@ An always-visible toolbar is injected into every editor tab header. It provides 
 
 A specialized file explorer in the left panel with three tabs:
 
-- **Chapters** — Listed in order. Drag and drop to reorder (updates frontmatter automatically). Status icons indicate progress. Scenes within each chapter are listed as nested sub-items. Right-click a chapter to add a scene or delete.
+- **Chapters** — Listed in order, grouped by act when acts are defined. Drag and drop to reorder (updates frontmatter automatically). Status icons indicate progress. Scenes within each chapter are listed as nested sub-items. Right-click a chapter to add a scene, assign to an act, or delete. An `Add act` button lets you create new acts, and act headers support right-click to rename or delete.
 - **Characters** — Grouped by role with collapsible sections. Drag characters between groups to reassign roles. Multi-select with Ctrl/Shift+click. Gender badges shown with configurable colors.
 - **Locations** — A simple navigable list. Click to open, right-click to delete.
 
@@ -40,7 +40,7 @@ A structured form editor that replaces the raw Markdown view for character files
 - **Relationships** — Character links with role labels. An inline suggester helps you pick characters, and the plugin automatically prompts you to define the inverse relationship on the target character.
 - **Custom properties** — Arbitrary key-value pairs you can add and remove freely
 - **Free-form sections** — User-defined Markdown sections (e.g. Backstory, Notes)
-- **Chapter overrides** — Select a chapter and optionally a scene within that chapter, then override any field for that point in the story. Scene-level overrides take priority over chapter-level overrides, letting you track granular character changes across scenes.
+- **Chapter overrides** — Select an act, chapter, and optionally a scene, then override any field for that point in the story. The override cascade is: scene > chapter > act > base data. Act-level overrides apply to all chapters within that act unless a more specific chapter or scene override exists.
 
 Renaming a character in the sheet automatically renames the underlying file. A **Save** button writes changes, and **Edit Source** switches to the raw Markdown.
 
@@ -50,7 +50,7 @@ A structured form editor for location files with fields for name, type, descript
 
 ### Context Sidebar
 
-A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters and locations, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, and location descriptions. When you are inside a scene (an `## heading` section), the sidebar shows the current scene name and applies any scene-specific character overrides. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. Accessible via the toolbar, ribbon icon, or command palette.
+A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters and locations, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, and location descriptions. Character data reflects the full override cascade (scene > chapter > act > base). When you are inside a scene (an `## heading` section), the sidebar shows the current scene name and applies the most specific matching override. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. Accessible via the toolbar, ribbon icon, or command palette.
 
 ### Character Map
 
@@ -74,7 +74,7 @@ A Google Docs-style commenting system. Select text in the editor, click the "+" 
 
 ### Focus Peek
 
-Hover your cursor over a character or location name in the editor and an inline card appears after a short delay showing the entity's details — portrait, attributes, relationships, and more. Pin the card to keep it visible while you write. Click character links inside a peek to navigate between entities with breadcrumb back-navigation. The card is resizable, and the size is remembered. When inside a scene, the peek card applies scene-specific character overrides with the standard cascade: scene override > chapter override > base data.
+Hover your cursor over a character or location name in the editor and an inline card appears after a short delay showing the entity's details — portrait, attributes, relationships, and more. Pin the card to keep it visible while you write. Click character links inside a peek to navigate between entities with breadcrumb back-navigation. The card is resizable, and the size is remembered. The peek card applies character overrides with the full cascade: scene > chapter > act > base data.
 
 ### Statistics Panel
 
@@ -98,9 +98,13 @@ Novalist tracks how many words you write each day against a configurable daily g
 
 When you paste or drop an image into a project file, Novalist automatically moves it to your configured `Images/` folder, handling name collisions and preserving link integrity.
 
+### Acts
+
+Acts are an optional grouping layer above chapters. Create an act from the explorer's `Add act` button, then right-click a chapter and use `Assign to act` to place it under that act. Chapters in the explorer are grouped under collapsible act headers, and unassigned chapters appear in a separate section. Acts are stored as frontmatter on chapter files and managed entirely through the explorer UI — no manual frontmatter editing required. Right-click an act header to rename or delete it. Drag chapters between act groups to reassign them. Character sheet overrides can target an act, applying to all chapters within it unless a more specific override exists.
+
 ### Scenes
 
-Scenes are subsections within a chapter file, created as `## heading` (H2) Markdown headings. Use the command palette (`Add new scene`) or right-click a chapter in the explorer to add a new scene. Scene names appear in the explorer nested under their chapter, in the plot board as sub-rows, and in the statistics breakdown. Character sheet overrides can target a specific scene for fine-grained tracking of character changes. The override cascade is: scene override > chapter override > base character data.
+Scenes are subsections within a chapter file, created as `## heading` (H2) Markdown headings. Use the command palette (`Add new scene`) or right-click a chapter in the explorer to add a new scene. Scene names appear in the explorer nested under their chapter, in the plot board as sub-rows, and in the statistics breakdown. Character sheet overrides can target a specific scene for fine-grained tracking of character changes. The full override cascade is: scene > chapter > act > base character data.
 
 ### Book Paragraph Spacing
 

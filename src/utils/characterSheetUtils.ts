@@ -187,7 +187,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
     if (chapterMatch) {
       const chapterText = chapterMatch[1];
       // Each chapter override starts with "Chapter: Name"
-      const chapterBlocks = chapterText.split(/^\s*Chapter:\s*/m).filter(Boolean);
+      const chapterBlocks = chapterText.split(/^\s*Chapter:[ \t]*/m).filter(Boolean);
       
       for (const block of chapterBlocks) {
         const lines = block.split('\n');
@@ -205,6 +205,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
             const value = match[2].trim();
             
             switch (key) {
+              case 'act': override.act = value; break;
               case 'scene': override.scene = value; break;
               case 'name': override.name = value; break;
               case 'surname': override.surname = value; break;
@@ -442,6 +443,7 @@ export function serializeCharacterSheet(data: CharacterSheetData): string {
   if (data.chapterOverrides.length > 0) {
     for (const override of data.chapterOverrides) {
       result += `Chapter: ${sanitize(override.chapter)}\n`;
+      if (override.act) result += `- Act: ${sanitize(override.act)}\n`;
       if (override.scene) result += `- Scene: ${sanitize(override.scene)}\n`;
       if (override.name) result += `- Name: ${sanitize(override.name)}\n`;
       if (override.surname) result += `- Surname: ${sanitize(override.surname)}\n`;
@@ -533,18 +535,22 @@ export function applyChapterOverride(
   data: CharacterSheetData,
   chapterName: string,
   sceneName?: string,
-  chapterId?: string
+  chapterId?: string,
+  actName?: string
 ): CharacterSheetData {
   const matchesChapter = (o: CharacterChapterOverride): boolean =>
     o.chapter === chapterName || (!!chapterId && o.chapter === chapterId);
 
-  // Try scene-specific override first, then chapter-level
+  // Try scene-specific override first, then chapter-level, then act-level
   let override: CharacterChapterOverride | undefined;
   if (sceneName) {
     override = data.chapterOverrides.find(o => matchesChapter(o) && o.scene === sceneName);
   }
   if (!override) {
-    override = data.chapterOverrides.find(o => matchesChapter(o) && !o.scene);
+    override = data.chapterOverrides.find(o => matchesChapter(o) && !o.scene && !o.act);
+  }
+  if (!override && actName) {
+    override = data.chapterOverrides.find(o => o.act === actName && !o.chapter && !o.scene);
   }
   if (!override) return data;
   

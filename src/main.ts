@@ -884,6 +884,73 @@ order: ${orderValue}
     modal.open();
   }
 
+  // ─── Act management ──────────────────────────────────────────────
+
+  /** Get all unique act names across chapter files, preserving order. */
+  getActNames(): string[] {
+    const chapters = this.getChapterDescriptionsSync();
+    const seen = new Set<string>();
+    const acts: string[] = [];
+    for (const ch of chapters) {
+      if (ch.act && !seen.has(ch.act)) {
+        seen.add(ch.act);
+        acts.push(ch.act);
+      }
+    }
+    return acts;
+  }
+
+  /** Get the act name for a chapter file (from frontmatter). */
+  getActForFileSync(file: TFile): string {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fm = cache?.frontmatter;
+    return typeof fm?.act === 'string' ? fm.act.trim() : '';
+  }
+
+  /** Assign a chapter to an act by updating its frontmatter. */
+  async assignChapterToAct(file: TFile, actName: string): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const { frontmatter, body } = this.extractFrontmatterAndBody(content);
+    frontmatter.act = actName;
+    const next = this.serializeFrontmatter(frontmatter);
+    await this.app.vault.modify(file, next + body);
+    new Notice(t('notice.chapterAssignedToAct', { name: actName }));
+  }
+
+  /** Remove a chapter from its act. */
+  async removeChapterFromAct(file: TFile): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const { frontmatter, body } = this.extractFrontmatterAndBody(content);
+    delete frontmatter.act;
+    const next = this.serializeFrontmatter(frontmatter);
+    await this.app.vault.modify(file, next + body);
+    new Notice(t('notice.chapterRemovedFromAct'));
+  }
+
+  /** Rename an act across all chapter files that reference it. */
+  async renameAct(oldName: string, newName: string): Promise<void> {
+    const chapters = await this.getChapterDescriptions();
+    for (const ch of chapters) {
+      if (ch.act === oldName) {
+        const content = await this.app.vault.read(ch.file);
+        const { frontmatter, body } = this.extractFrontmatterAndBody(content);
+        frontmatter.act = newName;
+        const next = this.serializeFrontmatter(frontmatter);
+        await this.app.vault.modify(ch.file, next + body);
+      }
+    }
+  }
+
+  /** Delete an act by removing the act field from all chapters in it. */
+  async deleteAct(actName: string): Promise<void> {
+    const chapters = await this.getChapterDescriptions();
+    for (const ch of chapters) {
+      if (ch.act === actName) {
+        await this.removeChapterFromAct(ch.file);
+      }
+    }
+  }
+
   async parseCharacterFile(file: TFile): Promise<CharacterData> {
     const content = await this.app.vault.read(file);
     const { frontmatter, body } = this.extractFrontmatterAndBody(content);
@@ -1018,7 +1085,7 @@ order: ${orderValue}
     };
   }
 
-  parseCharacterSheetChapterOverrides(content: string): Array<{ chapter: string; scene?: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> {
+  parseCharacterSheetChapterOverrides(content: string): Array<{ chapter: string; act?: string; scene?: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> {
     const sheetLines = this.getSectionLines(content, 'CharacterSheet');
     if (sheetLines.length === 0) return [];
     
@@ -1027,10 +1094,10 @@ order: ${orderValue}
     if (chapterOverridesIdx === -1) return [];
     
     const chapterText = sheetContent.substring(chapterOverridesIdx + '\nChapterOverrides:'.length);
-    const results: Array<{ chapter: string; scene?: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> = [];
+    const results: Array<{ chapter: string; act?: string; scene?: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> = [];
     
     // Split by "Chapter: " to get individual chapter blocks
-    const chapterBlocks = chapterText.split(/\nChapter:\s*/).filter(Boolean);
+    const chapterBlocks = chapterText.split(/\nChapter:[ \t]*/).filter(Boolean);
     
     for (const block of chapterBlocks) {
       const lines = block.split('\n');
@@ -1038,6 +1105,7 @@ order: ${orderValue}
       const overrides: Record<string, string> = {};
       const customProperties: Record<string, string> = {};
       let scene: string | undefined;
+      let act: string | undefined;
       
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -1051,6 +1119,11 @@ order: ${orderValue}
           
           if (key === 'scene') {
             scene = value;
+            continue;
+          }
+          
+          if (key === 'act') {
+            act = value;
             continue;
           }
           
@@ -1097,8 +1170,8 @@ order: ${orderValue}
       }
       
 
-      if (chapter) {
-        results.push({ chapter, scene, overrides, info: '', customProperties });
+      if (chapter || act) {
+        results.push({ chapter, act, scene, overrides, info: '', customProperties });
       }
     }
     
@@ -1376,12 +1449,12 @@ order: ${orderValue}
     }
   }
 
-  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile; scenes: string[] }>> {
+  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; file: TFile; scenes: string[] }>> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile; scenes: string[] }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; file: TFile; scenes: string[] }> = [];
     for (const file of files) {
       const content = await this.app.vault.read(file);
       const { frontmatter, body } = this.extractFrontmatterAndBody(content);
@@ -1390,12 +1463,14 @@ order: ${orderValue}
         : file.basename;
       const title = this.extractTitle(body) || file.basename;
       const status = (frontmatter.status as ChapterStatus) || 'outline';
+      const act = typeof frontmatter.act === 'string' ? frontmatter.act.trim() : '';
       const scenes = await this.getScenesForChapterAsync(file);
       chapters.push({
         id: guid,
         name: title,
         order: Number(frontmatter.order) || 999,
         status,
+        act,
         file,
         scenes
       });
@@ -1418,23 +1493,25 @@ order: ${orderValue}
     }));
   }
 
-  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile; scenes: string[] }> {
+  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; file: TFile; scenes: string[] }> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; file: TFile; scenes: string[] }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; file: TFile; scenes: string[] }> = [];
     for (const file of files) {
       const cache = this.app.metadataCache.getFileCache(file);
       const frontmatter = cache?.frontmatter || {};
       const heading = cache?.headings?.find(h => h.level === 1)?.heading;
       const status = (frontmatter.status as ChapterStatus) || 'outline';
+      const act = typeof frontmatter.act === 'string' ? frontmatter.act.trim() : '';
       const scenes = this.getScenesForChapter(file);
       chapters.push({
         id: typeof frontmatter.guid === 'string' && frontmatter.guid.trim() ? frontmatter.guid.trim() : file.basename,
         name: heading || file.basename,
         order: Number(frontmatter.order) || 999,
         status,
+        act,
         file,
         scenes
       });
@@ -2347,6 +2424,9 @@ order: ${orderValue}
             }
           }
 
+          // Determine active act context
+          const currentAct = inChapter ? this.getActForFileSync(activeFile) : '';
+
           // Apply chapter overrides to base properties (mirrors sidebar logic)
           let displayName = sheet.name;
           let displaySurname = sheet.surname;
@@ -2358,13 +2438,18 @@ order: ${orderValue}
 
           if (inChapter) {
             const overrides = this.parseCharacterSheetChapterOverrides(content);
-            // Try scene-specific override first, then chapter-level
+            // Scene > Chapter > Act cascade
             let match = currentScene
               ? overrides.find(o => (o.chapter === chapterId || o.chapter === chapterName) && o.scene === currentScene)
               : undefined;
             if (!match) {
               match = overrides.find(
-                o => (o.chapter === chapterId || o.chapter === chapterName) && !o.scene
+                o => (o.chapter === chapterId || o.chapter === chapterName) && !o.scene && !o.act
+              );
+            }
+            if (!match && currentAct) {
+              match = overrides.find(
+                o => o.act === currentAct && !o.chapter && !o.scene
               );
             }
             if (match) {
@@ -2403,11 +2488,11 @@ order: ${orderValue}
           // Parse sections from full character sheet
           const charSheet = parseCharacterSheet(content);
 
-          // Resolve physical attributes with chapter/scene overrides
+          // Resolve physical attributes with chapter/scene/act overrides
           // Try both chapter name and chapter ID since overrides may be stored by either
           let effectiveSheet = charSheet;
           if (inChapter) {
-            // Scene-specific override takes priority
+            // Scene > Chapter > Act cascade
             let hasOverride = currentScene
               ? charSheet.chapterOverrides.find(
                   o => (o.chapter === chapterName || o.chapter === chapterId) && o.scene === currentScene
@@ -2415,11 +2500,16 @@ order: ${orderValue}
               : undefined;
             if (!hasOverride) {
               hasOverride = charSheet.chapterOverrides.find(
-                o => (o.chapter === chapterName || o.chapter === chapterId) && !o.scene
+                o => (o.chapter === chapterName || o.chapter === chapterId) && !o.scene && !o.act
+              );
+            }
+            if (!hasOverride && currentAct) {
+              hasOverride = charSheet.chapterOverrides.find(
+                o => o.act === currentAct && !o.chapter && !o.scene
               );
             }
             if (hasOverride) {
-              effectiveSheet = applyChapterOverride(charSheet, hasOverride.chapter, hasOverride.scene);
+              effectiveSheet = applyChapterOverride(charSheet, hasOverride.chapter, hasOverride.scene, undefined, hasOverride.act);
             }
           }
 

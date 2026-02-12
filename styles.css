@@ -3494,3 +3494,51 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   text-decoration: underline;
 }
 
+/* ── Act support ────────────────────────────────────────────────── */
+
+/* Explorer: add-act button area */
+.novalist-explorer-add-act {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 0 8px;
+}
+
+.novalist-explorer-add-act-btn {
+  font-size: 0.8em;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.novalist-explorer-add-act-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* Explorer: act group header */
+.novalist-act-header {
+  margin-top: 6px;
+  border-left: 3px solid var(--interactive-accent);
+  padding-left: 8px;
+}
+
+.novalist-act-header.novalist-act-unassigned {
+  border-left-color: var(--text-faint);
+  opacity: 0.8;
+}
+
+.novalist-act-container {
+  padding-left: 6px;
+}
+
+/* Explorer: act drop target highlight */
+.novalist-act-header.is-drop-target {
+  background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
