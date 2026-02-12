@@ -58,7 +58,17 @@ An interactive graph visualization of character relationships powered by Cytosca
 
 ### Plot Board
 
-A spreadsheet-style planning tool with your chapters as rows and user-defined columns. Use it to outline plot threads, themes, arcs, or any per-chapter metadata. Scenes within each chapter appear as indented sub-rows with their own editable cells. Add, rename, reorder, and delete columns. Click a cell to edit, Ctrl/Cmd+Enter to commit. Chapter and scene names link directly to the corresponding file position.
+A visual story-mapping tool for outlining narrative structure, organizing scenes, and tracking plot threads. Two view modes are available:
+
+- **Board view** (default) — a Kanban-style layout where acts serve as swim lanes and chapters appear as draggable cards. Drag-and-drop cards to reorder chapters within an act or move them between acts. Each card shows the chapter status icon, scene count, labels, and a notes preview. Act lanes are collapsible.
+- **Table view** — the original spreadsheet layout with chapters as rows and user-defined columns. Scenes appear as indented sub-rows with their own editable cells. Click a cell to edit, `Ctrl/Cmd+Enter` to commit. Column names are renamable via double-click.
+
+Both views share a header toolbar for toggling the view, managing labels, and adding note columns. Additional features:
+
+- **Color-coding** — right-click a card to assign one of eight preset colors. A color stripe appears on the card (board) or row (table) for at-a-glance subplot identification.
+- **Labels** — create named, color-coded labels (e.g. "Subplot A", "Foreshadowing") from the labels manager and assign any combination to a card via right-click. Label badges appear on cards and table rows.
+- **Notes** — right-click a card in board view to open a notes editor overlay that lets you fill in all note columns (and per-scene notes) in one place. In table view, cells remain inline-editable.
+- **Drag-and-drop** — in board view, drag chapter cards between act lanes to reassign their act and reorder them. Drop position is indicated by a highlight above or below existing cards.
 
 ### Export
 

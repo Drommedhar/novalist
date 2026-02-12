@@ -397,6 +397,14 @@ export default class NovalistPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
     this.settings.enableToolbar = true;
     this.settings.enableCustomExplorer = true;
+
+    // Migrate plotBoard: ensure new fields exist for older saved data
+    const pb = this.settings.plotBoard;
+    if (!pb.labels) pb.labels = [];
+    if (!pb.cardColors) pb.cardColors = {};
+    if (!pb.cardLabels) pb.cardLabels = {};
+    if (!pb.viewMode) pb.viewMode = 'board';
+    if (!pb.collapsedActs) pb.collapsedActs = [];
   }
 
   async saveSettings(): Promise<void> {

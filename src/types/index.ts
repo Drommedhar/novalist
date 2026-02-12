@@ -278,10 +278,28 @@ export interface PlotBoardColumn {
   name: string;
 }
 
+export interface PlotBoardLabel {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export type PlotBoardViewMode = 'board' | 'table';
+
 export interface PlotBoardData {
   columns: PlotBoardColumn[];
   /** chapterId → columnId → cell text */
   cells: Record<string, Record<string, string>>;
+  /** Available labels for color-coding cards */
+  labels: PlotBoardLabel[];
+  /** chapterId → hex color */
+  cardColors: Record<string, string>;
+  /** chapterId → array of label ids */
+  cardLabels: Record<string, string[]>;
+  /** Current view ('board' = kanban, 'table' = spreadsheet) */
+  viewMode: PlotBoardViewMode;
+  /** Which act lanes are collapsed in board view */
+  collapsedActs: string[];
 }
 
 export interface WordCountGoals {

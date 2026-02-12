@@ -126,6 +126,16 @@ export class NovalistExplorerView extends ItemView {
           });
       });
 
+      // Add act (assigns this chapter)
+      menu.addItem((item) => {
+        item
+          .setTitle(t('explorer.addAct'))
+          .setIcon('bookmark-plus')
+          .onClick(() => {
+            this.promptActName(file);
+          });
+      });
+
       // Assign to act submenu
       const acts = this.plugin.getActNames();
       const currentAct = this.plugin.getActForFileSync(file);
@@ -191,13 +201,6 @@ export class NovalistExplorerView extends ItemView {
     const hasActs = actOrder.length > 0;
     const unassigned = items.filter(it => !it.act);
     let globalIndex = 0;
-
-    // Add Act button
-    const addActBtn = list.createDiv('novalist-explorer-add-act');
-    addActBtn.createEl('button', { text: t('explorer.addAct'), cls: 'novalist-explorer-add-act-btn' })
-      .addEventListener('click', () => {
-        this.promptActName();
-      });
 
     // Render grouped acts
     for (const actName of actOrder) {
@@ -653,7 +656,7 @@ export class NovalistExplorerView extends ItemView {
     }
   }
 
-  private promptActName(): void {
+  private promptActName(assignFile?: TFile): void {
     const modal = new (class extends Modal {
       private actName = '';
       constructor(app: import('obsidian').App, private onDone: (name: string) => void) { super(app); }
@@ -678,10 +681,9 @@ export class NovalistExplorerView extends ItemView {
         return;
       }
       new Notice(t('notice.actCreated', { name }));
-      const chapters = this.plugin.getChapterDescriptionsSync();
-      const first = chapters.find(ch => !ch.act);
-      if (first) {
-        void this.plugin.assignChapterToAct(first.file, name).then(() => this.render());
+      const target = assignFile ?? this.plugin.getChapterDescriptionsSync().find(ch => !ch.act)?.file;
+      if (target) {
+        void this.plugin.assignChapterToAct(target, name).then(() => this.render());
       } else {
         void this.render();
       }
