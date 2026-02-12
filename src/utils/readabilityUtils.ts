@@ -12,6 +12,7 @@
 
 import { LanguageKey } from '../types';
 import { t } from '../i18n';
+import { stripComments } from './statisticsUtils';
 
 export interface ReadabilityScore {
   /** Score value (typically 0-100, higher = easier to read) */
@@ -44,9 +45,11 @@ export interface ReadabilityMetrics {
 export function countSentences(text: string): number {
   // Remove frontmatter first
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
+  // Remove comments
+  const withoutComments = stripComments(withoutFrontmatter);
   
   // Remove markdown
-  const cleanText = withoutFrontmatter
+  const cleanText = withoutComments
     .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
@@ -69,7 +72,8 @@ export function countSentences(text: string): number {
  */
 export function countWords(text: string): number {
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
-  const cleanText = withoutFrontmatter
+  const withoutComments = stripComments(withoutFrontmatter);
+  const cleanText = withoutComments
     .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
@@ -84,7 +88,8 @@ export function countWords(text: string): number {
  */
 export function countChars(text: string): number {
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
-  const cleanText = withoutFrontmatter
+  const withoutComments = stripComments(withoutFrontmatter);
+  const cleanText = withoutComments
     .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1');
   
@@ -99,7 +104,8 @@ export function countChars(text: string): number {
  */
 export function estimateSyllables(text: string, language?: LanguageKey): number {
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
-  const cleanText = withoutFrontmatter
+  const withoutComments = stripComments(withoutFrontmatter);
+  const cleanText = withoutComments
     .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')

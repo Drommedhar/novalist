@@ -14,6 +14,8 @@ export default {
   'cmd.addCharacter': 'Neuen Charakter anlegen',
   'cmd.addLocation': 'Neuen Ort anlegen',
   'cmd.addChapter': 'Neues Kapitel anlegen',
+  'cmd.addScene': 'Neue Szene anlegen',
+  'cmd.addAct': 'Neuen Akt anlegen',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Bitte zuerst einen Projektpfad in den Einstellungen festlegen.',
@@ -37,6 +39,11 @@ export default {
   'notice.failedInverseRelationship': 'Umkehrbeziehung zu {name} konnte nicht hinzugefügt werden',
   'notice.propertyExists': "Eigenschaft '{key}' existiert bereits.",
   'notice.enterRelationshipLabel': 'Bitte geben Sie eine Beziehungsbezeichnung ein.',
+  'notice.sceneCreated': 'Szene {name} erstellt.',
+  'notice.actCreated': 'Akt {name} erstellt.',
+  'notice.actExists': 'Ein Akt mit diesem Namen existiert bereits.',
+  'notice.chapterAssignedToAct': 'Kapitel dem Akt {name} zugewiesen.',
+  'notice.chapterRemovedFromAct': 'Kapitel aus Akt entfernt.',
   'notice.exportFailed': 'Export fehlgeschlagen: {error}',
 
   // ── Settings tab ───────────────────────────────────────────────────
@@ -123,6 +130,14 @@ export default {
   'modal.inversePlaceholder': 'z. B. Kind, Geschwister …',
   'modal.update': 'Aktualisieren',
 
+  // Scene modal
+  'modal.createScene': 'Neue Szene erstellen',
+  'modal.sceneName': 'Szenenname',
+
+  // Act modal
+  'modal.createAct': 'Neuen Akt erstellen',
+  'modal.actName': 'Aktname',
+
   // ── Startup wizard ─────────────────────────────────────────────────
   'wizard.welcomeTitle': 'Willkommen bei Novalist',
   'wizard.welcomeSubtitle': 'Die All-in-one-Schreibumgebung für Romane in Obsidian.',
@@ -167,6 +182,7 @@ export default {
   'sidebar.gender': 'Geschlecht',
   'sidebar.age': 'Alter',
   'sidebar.rel': 'Bez',
+  'sidebar.plotBoard': 'Handlungstafel',
 
   // ── Explorer view ──────────────────────────────────────────────────
   'explorer.displayName': 'Novalist-Explorer',
@@ -178,6 +194,13 @@ export default {
   'explorer.noLocations': 'Keine Orte gefunden.',
   'explorer.delete': 'Löschen',
   'explorer.unassigned': 'Nicht zugewiesen',
+  'explorer.addScene': 'Szene hinzufügen',
+  'explorer.addAct': 'Akt hinzufügen',
+  'explorer.assignToAct': 'Akt zuweisen',
+  'explorer.removeFromAct': 'Aus Akt entfernen',
+  'explorer.deleteAct': 'Akt löschen',
+  'explorer.renameAct': 'Akt umbenennen',
+  'explorer.noAct': 'Kein Akt',
   'explorer.genderTooltip': 'Geschlecht: {gender}',
 
   // ── Character map view ─────────────────────────────────────────────
@@ -241,6 +264,12 @@ export default {
   'charSheet.noOverrides': 'Keine kapitelspezifischen Überschreibungen gesetzt. Wählen Sie oben ein Kapitel, um Überschreibungen zu erstellen.',
   'charSheet.defaultNoOverride': 'Standard (keine Überschreibung)',
   'charSheet.selectChapterDesc': 'Wählen Sie ein Kapitel zur Vorschau oder Bearbeitung von kapitelspezifischen Überschreibungen',
+  'charSheet.previewScene': 'Vorschau/Bearbeiten für Szene',
+  'charSheet.previewAct': 'Vorschau/Bearbeiten für Akt',
+  'charSheet.selectActDesc': 'Wählen Sie einen Akt für aktweite Überschreibungen (gilt für alle Kapitel im Akt)',
+  'charSheet.selectSceneDesc': 'Wählen Sie eine Szene innerhalb des Kapitels für szenenspezifische Überschreibungen',
+  'charSheet.chapterLevel': 'Gesamtes Kapitel (kein Szenenfilter)',
+  'charSheet.actLevel': 'Akt-Ebene (kein Kapitelfilter)',
   'charSheet.editingOverrides': 'Überschreibungen bearbeiten für: {chapter}',
   'charSheet.previewChapter': 'Vorschau/Bearbeiten für Kapitel',
   'charSheet.suggestedRelationships': 'Vorgeschlagene Beziehungstypen: ',
@@ -307,6 +336,23 @@ export default {
   'plotBoard.deleteColumn': 'Spalte löschen',
   'plotBoard.columnPlaceholder': 'Spaltenname …',
   'plotBoard.emptyCellPlaceholder': '—',
+  'plotBoard.boardView': 'Tafelansicht',
+  'plotBoard.tableView': 'Tabellenansicht',
+  'plotBoard.manageLabels': 'Labels verwalten',
+  'plotBoard.expand': 'Aufklappen',
+  'plotBoard.collapse': 'Zuklappen',
+  'plotBoard.sceneCount': '{count} Szene(n)',
+  'plotBoard.setColor': 'Farbe setzen',
+  'plotBoard.clearColor': 'Farbe entfernen',
+  'plotBoard.assignLabels': 'Labels zuweisen',
+  'plotBoard.noLabels': 'Noch keine Labels. Erstellen Sie Labels über die Kopfleiste.',
+  'plotBoard.done': 'Fertig',
+  'plotBoard.editNotes': 'Notizen bearbeiten',
+  'plotBoard.openChapter': 'Kapitel öffnen',
+  'plotBoard.noColumnsHint': 'Keine Notizspalten definiert. Fügen Sie Spalten über die Kopfleiste hinzu.',
+  'plotBoard.scenes': 'Szenen',
+  'plotBoard.save': 'Speichern',
+  'plotBoard.labelNamePlaceholder': 'Labelname …',
 
   // ── Annotation extension ───────────────────────────────────────────
   'annotation.addComment': 'Kommentar hinzufügen',

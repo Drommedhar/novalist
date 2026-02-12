@@ -1,10 +1,11 @@
 ﻿import {
   ItemView,
+  MarkdownView,
   TFile,
   WorkspaceLeaf
 } from 'obsidian';
 import type NovalistPlugin from '../main';
-import { CharacterData, CharacterChapterInfo, LocationData } from '../types';
+import { CharacterData, CharacterChapterInfo, LocationData, PlotBoardColumn } from '../types';
 import { normalizeCharacterRole } from '../utils/characterUtils';
 import { t } from '../i18n';
 
@@ -13,6 +14,7 @@ export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
 export class NovalistSidebarView extends ItemView {
   plugin: NovalistPlugin;
   currentChapterFile: TFile | null = null;
+  currentScene: string | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
     super(leaf);
@@ -40,6 +42,18 @@ export class NovalistSidebarView extends ItemView {
       this.app.workspace.on('file-open', (file) => {
         if (file && file.extension === 'md') {
           this.currentChapterFile = file;
+          this.updateCurrentScene();
+          void this.render();
+        }
+      })
+    );
+
+    // Listen for editor changes to track scene position
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', () => {
+        const prev = this.currentScene;
+        this.updateCurrentScene();
+        if (this.currentScene !== prev) {
           void this.render();
         }
       })
@@ -47,10 +61,36 @@ export class NovalistSidebarView extends ItemView {
     
     // Listen for vault modifications (e.g. role changes)
     this.registerEvent(this.app.vault.on('modify', () => {
+      this.updateCurrentScene();
       void this.render();
     }));
 
+    // Poll cursor position to detect scene changes on caret movement
+    this.registerInterval(
+      window.setInterval(() => {
+        const prev = this.currentScene;
+        this.updateCurrentScene();
+        if (this.currentScene !== prev) {
+          void this.render();
+        }
+      }, 500)
+    );
+
     return Promise.resolve();
+  }
+
+  private updateCurrentScene(): void {
+    if (!this.currentChapterFile) {
+      this.currentScene = null;
+      return;
+    }
+    const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (mdView?.editor && mdView.file?.path === this.currentChapterFile.path) {
+      const cursorLine = mdView.editor.getCursor().line;
+      this.currentScene = this.plugin.getCurrentSceneForLine(this.currentChapterFile, cursorLine);
+    } else {
+      // Keep the last known scene rather than clearing it
+    }
   }
 
   async render(): Promise<void> {
@@ -69,6 +109,12 @@ export class NovalistSidebarView extends ItemView {
 
     const contextContent = container.createDiv('novalist-context-content');
     const chapterData = await this.plugin.parseChapterFile(this.currentChapterFile);
+
+    // Show current scene context if inside a scene
+    if (this.currentScene) {
+      const sceneCtx = contextContent.createDiv('novalist-sidebar-scene-context');
+      sceneCtx.createEl('span', { text: this.currentScene, cls: 'novalist-sidebar-scene-label' });
+    }
     
     // Characters Section
     if (chapterData.characters.length > 0) {
@@ -87,6 +133,38 @@ export class NovalistSidebarView extends ItemView {
         const chapterInfo = charData.chapterInfos.find(
           ci => ci.chapter === chapterId || ci.chapter === chapterName
         );
+
+        // Apply character sheet overrides (Scene > Chapter > Act > Base)
+        if (charFile) {
+          const content = await this.app.vault.read(charFile);
+          const overrides = this.plugin.parseCharacterSheetChapterOverrides(content);
+          if (overrides.length > 0) {
+            const currentAct = this.currentChapterFile
+              ? this.plugin.getActForFileSync(this.currentChapterFile)
+              : null;
+
+            // Scene-specific override
+            let match = this.currentScene
+              ? overrides.find(o => (o.chapter === chapterId || o.chapter === chapterName) && o.scene === this.currentScene)
+              : undefined;
+            // Chapter-level override (no scene, no act-only)
+            if (!match) {
+              match = overrides.find(o => (o.chapter === chapterId || o.chapter === chapterName) && !o.scene && !o.act);
+            }
+            // Act-level override (act matches, no chapter, no scene)
+            if (!match && currentAct) {
+              match = overrides.find(o => o.act === currentAct && !o.chapter && !o.scene);
+            }
+            if (match) {
+              if (match.overrides.name) charData.name = match.overrides.name;
+              if (match.overrides.surname) charData.surname = match.overrides.surname;
+              if (match.overrides.age) charData.age = match.overrides.age;
+              if (match.overrides.gender) charData.gender = match.overrides.gender;
+              if (match.overrides.role) charData.role = match.overrides.role;
+            }
+          }
+        }
+
         characterItems.push({ data: charData, chapterInfo });
       }
 
@@ -110,9 +188,9 @@ export class NovalistSidebarView extends ItemView {
 
           // Properties as pills
           const props = card.createDiv('novalist-overview-card-props');
-          const age = chapterInfo?.overrides?.age || charData.age;
+          const age = charData.age;
           const gender = charData.gender;
-          const relationship = chapterInfo?.overrides?.relationship || charData.relationship;
+          const relationship = charData.relationship;
           if (gender) {
             const pill = props.createDiv('novalist-overview-pill novalist-gender-pill');
             const genderColor = this.getGenderColor(gender);
@@ -144,6 +222,9 @@ export class NovalistSidebarView extends ItemView {
         }
       }
     }
+
+    // Plot Board Section
+    this.renderPlotBoardSection(contextContent);
 
     // Locations Section
     if (chapterData.locations.length > 0) {
@@ -178,6 +259,32 @@ export class NovalistSidebarView extends ItemView {
   onClose(): Promise<void> {
     // Cleanup
     return Promise.resolve();
+  }
+
+  private renderPlotBoardSection(parent: HTMLElement): void {
+    if (!this.currentChapterFile) return;
+
+    const board = this.plugin.settings.plotBoard;
+    const columns: PlotBoardColumn[] = board.columns;
+    if (columns.length === 0) return;
+
+    const chapterId = this.plugin.getChapterIdForFileSync(this.currentChapterFile);
+    const cellData = board.cells[chapterId];
+    if (!cellData) return;
+
+    // Only show columns that have data for this chapter
+    const filledColumns = columns.filter(col => cellData[col.id]?.trim());
+    if (filledColumns.length === 0) return;
+
+    const section = parent.createDiv('novalist-overview-section');
+    section.createEl('div', { text: t('sidebar.plotBoard'), cls: 'novalist-overview-section-title' });
+
+    const list = section.createDiv('novalist-overview-plot-list');
+    for (const col of filledColumns) {
+      const row = list.createDiv('novalist-overview-plot-item');
+      row.createEl('span', { text: col.name, cls: 'novalist-overview-plot-label' });
+      row.createEl('span', { text: cellData[col.id], cls: 'novalist-overview-plot-value' });
+    }
   }
 
   private getRoleColor(roleLabel: string): string {

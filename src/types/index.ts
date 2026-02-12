@@ -117,6 +117,7 @@ export interface ChapterListData {
   name: string;
   order: number;
   file: TFile;
+  scenes?: string[];
 }
 
 export interface CharacterListData {
@@ -158,8 +159,17 @@ export interface CharacterImage {
   path: string; // wikilink format [[path/to/image.png]]
 }
 
+export interface SceneData {
+  name: string;
+  chapterId: string;
+  chapterName: string;
+  file: TFile;
+}
+
 export interface CharacterChapterOverride {
   chapter: string;
+  act?: string;
+  scene?: string;
   name?: string;
   surname?: string;
   gender?: string;
@@ -268,10 +278,28 @@ export interface PlotBoardColumn {
   name: string;
 }
 
+export interface PlotBoardLabel {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export type PlotBoardViewMode = 'board' | 'table';
+
 export interface PlotBoardData {
   columns: PlotBoardColumn[];
   /** chapterId → columnId → cell text */
   cells: Record<string, Record<string, string>>;
+  /** Available labels for color-coding cards */
+  labels: PlotBoardLabel[];
+  /** chapterId → hex color */
+  cardColors: Record<string, string>;
+  /** chapterId → array of label ids */
+  cardLabels: Record<string, string[]>;
+  /** Current view ('board' = kanban, 'table' = spreadsheet) */
+  viewMode: PlotBoardViewMode;
+  /** Which act lanes are collapsed in board view */
+  collapsedActs: string[];
 }
 
 export interface WordCountGoals {

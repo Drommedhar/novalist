@@ -192,6 +192,37 @@
   color: var(--text-normal);
 }
 
+/* ── Plot board in sidebar ── */
+.novalist-overview-plot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.novalist-overview-plot-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+}
+
+.novalist-overview-plot-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.novalist-overview-plot-value {
+  font-size: 12px;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+}
+
 .novalist-overview-card-chapter-info {
   margin-top: 6px;
   padding-top: 6px;
@@ -2948,7 +2979,7 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   width: 100%;
   height: auto;
   max-height: 15em;
-  object-fit: cover;
+  object-fit: contain;
   object-position: top center;
 }
 
@@ -3105,6 +3136,18 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   gap: 12px;
   padding-bottom: 8px;
   border-bottom: 2px solid var(--interactive-accent);
+}
+
+.novalist-plot-board-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.novalist-plot-board-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .novalist-plot-board-title {
@@ -3380,3 +3423,706 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   font-weight: 600;
 }
 
+/* ── Scene support ──────────────────────────────────────────────── */
+
+/* Explorer: scene items under chapters */
+.novalist-explorer-scenes {
+  padding-left: 20px;
+}
+
+.novalist-explorer-scene-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s ease;
+}
+
+.novalist-explorer-scene-item:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.novalist-explorer-scene-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sidebar: scene context indicator */
+.novalist-sidebar-scene-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  border-left: 3px solid var(--interactive-accent);
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.novalist-sidebar-scene-label {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+/* Statistics popup: scene rows */
+.novalist-stats-popup-scene-row td {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.novalist-stats-popup-scene-name {
+  padding-left: 16px !important;
+  font-style: italic;
+}
+
+/* Plot board: scene rows */
+.novalist-plot-board-scene-row {
+  background: var(--background-secondary);
+}
+
+.novalist-plot-board-td-scene {
+  padding-left: 24px !important;
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.novalist-plot-board-scene-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.novalist-plot-board-scene-link:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+/* ── Act support ────────────────────────────────────────────────── */
+
+/* Explorer: add-act button area */
+.novalist-explorer-add-act {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 0 8px;
+}
+
+.novalist-explorer-add-act-btn {
+  font-size: 0.8em;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.novalist-explorer-add-act-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* Explorer: act group header */
+.novalist-act-header {
+  margin-top: 6px;
+  border-left: 3px solid var(--interactive-accent);
+  padding-left: 8px;
+}
+
+.novalist-act-header.novalist-act-unassigned {
+  border-left-color: var(--text-faint);
+  opacity: 0.8;
+}
+
+.novalist-act-container {
+  padding-left: 6px;
+}
+
+/* Explorer: act drop target highlight */
+.novalist-act-header.is-drop-target {
+  background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+/* ==========================================
+   Plot Board — view toggle
+   ========================================== */
+
+.novalist-plot-board-view-toggle {
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.novalist-plot-board-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border: none;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.novalist-plot-board-toggle-btn:hover {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.novalist-plot-board-toggle-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.novalist-plot-board-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.novalist-plot-board-header-btn:hover {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+/* ==========================================
+   Plot Board — board (kanban) view
+   ========================================== */
+
+.novalist-pb-board {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ── Act lane ─────────────────────────────────────────────────────── */
+
+.novalist-pb-lane {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-secondary-alt, var(--background-secondary));
+  overflow: hidden;
+}
+
+.novalist-pb-lane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  cursor: default;
+}
+
+.novalist-pb-lane-collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.novalist-pb-lane-collapse:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.novalist-pb-lane-title {
+  font-weight: 700;
+  font-size: 1em;
+  color: var(--text-normal);
+}
+
+.novalist-pb-lane-count {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  background: var(--background-modifier-border);
+  border-radius: 10px;
+  padding: 1px 8px;
+  margin-left: auto;
+}
+
+/* ── Card container ───────────────────────────────────────────────── */
+
+.novalist-pb-card-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  min-height: 40px;
+  transition: background 0.15s;
+}
+
+.novalist-pb-card-container.novalist-pb-drop-active {
+  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+}
+
+/* ── Card ─────────────────────────────────────────────────────────── */
+
+.novalist-pb-card {
+  width: 230px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 4px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  cursor: grab;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.novalist-pb-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  border-color: var(--text-muted);
+}
+
+.novalist-pb-card.novalist-pb-card-colored {
+  /* border-left-color set inline */
+}
+
+.novalist-pb-card.novalist-pb-card-dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.novalist-pb-card.novalist-pb-card-drop-above {
+  box-shadow: 0 -3px 0 0 var(--interactive-accent);
+}
+
+.novalist-pb-card.novalist-pb-card-drop-below {
+  box-shadow: 0 3px 0 0 var(--interactive-accent);
+}
+
+/* ── Card internals ───────────────────────────────────────────────── */
+
+.novalist-pb-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.novalist-pb-card-status {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.novalist-pb-card-name {
+  font-weight: 600;
+  font-size: 0.92em;
+  color: var(--text-accent);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  cursor: pointer;
+}
+
+.novalist-pb-card-name:hover {
+  text-decoration: underline;
+}
+
+.novalist-pb-card-order {
+  font-size: 0.8em;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.novalist-pb-card-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.novalist-pb-card-labels-inline {
+  margin-top: 4px;
+}
+
+.novalist-pb-label-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.novalist-pb-label-badge-sm {
+  font-size: 0.7em;
+  padding: 1px 6px;
+}
+
+.novalist-pb-card-scenes-section {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 4px;
+}
+
+.novalist-pb-card-scenes-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82em;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.novalist-pb-card-scenes-toggle:hover {
+  color: var(--text-normal);
+}
+
+.novalist-pb-card-scenes-chevron {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.novalist-pb-card-scenes-chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.novalist-pb-card-scenes-body {
+  padding-left: 6px;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 2px solid var(--background-modifier-border);
+  margin-left: 6px;
+}
+
+.novalist-pb-card-scenes-body.is-collapsed {
+  display: none;
+}
+
+.novalist-pb-card-scene-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.novalist-pb-card-scene-name {
+  font-weight: 600;
+  font-size: 0.85em;
+  font-style: italic;
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.novalist-pb-card-scene-name:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+.novalist-pb-card-scene-icon {
+  display: flex;
+  align-items: center;
+}
+
+.novalist-pb-card-scene-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.novalist-pb-card-notes {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.novalist-pb-card-note-row {
+  display: flex;
+  gap: 6px;
+  font-size: 0.82em;
+  line-height: 1.35;
+}
+
+.novalist-pb-card-note-col {
+  color: var(--text-faint);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.novalist-pb-card-note-col::after {
+  content: ':';
+}
+
+.novalist-pb-card-note-val {
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 0;
+}
+
+/* ── Context menu ─────────────────────────────────────────────────── */
+
+.novalist-pb-context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.novalist-pb-ctx-item {
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.novalist-pb-ctx-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* ── Overlay panels (color, labels, notes) ────────────────────────── */
+
+.novalist-pb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.novalist-pb-color-panel,
+.novalist-pb-label-panel,
+.novalist-pb-notes-panel,
+.novalist-pb-labels-mgmt {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  min-width: 280px;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.novalist-pb-color-panel h4,
+.novalist-pb-label-panel h4,
+.novalist-pb-notes-panel h4,
+.novalist-pb-labels-mgmt h4 {
+  margin: 0 0 12px 0;
+  font-size: 1.1em;
+}
+
+/* Color picker grid */
+.novalist-pb-color-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.novalist-pb-color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.novalist-pb-color-swatch:hover {
+  transform: scale(1.12);
+}
+
+.novalist-pb-color-swatch.is-selected {
+  border-color: var(--text-normal);
+  box-shadow: 0 0 0 2px var(--background-primary);
+}
+
+.novalist-pb-color-clear,
+.novalist-pb-color-close {
+  margin-right: 8px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Label panel */
+.novalist-pb-label-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.novalist-pb-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.novalist-pb-panel-close {
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+/* Notes editor */
+.novalist-pb-notes-panel {
+  min-width: 400px;
+}
+
+.novalist-pb-note-group {
+  margin-bottom: 10px;
+}
+
+.novalist-pb-note-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.85em;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+}
+
+.novalist-pb-note-textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: inherit;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  resize: vertical;
+}
+
+.novalist-pb-note-scene-group {
+  margin: 8px 0 8px 12px;
+  padding-left: 10px;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.novalist-pb-note-scene-name {
+  font-weight: 600;
+  font-style: italic;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.novalist-pb-note-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.novalist-pb-note-save {
+  padding: 4px 14px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+}
+
+.novalist-pb-note-cancel {
+  padding: 4px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* Labels management panel */
+.novalist-pb-labels-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.novalist-pb-labels-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.novalist-pb-labels-del {
+  padding: 0 4px;
+  font-size: 12px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.novalist-pb-labels-del:hover {
+  color: var(--text-error);
+}
+
+.novalist-pb-labels-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.novalist-pb-labels-name {
+  flex: 1;
+  padding: 4px 8px;
+}
+
+.novalist-pb-labels-color {
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.novalist-pb-labels-add-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}

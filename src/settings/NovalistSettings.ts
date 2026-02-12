@@ -99,5 +99,5 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   enableToolbar: true,
   enableAnnotations: true,
   commentThreads: [],
-  plotBoard: { columns: [], cells: {} }
+  plotBoard: { columns: [], cells: {}, labels: [], cardColors: {}, cardLabels: {}, viewMode: 'board', collapsedActs: [] }
 };

@@ -2,6 +2,7 @@ import { TFile } from 'obsidian';
 import type NovalistPlugin from '../main';
 import JSZip from 'jszip';
 import { t } from '../i18n';
+import { stripComments } from './statisticsUtils';
 
 export interface ExportOptions {
   format: 'epub' | 'pdf' | 'docx';
@@ -35,6 +36,9 @@ export async function compileChapters(
     
     // Strip frontmatter and extract just the chapter text
     let body = content.replace(/^---\n[\s\S]*?\n---\n?/, '');
+    
+    // Remove comments (%%…%% and <!-- … -->)
+    body = stripComments(body);
     
     // Remove the H1 title (we'll use it separately)
     body = body.replace(/^#\s+.+\n?/m, '');
@@ -126,6 +130,7 @@ function generateEPUBContent(chapters: ChapterContent[], options: ExportOptions)
   <style>
     body { font-family: serif; line-height: 1.6; margin: 2em; }
     h1 { font-size: 1.8em; text-align: center; margin-top: 0; margin-bottom: 2em; page-break-before: always; }
+    h2 { font-size: 1.3em; text-align: center; margin-top: 2em; margin-bottom: 1em; }
     .chapter:first-of-type h1 { page-break-before: auto; }
     p { text-indent: 1.5em; margin: 0 0 0.5em 0; }
     p:first-of-type { text-indent: 0; }
@@ -260,6 +265,13 @@ export async function exportToDOCX(
     let isFirstPara = true;
     for (const para of paragraphs) {
       if (!para.trim()) continue;
+      // Handle H2 scene headings
+      const h2Match = para.trim().match(/^##\s+(.+)$/m);
+      if (h2Match) {
+        bodyContent += `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>${escapeXml(h2Match[1])}</w:t></w:r></w:p>`;
+        isFirstPara = true;
+        continue;
+      }
       const cleanPara = escapeXml(para.trim());
       // First paragraph has no indent
       const indent = isFirstPara ? '<w:ind w:firstLine="0"/>' : '<w:ind w:firstLine="720"/>';
@@ -327,6 +339,9 @@ function markdownToHtml(markdown: string): string {
   // Simple markdown to HTML conversion for EPUB
   let html = escapeXml(markdown);
   
+  // H2 scene headings
+  html = html.replace(/^##\s+(.+)$/gm, '</p><h2>$1</h2><p>');
+  
   // Bold
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   
@@ -337,8 +352,16 @@ function markdownToHtml(markdown: string): string {
   const paragraphs = html.split('\n\n');
   html = paragraphs
     .filter(p => p.trim())
-    .map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
+    .map(p => {
+      const trimmed = p.trim();
+      // Don't wrap headings in <p> tags
+      if (trimmed.startsWith('<h2>') || trimmed.endsWith('</h2>')) return trimmed;
+      return `<p>${trimmed.replace(/\n/g, '<br/>')}</p>`;
+    })
     .join('\n');
+  
+  // Clean up any empty <p></p> tags created by the H2 substitution
+  html = html.replace(/<p>\s*<\/p>/g, '');
   
   return html;
 }
