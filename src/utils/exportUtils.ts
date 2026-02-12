@@ -2,6 +2,7 @@ import { TFile } from 'obsidian';
 import type NovalistPlugin from '../main';
 import JSZip from 'jszip';
 import { t } from '../i18n';
+import { stripComments } from './statisticsUtils';
 
 export interface ExportOptions {
   format: 'epub' | 'pdf' | 'docx';
@@ -35,6 +36,9 @@ export async function compileChapters(
     
     // Strip frontmatter and extract just the chapter text
     let body = content.replace(/^---\n[\s\S]*?\n---\n?/, '');
+    
+    // Remove comments (%%…%% and <!-- … -->)
+    body = stripComments(body);
     
     // Remove the H1 title (we'll use it separately)
     body = body.replace(/^#\s+.+\n?/m, '');

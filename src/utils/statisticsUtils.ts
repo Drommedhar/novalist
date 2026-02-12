@@ -4,11 +4,24 @@ import { ProjectStatistics, ChapterWordCount, WordCountGoals, DailyWritingGoal }
 import { calculateReadability } from './readabilityUtils';
 import { t } from '../i18n';
 
+/** Strip Obsidian `%%…%%` and HTML `<!-- … -->` comments, including when wrapped in code fences */
+export function stripComments(text: string): string {
+  return text
+    // Code-fenced comments: ```\n<!-- … -->\n``` or ```\n%% … %%\n```
+    .replace(/```\s*\n\s*%%[\s\S]*?%%\s*\n\s*```/g, '')
+    .replace(/```\s*\n\s*<!--[\s\S]*?-->\s*\n\s*```/g, '')
+    // Standalone comments
+    .replace(/%%[\s\S]*?%%/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+}
+
 export function countWords(text: string): number {
   // Remove frontmatter
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
+  // Remove comments
+  const withoutComments = stripComments(withoutFrontmatter);
   // Remove markdown syntax
-  const cleanText = withoutFrontmatter
+  const cleanText = withoutComments
     .replace(/[#*_[\]()|`-]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
@@ -22,7 +35,8 @@ export function countWords(text: string): number {
 
 export function countCharacters(text: string, includeSpaces = true): number {
   const withoutFrontmatter = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
-  const cleanText = withoutFrontmatter
+  const withoutComments = stripComments(withoutFrontmatter);
+  const cleanText = withoutComments
     .replace(/[#*_[\]()|`]/g, '')
     .replace(/\[\[([^\]]+)\]\]/g, '$1');
   
