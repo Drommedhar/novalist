@@ -11,7 +11,7 @@ import {
   setIcon
 } from 'obsidian';
 import type NovalistPlugin from '../main';
-import { CharacterSheetData, CharacterRelationship, CharacterChapterOverride, CharacterImage } from '../types';
+import { CharacterSheetData, CharacterRelationship, CharacterChapterOverride, CharacterImage, CustomPropertyDefinition } from '../types';
 import { parseCharacterSheet, serializeCharacterSheet } from '../utils/characterSheetUtils';
 import { InverseRelationshipModal } from '../modals/InverseRelationshipModal';
 import { t } from '../i18n';
@@ -267,9 +267,9 @@ export class CharacterSheetView extends TextFileView {
   private mergeFromTemplate(): void {
     const template = this.plugin.getCharacterTemplate(this.data.templateId);
     // Add custom properties defined in the template but missing from the data
-    for (const [key, value] of Object.entries(template.customProperties)) {
-      if (!(key in this.data.customProperties)) {
-        this.data.customProperties[key] = value;
+    for (const def of template.customPropertyDefs) {
+      if (!(def.key in this.data.customProperties)) {
+        this.data.customProperties[def.key] = def.defaultValue;
       }
     }
     // Add sections defined in the template but missing from the data
@@ -1054,6 +1054,12 @@ export class CharacterSheetView extends TextFileView {
       });
   }
 
+  /** Look up the property-type definition from the active template. */
+  private getPropertyDef(key: string): CustomPropertyDefinition | undefined {
+    const template = this.plugin.getCharacterTemplate(this.data.templateId);
+    return template.customPropertyDefs?.find(d => d.key === key);
+  }
+
   private renderCustomPropertiesSection(container: HTMLElement): void {
     const section = container.createDiv('character-sheet-section');
     section.createEl('h3', { text: t('charSheet.customProperties'), cls: 'character-sheet-section-title' });
@@ -1097,6 +1103,8 @@ export class CharacterSheetView extends TextFileView {
     const row = container.createDiv('character-sheet-custom-row');
     const [originalKey, value] = entries[index];
     let currentKey = originalKey; // Mutable reference to track key changes without re-rendering
+    const def = this.getPropertyDef(originalKey);
+    const propType = def?.type ?? 'string';
     
     new Setting(row)
       .setClass('character-sheet-custom-key')
@@ -1115,17 +1123,6 @@ export class CharacterSheetView extends TextFileView {
                    return;
                }
                
-               // Perform the rename on the data object
-               // We use the object reference passed in (customProps) or fetch fresh?
-               // renderCustomPropertiesSection passes `this.getEffectiveCustomProperties()` which creates a new object copy usually.
-               // But `customProps` in renderCustomPropertiesSection is: const customProps = this.getEffectiveCustomProperties();
-               // And that variable is passed here.
-               // getEffectiveCustomProperties returns a copy?
-               // ... return { ...this.data.customProperties }; -> YES it returns a shallow copy.
-               // BUT `this.setEffectiveCustomProperties(customProps)` was used in the previous code on every change.
-               // So if we modify `customProps` here (which is the object from the parent scope), and call setEffective, it works.
-               
-               // We must operate on the `customProps` object passed to this function to maintain consistency with the other fields.
                if (customProps[currentKey] !== undefined) {
                    const val = customProps[currentKey];
                    delete customProps[currentKey];
@@ -1133,7 +1130,6 @@ export class CharacterSheetView extends TextFileView {
                    
                    currentKey = newKey; // Update closure
                    this.setEffectiveCustomProperties(customProps);
-                   // NO RENDER calling here to preserve focus flow
                }
            }
         });
@@ -1144,26 +1140,85 @@ export class CharacterSheetView extends TextFileView {
         });
       });
 
-    new Setting(row)
-      .setClass('character-sheet-custom-value')
-      .addText(text => {
-        text.setPlaceholder(t('charSheet.valuePlaceholder'));
-        text.setValue(value);
-        text.onChange(newValue => {
-          // Use currentKey to ensure we update the correct entry if it was renamed
-          customProps[currentKey] = newValue;
-          this.setEffectiveCustomProperties(customProps);
+    const valueSetting = new Setting(row).setClass('character-sheet-custom-value');
+
+    switch (propType) {
+      case 'bool':
+        valueSetting.addToggle(toggle => {
+          toggle.setValue(value === 'true');
+          toggle.onChange(v => {
+            customProps[currentKey] = String(v);
+            this.setEffectiveCustomProperties(customProps);
+          });
         });
-      })
-      .addButton(btn => {
-        btn.setIcon('trash');
-        btn.setTooltip(t('charSheet.removeTooltip'));
-        btn.onClick(() => {
-          delete customProps[currentKey];
-          this.setEffectiveCustomProperties(customProps);
-          void this.render(); // Render required for deletion
+        break;
+      case 'date':
+        valueSetting.addText(text => {
+          text.setPlaceholder(t('charSheet.datePlaceholder'));
+          text.setValue(value);
+          text.inputEl.type = 'date';
+          text.onChange(newValue => {
+            customProps[currentKey] = newValue;
+            this.setEffectiveCustomProperties(customProps);
+          });
         });
+        break;
+      case 'int':
+        valueSetting.addText(text => {
+          text.setPlaceholder('0');
+          text.setValue(value);
+          text.inputEl.type = 'number';
+          text.inputEl.step = '1';
+          text.onChange(newValue => {
+            customProps[currentKey] = newValue;
+            this.setEffectiveCustomProperties(customProps);
+          });
+        });
+        break;
+      case 'enum':
+        if (def?.enumOptions && def.enumOptions.length > 0) {
+          valueSetting.addDropdown(dd => {
+            dd.addOption('', '—');
+            for (const opt of def.enumOptions ?? []) {
+              dd.addOption(opt, opt);
+            }
+            dd.setValue(value);
+            dd.onChange(newValue => {
+              customProps[currentKey] = newValue;
+              this.setEffectiveCustomProperties(customProps);
+            });
+          });
+        } else {
+          valueSetting.addText(text => {
+            text.setPlaceholder(t('charSheet.valuePlaceholder'));
+            text.setValue(value);
+            text.onChange(newValue => {
+              customProps[currentKey] = newValue;
+              this.setEffectiveCustomProperties(customProps);
+            });
+          });
+        }
+        break;
+      default: // 'string'
+        valueSetting.addText(text => {
+          text.setPlaceholder(t('charSheet.valuePlaceholder'));
+          text.setValue(value);
+          text.onChange(newValue => {
+            customProps[currentKey] = newValue;
+            this.setEffectiveCustomProperties(customProps);
+          });
+        });
+    }
+
+    valueSetting.addButton(btn => {
+      btn.setIcon('trash');
+      btn.setTooltip(t('charSheet.removeTooltip'));
+      btn.onClick(() => {
+        delete customProps[currentKey];
+        this.setEffectiveCustomProperties(customProps);
+        void this.render(); // Render required for deletion
       });
+    });
   }
 
   private renderSectionsArea(container: HTMLElement): void {

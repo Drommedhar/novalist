@@ -1,4 +1,4 @@
-﻿import { LanguageKey, AutoReplacementPair, NovalistSettings, CharacterTemplate, LocationTemplate, NovalistProject, ProjectData } from '../types';
+﻿import { LanguageKey, AutoReplacementPair, NovalistSettings, CharacterTemplate, LocationTemplate, NovalistProject, ProjectData, CustomPropertyDefinition } from '../types';
 import { t } from '../i18n';
 
 export function getLanguageLabels(): Record<LanguageKey, string> {
@@ -91,7 +91,7 @@ export const DEFAULT_CHARACTER_TEMPLATE: CharacterTemplate = {
     { key: 'SkinTone', defaultValue: '' },
     { key: 'DistinguishingFeatures', defaultValue: '' },
   ],
-  customProperties: {},
+  customPropertyDefs: [],
   sections: [],
   includeRelationships: true,
   includeImages: true,
@@ -106,16 +106,20 @@ export const DEFAULT_LOCATION_TEMPLATE: LocationTemplate = {
     { key: 'Type', defaultValue: '' },
     { key: 'Description', defaultValue: '' },
   ],
-  customProperties: {},
+  customPropertyDefs: [],
   sections: [],
   includeImages: true,
 };
+
+function clonePropertyDef(d: CustomPropertyDefinition): CustomPropertyDefinition {
+  return { ...d, enumOptions: d.enumOptions ? [...d.enumOptions] : undefined };
+}
 
 export function cloneCharacterTemplate(tpl: CharacterTemplate): CharacterTemplate {
   return {
     ...tpl,
     fields: tpl.fields.map(f => ({ ...f })),
-    customProperties: { ...tpl.customProperties },
+    customPropertyDefs: (tpl.customPropertyDefs ?? []).map(clonePropertyDef),
     sections: tpl.sections.map(s => ({ ...s })),
   };
 }
@@ -124,9 +128,41 @@ export function cloneLocationTemplate(tpl: LocationTemplate): LocationTemplate {
   return {
     ...tpl,
     fields: tpl.fields.map(f => ({ ...f })),
-    customProperties: { ...tpl.customProperties },
+    customPropertyDefs: (tpl.customPropertyDefs ?? []).map(clonePropertyDef),
     sections: tpl.sections.map(s => ({ ...s })),
   };
+}
+
+/**
+ * Migrate a template that still uses the legacy `customProperties` map
+ * to the new `customPropertyDefs` array.
+ */
+export function migrateTemplateDefs<T extends CharacterTemplate | LocationTemplate>(tpl: T): T {
+  if (tpl.customPropertyDefs && tpl.customPropertyDefs.length > 0) {
+    // Migrate legacy enum options from {label, value} objects to plain strings
+    for (const def of tpl.customPropertyDefs) {
+      if (def.enumOptions) {
+        def.enumOptions = def.enumOptions.map(opt =>
+          typeof opt === 'string' ? opt : (opt as Record<string, string>).label ?? (opt as Record<string, string>).value ?? ''
+        );
+      }
+    }
+    return tpl;
+  }
+  // Access legacy field via bracket notation to avoid deprecated-access lint error.
+  // This migration function is the one place that intentionally reads the old field.
+  const legacy = (tpl as Record<string, unknown>)['customProperties'] as Record<string, string> | undefined;
+  if (!legacy || Object.keys(legacy).length === 0) {
+    tpl.customPropertyDefs = tpl.customPropertyDefs ?? [];
+    return tpl;
+  }
+  tpl.customPropertyDefs = Object.entries(legacy).map(([key, value]) => ({
+    key,
+    type: 'string' as const,
+    defaultValue: value,
+  }));
+  delete (tpl as Record<string, unknown>)['customProperties'];
+  return tpl;
 }
 
 export const DEFAULT_PROJECT_ID = 'project-default';

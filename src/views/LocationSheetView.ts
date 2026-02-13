@@ -10,7 +10,7 @@ import {
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { t } from '../i18n';
-import { LocationSheetData, CharacterImage } from '../types';
+import { LocationSheetData, CharacterImage, CustomPropertyDefinition } from '../types';
 import { parseLocationSheet, serializeLocationSheet } from '../utils/locationSheetUtils';
 
 export const LOCATION_SHEET_VIEW_TYPE = 'location-sheet';
@@ -96,9 +96,9 @@ export class LocationSheetView extends TextFileView {
   private mergeFromTemplate(): void {
     const template = this.plugin.getLocationTemplate(this.data.templateId);
     // Add custom properties defined in the template but missing from the data
-    for (const [key, value] of Object.entries(template.customProperties)) {
-      if (!(key in this.data.customProperties)) {
-        this.data.customProperties[key] = value;
+    for (const def of template.customPropertyDefs) {
+      if (!(def.key in this.data.customProperties)) {
+        this.data.customProperties[def.key] = def.defaultValue;
       }
     }
     // Add sections defined in the template but missing from the data
@@ -197,6 +197,12 @@ export class LocationSheetView extends TextFileView {
       });
   }
 
+  /** Look up the property-type definition from the active template. */
+  private getPropertyDef(key: string): CustomPropertyDefinition | undefined {
+    const template = this.plugin.getLocationTemplate(this.data.templateId);
+    return template.customPropertyDefs?.find(d => d.key === key);
+  }
+
   private renderCustomProperties(container: HTMLElement): void {
       const section = container.createDiv('character-sheet-section');
       section.createEl('h3', { text: t('locSheet.customProperties'), cls: 'character-sheet-section-title' });
@@ -206,6 +212,8 @@ export class LocationSheetView extends TextFileView {
       
       Object.entries(props).forEach(([key, value]) => {
           const row = list.createDiv('location-sheet-custom-row');
+          const def = this.getPropertyDef(key);
+          const propType = def?.type ?? 'string';
           
           const keyInput = row.createEl('input', {
             type: 'text',
@@ -215,15 +223,65 @@ export class LocationSheetView extends TextFileView {
           keyInput.value = key;
           keyInput.disabled = true;
 
-          const valueInput = row.createEl('input', {
-            type: 'text',
-            cls: 'location-sheet-custom-value',
-            placeholder: t('locSheet.valuePlaceholder')
-          });
-          valueInput.value = value;
-          valueInput.addEventListener('input', () => {
-            props[key] = valueInput.value;
-          });
+          // Render value control based on property type
+          switch (propType) {
+            case 'bool': {
+              const toggle = row.createDiv('location-sheet-custom-value checkbox-container');
+              const cb = toggle.createEl('input', { type: 'checkbox' });
+              cb.checked = value === 'true';
+              cb.addEventListener('change', () => { props[key] = String(cb.checked); });
+              break;
+            }
+            case 'date': {
+              const dateInput = row.createEl('input', {
+                type: 'date',
+                cls: 'location-sheet-custom-value',
+              });
+              dateInput.value = value;
+              dateInput.addEventListener('input', () => { props[key] = dateInput.value; });
+              break;
+            }
+            case 'int': {
+              const numInput = row.createEl('input', {
+                type: 'number',
+                cls: 'location-sheet-custom-value',
+                attr: { step: '1' } as Record<string, string>,
+              });
+              numInput.value = value;
+              numInput.addEventListener('input', () => { props[key] = numInput.value; });
+              break;
+            }
+            case 'enum': {
+              if (def?.enumOptions && def.enumOptions.length > 0) {
+                const sel = row.createEl('select', { cls: 'location-sheet-custom-value dropdown' });
+                const emptyOpt = sel.createEl('option', { text: '—', value: '' });
+                emptyOpt.value = '';
+                for (const opt of def.enumOptions) {
+                  sel.createEl('option', { text: opt, value: opt });
+                }
+                sel.value = value;
+                sel.addEventListener('change', () => { props[key] = sel.value; });
+              } else {
+                const fallback = row.createEl('input', {
+                  type: 'text',
+                  cls: 'location-sheet-custom-value',
+                  placeholder: t('locSheet.valuePlaceholder')
+                });
+                fallback.value = value;
+                fallback.addEventListener('input', () => { props[key] = fallback.value; });
+              }
+              break;
+            }
+            default: { // 'string'
+              const valueInput = row.createEl('input', {
+                type: 'text',
+                cls: 'location-sheet-custom-value',
+                placeholder: t('locSheet.valuePlaceholder')
+              });
+              valueInput.value = value;
+              valueInput.addEventListener('input', () => { props[key] = valueInput.value; });
+            }
+          }
 
           new ButtonComponent(row)
             .setIcon('trash')

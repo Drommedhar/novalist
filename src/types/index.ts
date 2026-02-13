@@ -260,6 +260,21 @@ export interface LocationSheetData {
 
 // ─── Entity Templates ────────────────────────────────────────────────
 
+/** Supported data types for custom properties. */
+export type CustomPropertyType = 'string' | 'int' | 'bool' | 'date' | 'enum';
+
+/** Schema definition for one custom property on a template. */
+export interface CustomPropertyDefinition {
+  /** Property key written to the sheet (used as the label). */
+  key: string;
+  /** Data type that controls how the value is rendered and validated. */
+  type: CustomPropertyType;
+  /** Default value (always stored as a string). */
+  defaultValue: string;
+  /** Options for 'enum' type properties (plain string list). */
+  enumOptions?: string[];
+}
+
 export interface TemplateField {
   /** Field key written to the sheet (e.g. 'Gender', 'EyeColor'). */
   key: string;
@@ -281,8 +296,13 @@ export interface CharacterTemplate {
   builtIn: boolean;
   /** Fields included in the CharacterSheet block (besides Name/Surname which are always present). */
   fields: TemplateField[];
-  /** Custom properties pre-populated in the sheet. */
-  customProperties: Record<string, string>;
+  /** Typed custom-property definitions (replaces the legacy `customProperties` map). */
+  customPropertyDefs: CustomPropertyDefinition[];
+  /**
+   * @deprecated Kept only for backward-compatible migration.
+   * New code should use `customPropertyDefs` instead.
+   */
+  customProperties?: Record<string, string>;
   /** Free-form sections to include. */
   sections: TemplateSection[];
   includeRelationships: boolean;
@@ -296,7 +316,13 @@ export interface LocationTemplate {
   builtIn: boolean;
   /** Fields included in the LocationSheet block (besides Name which is always present). */
   fields: TemplateField[];
-  customProperties: Record<string, string>;
+  /** Typed custom-property definitions (replaces the legacy `customProperties` map). */
+  customPropertyDefs: CustomPropertyDefinition[];
+  /**
+   * @deprecated Kept only for backward-compatible migration.
+   * New code should use `customPropertyDefs` instead.
+   */
+  customProperties?: Record<string, string>;
   sections: TemplateSection[];
   includeImages: boolean;
 }
@@ -311,6 +337,11 @@ export const CHARACTER_TEMPLATE_KNOWN_FIELDS: string[] = [
 /** All known fields for location sheets (used in template editor). */
 export const LOCATION_TEMPLATE_KNOWN_FIELDS: string[] = [
   'Type', 'Description',
+];
+
+/** All available custom-property data types. */
+export const CUSTOM_PROPERTY_TYPES: CustomPropertyType[] = [
+  'string', 'int', 'bool', 'date', 'enum',
 ];
 
 // Word Count & Statistics

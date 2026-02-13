@@ -26,7 +26,7 @@ import {
   CharacterTemplate,
   LocationTemplate
 } from './types';
-import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS, DEFAULT_CHARACTER_TEMPLATE, DEFAULT_LOCATION_TEMPLATE, cloneCharacterTemplate, cloneLocationTemplate, createDefaultProject, createDefaultProjectData } from './settings/NovalistSettings';
+import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS, DEFAULT_CHARACTER_TEMPLATE, DEFAULT_LOCATION_TEMPLATE, cloneCharacterTemplate, cloneLocationTemplate, createDefaultProject, createDefaultProjectData, migrateTemplateDefs } from './settings/NovalistSettings';
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
 import { NovalistExplorerView, NOVELIST_EXPLORER_VIEW_TYPE } from './views/NovalistExplorerView';
 import { CharacterMapView, CHARACTER_MAP_VIEW_TYPE } from './views/CharacterMapView';
@@ -480,6 +480,9 @@ export default class NovalistPlugin extends Plugin {
     for (const tpl of this.settings.characterTemplates) {
       tpl.fields = tpl.fields.filter(f => f.key !== 'FaceShot');
     }
+    // Migrate legacy customProperties map → customPropertyDefs
+    for (const tpl of this.settings.characterTemplates) migrateTemplateDefs(tpl);
+    for (const tpl of this.settings.locationTemplates) migrateTemplateDefs(tpl);
     if (!this.settings.activeCharacterTemplateId) {
       this.settings.activeCharacterTemplateId = 'default';
     }
@@ -997,8 +1000,8 @@ export default class NovalistPlugin extends Plugin {
     }
 
     lines.push('CustomProperties:');
-    for (const [key, value] of Object.entries(template.customProperties)) {
-      lines.push(`- ${key}: ${value}`);
+    for (const def of template.customPropertyDefs) {
+      lines.push(`- ${def.key}: ${def.defaultValue}`);
     }
     lines.push('');
 
@@ -1047,10 +1050,10 @@ export default class NovalistPlugin extends Plugin {
       lines.push('Images:', '');
     }
 
-    if (Object.keys(template.customProperties).length > 0) {
+    if (template.customPropertyDefs.length > 0) {
       lines.push('CustomProperties:');
-      for (const [key, value] of Object.entries(template.customProperties)) {
-        lines.push(`- ${key}: ${value}`);
+      for (const def of template.customPropertyDefs) {
+        lines.push(`- ${def.key}: ${def.defaultValue}`);
       }
     }
 

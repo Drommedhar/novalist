@@ -4180,3 +4180,57 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-template-textarea {
   width: 100%;
 }
+
+/* ── Custom property definition rows ───────────────────────────────── */
+
+.novalist-template-property-def {
+  margin-bottom: 8px;
+}
+
+.novalist-template-property-def > .setting-item > .setting-item-info {
+  display: none;
+}
+
+.novalist-template-property-def > .setting-item > .setting-item-control {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Ensure text inputs and dropdowns fill their grid cell */
+.novalist-template-property-def > .setting-item > .setting-item-control input[type="text"],
+.novalist-template-property-def > .setting-item > .setting-item-control input[type="number"],
+.novalist-template-property-def > .setting-item > .setting-item-control input[type="date"],
+.novalist-template-property-def > .setting-item > .setting-item-control select {
+  width: 100%;
+}
+
+/* Enum options indented below their parent row */
+.novalist-template-enum-options {
+  padding-left: 24px;
+  margin-top: 2px;
+  margin-bottom: 12px;
+}
+
+.novalist-template-enum-options > .setting-item {
+  padding: 2px 0;
+  border: none;
+}
+
+.novalist-template-enum-options > .setting-item > .setting-item-info {
+  display: none;
+}
+
+.novalist-template-enum-options > .setting-item > .setting-item-control {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.novalist-template-enum-options > .setting-item > .setting-item-control input[type="text"] {
+  width: 100%;
+}

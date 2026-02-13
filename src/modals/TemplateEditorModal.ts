@@ -9,11 +9,14 @@ import type NovalistPlugin from '../main';
 import { t } from '../i18n';
 import type {
   CharacterTemplate,
-  LocationTemplate
+  LocationTemplate,
+  CustomPropertyDefinition,
+  CustomPropertyType
 } from '../types';
 import {
   CHARACTER_TEMPLATE_KNOWN_FIELDS,
   LOCATION_TEMPLATE_KNOWN_FIELDS,
+  CUSTOM_PROPERTY_TYPES,
 } from '../types';
 
 // ── Character Template Editor ─────────────────────────────────────────
@@ -30,7 +33,7 @@ export class CharacterTemplateEditorModal extends Modal {
     this.template = {
       ...template,
       fields: template.fields.map(f => ({ ...f })),
-      customProperties: { ...template.customProperties },
+      customPropertyDefs: (template.customPropertyDefs ?? []).map(clonePropertyDef),
       sections: template.sections.map(s => ({ ...s })),
     };
     this.onSave = onSave;
@@ -159,6 +162,8 @@ export class CharacterTemplateEditorModal extends Modal {
       .onClick(() => {
         // Remove fields with empty keys
         this.template.fields = this.template.fields.filter(f => f.key.trim() !== '');
+        // Remove property defs with empty keys
+        this.template.customPropertyDefs = this.template.customPropertyDefs.filter(d => d.key.trim() !== '');
         void this.onSave(this.template);
         this.close();
       });
@@ -170,47 +175,10 @@ export class CharacterTemplateEditorModal extends Modal {
   }
 
   private renderCustomProperties(containerEl: HTMLElement): void {
-    new Setting(containerEl)
-      .setName(t('template.defaultCustomProperties'))
-      .setHeading();
-
-    const entries = Object.entries(this.template.customProperties);
-    for (const [key, value] of entries) {
-      new Setting(containerEl)
-        .addText(text => text
-          .setPlaceholder(t('template.propertyName'))
-          .setValue(key)
-          .onChange(newKey => {
-            const val = this.template.customProperties[key];
-            delete this.template.customProperties[key];
-            this.template.customProperties[newKey] = val;
-          }))
-        .addText(text => text
-          .setPlaceholder(t('template.propertyValue'))
-          .setValue(value)
-          .onChange(newVal => {
-            // Find the current key — it may have been renamed
-            const currentKey = Object.keys(this.template.customProperties).find(k =>
-              this.template.customProperties[k] === value
-            ) ?? key;
-            this.template.customProperties[currentKey] = newVal;
-          }))
-        .addButton(btn => btn
-          .setIcon('trash')
-          .setTooltip(t('template.removeProperty'))
-          .onClick(() => {
-            delete this.template.customProperties[key];
-            this.render();
-          }));
-    }
-
-    new ButtonComponent(containerEl)
-      .setButtonText(t('template.addProperty'))
-      .onClick(() => {
-        const idx = Object.keys(this.template.customProperties).length + 1;
-        this.template.customProperties[`prop${idx}`] = '';
-        this.render();
-      });
+    renderCustomPropertyDefs(containerEl, this.template.customPropertyDefs, (defs) => {
+      this.template.customPropertyDefs = defs;
+      this.render();
+    });
   }
 
   private renderSections(containerEl: HTMLElement): void {
@@ -270,7 +238,7 @@ export class LocationTemplateEditorModal extends Modal {
     this.template = {
       ...template,
       fields: template.fields.map(f => ({ ...f })),
-      customProperties: { ...template.customProperties },
+      customPropertyDefs: (template.customPropertyDefs ?? []).map(clonePropertyDef),
       sections: template.sections.map(s => ({ ...s })),
     };
     this.onSave = onSave;
@@ -386,6 +354,7 @@ export class LocationTemplateEditorModal extends Modal {
       .setCta()
       .onClick(() => {
         this.template.fields = this.template.fields.filter(f => f.key.trim() !== '');
+        this.template.customPropertyDefs = this.template.customPropertyDefs.filter(d => d.key.trim() !== '');
         void this.onSave(this.template);
         this.close();
       });
@@ -397,46 +366,10 @@ export class LocationTemplateEditorModal extends Modal {
   }
 
   private renderCustomProperties(containerEl: HTMLElement): void {
-    new Setting(containerEl)
-      .setName(t('template.defaultCustomProperties'))
-      .setHeading();
-
-    const entries = Object.entries(this.template.customProperties);
-    for (const [key, value] of entries) {
-      new Setting(containerEl)
-        .addText(text => text
-          .setPlaceholder(t('template.propertyName'))
-          .setValue(key)
-          .onChange(newKey => {
-            const val = this.template.customProperties[key];
-            delete this.template.customProperties[key];
-            this.template.customProperties[newKey] = val;
-          }))
-        .addText(text => text
-          .setPlaceholder(t('template.propertyValue'))
-          .setValue(value)
-          .onChange(newVal => {
-            const currentKey = Object.keys(this.template.customProperties).find(k =>
-              this.template.customProperties[k] === value
-            ) ?? key;
-            this.template.customProperties[currentKey] = newVal;
-          }))
-        .addButton(btn => btn
-          .setIcon('trash')
-          .setTooltip(t('template.removeProperty'))
-          .onClick(() => {
-            delete this.template.customProperties[key];
-            this.render();
-          }));
-    }
-
-    new ButtonComponent(containerEl)
-      .setButtonText(t('template.addProperty'))
-      .onClick(() => {
-        const idx = Object.keys(this.template.customProperties).length + 1;
-        this.template.customProperties[`prop${idx}`] = '';
-        this.render();
-      });
+    renderCustomPropertyDefs(containerEl, this.template.customPropertyDefs, (defs) => {
+      this.template.customPropertyDefs = defs;
+      this.render();
+    });
   }
 
   private renderSections(containerEl: HTMLElement): void {
@@ -481,4 +414,148 @@ export class LocationTemplateEditorModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
   }
+}
+
+// ── Shared helpers for typed custom-property definitions ──────────────
+
+function clonePropertyDef(d: CustomPropertyDefinition): CustomPropertyDefinition {
+  return { ...d, enumOptions: d.enumOptions ? [...d.enumOptions] : undefined };
+}
+
+/** Render the "Default custom properties" section shared by both template editors. */
+function renderCustomPropertyDefs(
+  containerEl: HTMLElement,
+  defs: CustomPropertyDefinition[],
+  onChange: (defs: CustomPropertyDefinition[]) => void
+): void {
+  new Setting(containerEl)
+    .setName(t('template.defaultCustomProperties'))
+    .setHeading();
+
+  for (let i = 0; i < defs.length; i++) {
+    const def = defs[i];
+    const wrapper = containerEl.createDiv('novalist-template-property-def');
+
+    // Row 1: name + type + default value + delete
+    const row = new Setting(wrapper);
+    row.addText(text => text
+      .setPlaceholder(t('template.propertyName'))
+      .setValue(def.key)
+      .onChange(v => { def.key = v; }));
+
+    row.addDropdown(dd => {
+      for (const pt of CUSTOM_PROPERTY_TYPES) {
+        dd.addOption(pt, t(`template.propType.${pt}` as Parameters<typeof t>[0]));
+      }
+      dd.setValue(def.type);
+      dd.onChange(v => {
+        def.type = v as CustomPropertyType;
+        // Reset default value when switching type
+        if (v === 'bool') def.defaultValue = def.defaultValue || 'false';
+        if (v === 'enum' && !def.enumOptions) def.enumOptions = [];
+        onChange(defs);
+      });
+    });
+
+    // Default value input (depends on type)
+    switch (def.type) {
+      case 'bool':
+        row.addToggle(toggle => toggle
+          .setValue(def.defaultValue === 'true')
+          .onChange(v => { def.defaultValue = String(v); }));
+        break;
+      case 'date':
+        row.addText(text => {
+          text.setPlaceholder(t('template.datePlaceholder'));
+          text.setValue(def.defaultValue);
+          text.inputEl.type = 'date';
+          text.onChange(v => { def.defaultValue = v; });
+        });
+        break;
+      case 'int':
+        row.addText(text => {
+          text.setPlaceholder('0');
+          text.setValue(def.defaultValue);
+          text.inputEl.type = 'number';
+          text.inputEl.step = '1';
+          text.onChange(v => { def.defaultValue = v; });
+        });
+        break;
+      case 'enum':
+        if (def.enumOptions && def.enumOptions.length > 0) {
+          row.addDropdown(dd => {
+            for (const opt of def.enumOptions ?? []) {
+              dd.addOption(opt, opt);
+            }
+            dd.setValue(def.defaultValue);
+            dd.onChange(v => { def.defaultValue = v; });
+          });
+        } else {
+          row.addText(text => text
+            .setPlaceholder(t('template.propertyValue'))
+            .setValue(def.defaultValue)
+            .setDisabled(true));
+        }
+        break;
+      default: // 'string'
+        row.addText(text => text
+          .setPlaceholder(t('template.propertyValue'))
+          .setValue(def.defaultValue)
+          .onChange(v => { def.defaultValue = v; }));
+    }
+
+    row.addButton(btn => btn
+      .setIcon('trash')
+      .setTooltip(t('template.removeProperty'))
+      .onClick(() => {
+        defs.splice(i, 1);
+        onChange(defs);
+      }));
+
+    // Row 2: enum options (only when type === 'enum')
+    if (def.type === 'enum') {
+      renderEnumOptions(wrapper, def, () => onChange(defs));
+    }
+  }
+
+  new ButtonComponent(containerEl)
+    .setButtonText(t('template.addProperty'))
+    .onClick(() => {
+      defs.push({ key: `prop${defs.length + 1}`, type: 'string', defaultValue: '' });
+      onChange(defs);
+    });
+}
+
+/** Render the enumeration option rows for a single custom-property definition. */
+function renderEnumOptions(
+  container: HTMLElement,
+  def: CustomPropertyDefinition,
+  onChange: () => void
+): void {
+  const enumContainer = container.createDiv('novalist-template-enum-options');
+  const opts = def.enumOptions ?? [];
+
+  for (let i = 0; i < opts.length; i++) {
+    new Setting(enumContainer)
+      .setClass('novalist-template-enum-row')
+      .addText(text => text
+        .setPlaceholder(t('template.enumOption'))
+        .setValue(opts[i])
+        .onChange(v => { opts[i] = v; }))
+      .addButton(btn => btn
+        .setIcon('trash')
+        .setTooltip(t('template.removeEnumOption'))
+        .onClick(() => {
+          opts.splice(i, 1);
+          onChange();
+        }));
+  }
+
+  new ButtonComponent(enumContainer)
+    .setButtonText(t('template.addEnumOption'))
+    .onClick(() => {
+      opts.push('');
+      def.enumOptions = opts;
+      onChange();
+    });
 }

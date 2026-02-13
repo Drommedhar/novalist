@@ -58,7 +58,7 @@ A structured form editor that replaces the raw Markdown view for character files
 - **Physical attributes** — Eye color, hair color/length, height, build, skin tone, distinguishing features
 - **Images** — Named image slots with drag-and-drop upload, an image browser, and thumbnail previews. Duplicates are detected via SHA-256 hashing.
 - **Relationships** — Character links with role labels. An inline suggester helps you pick characters, and the plugin automatically prompts you to define the inverse relationship on the target character.
-- **Custom properties** — Arbitrary key-value pairs you can add and remove freely
+- **Custom properties** — Typed key-value pairs you can add and remove freely. Each property has a selectable data type: `Text`, `Integer`, `Boolean`, `Date` (ISO format), or `Enum` (custom definable string options). Types are defined in the entity template and the sheet view renders the appropriate input control (text field, number spinner, toggle, date picker, or dropdown).
 - **Free-form sections** — User-defined Markdown sections (e.g. Backstory, Notes)
 - **Chapter overrides** — Select an act, chapter, and optionally a scene, then override any field for that point in the story. The override cascade is: scene > chapter > act > base data. Act-level overrides apply to all chapters within that act unless a more specific chapter or scene override exists.
 
@@ -72,8 +72,8 @@ A structured form editor for location files with fields for name, type, descript
 
 Templates control the structure of new character and location files. Each template defines which fields, sections, images, relationships, and custom properties are included when an entity is created. A built-in `Default` template ships with all standard fields enabled.
 
-- **Character templates** configure fields (gender, age, role, physical attributes, etc.), whether to include relationships, images, and chapter overrides, plus optional pre-populated custom properties and free-form sections.
-- **Location templates** configure fields (type, description), images, custom properties, and sections.
+- **Character templates** configure fields (gender, age, role, physical attributes, etc.), whether to include relationships, images, and chapter overrides, plus optional typed custom property definitions and free-form sections.
+- **Location templates** configure fields (type, description), images, typed custom properties, and sections.
 - Create, duplicate, edit, and delete templates from **Settings > Character templates / Location templates**. Built-in templates can be edited but not deleted.
 - Set an **active template** per entity type. The active template is pre-selected in the creation dialog. When multiple templates exist, a dropdown appears in the creation modal.
 - A `TemplateId` is stored in each generated file. When opening a sheet, missing custom properties and sections from the associated template are automatically merged in, so template changes propagate to existing entities.
