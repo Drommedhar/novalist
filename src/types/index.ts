@@ -28,6 +28,11 @@ export interface NovalistSettings {
   commentThreads: CommentThread[];
   // Plot Board
   plotBoard: PlotBoardData;
+  // Entity Templates
+  characterTemplates: CharacterTemplate[];
+  locationTemplates: LocationTemplate[];
+  activeCharacterTemplateId: string;
+  activeLocationTemplateId: string;
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────
@@ -209,6 +214,7 @@ export interface CharacterSheetData {
   customProperties: Record<string, string>;
   sections: CharacterSheetSection[];
   chapterOverrides: CharacterChapterOverride[];
+  templateId?: string;
 }
 
 // Location Sheet Data Structure
@@ -225,7 +231,63 @@ export interface LocationSheetData {
   relationships: LocationRelationship[]; // Kept for compatibility or future use, though UI removed
   customProperties: Record<string, string>;
   sections: CharacterSheetSection[]; // Reuse section structure
+  templateId?: string;
 }
+
+// ─── Entity Templates ────────────────────────────────────────────────
+
+export interface TemplateField {
+  /** Field key written to the sheet (e.g. 'Gender', 'EyeColor'). */
+  key: string;
+  /** Default value that gets populated when file is created. */
+  defaultValue: string;
+}
+
+export interface TemplateSection {
+  /** Section title (e.g. 'Backstory', 'Personality'). */
+  title: string;
+  /** Default content for the section when the file is created. */
+  defaultContent: string;
+}
+
+export interface CharacterTemplate {
+  id: string;
+  name: string;
+  /** Built-in templates cannot be deleted. */
+  builtIn: boolean;
+  /** Fields included in the CharacterSheet block (besides Name/Surname which are always present). */
+  fields: TemplateField[];
+  /** Custom properties pre-populated in the sheet. */
+  customProperties: Record<string, string>;
+  /** Free-form sections to include. */
+  sections: TemplateSection[];
+  includeRelationships: boolean;
+  includeImages: boolean;
+  includeChapterOverrides: boolean;
+}
+
+export interface LocationTemplate {
+  id: string;
+  name: string;
+  builtIn: boolean;
+  /** Fields included in the LocationSheet block (besides Name which is always present). */
+  fields: TemplateField[];
+  customProperties: Record<string, string>;
+  sections: TemplateSection[];
+  includeImages: boolean;
+}
+
+/** All known fields for character sheets (used in template editor). */
+export const CHARACTER_TEMPLATE_KNOWN_FIELDS: string[] = [
+  'Gender', 'Age', 'Role',
+  'EyeColor', 'HairColor', 'HairLength',
+  'Height', 'Build', 'SkinTone', 'DistinguishingFeatures',
+];
+
+/** All known fields for location sheets (used in template editor). */
+export const LOCATION_TEMPLATE_KNOWN_FIELDS: string[] = [
+  'Type', 'Description',
+];
 
 // Word Count & Statistics
 export interface ChapterWordCount {

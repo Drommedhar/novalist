@@ -11,10 +11,12 @@ export class LocationModal extends Modal {
   plugin: NovalistPlugin;
   name: string = '';
   description: string = '';
+  templateId: string;
 
   constructor(app: App, plugin: NovalistPlugin) {
     super(app);
     this.plugin = plugin;
+    this.templateId = plugin.settings.activeLocationTemplateId;
   }
 
   onOpen() {
@@ -30,6 +32,20 @@ export class LocationModal extends Modal {
     new Setting(contentEl)
       .setName(t('modal.description'))
       .addTextArea(text => text.onChange(value => this.description = value));
+
+    // Template selector
+    const templates = this.plugin.settings.locationTemplates;
+    if (templates.length > 1) {
+      new Setting(contentEl)
+        .setName(t('modal.template'))
+        .addDropdown(dropdown => {
+          for (const tpl of templates) {
+            dropdown.addOption(tpl.id, tpl.name);
+          }
+          dropdown.setValue(this.templateId);
+          dropdown.onChange(value => { this.templateId = value; });
+        });
+    }
     
     const buttonDiv = contentEl.createDiv('modal-button-container');
     
@@ -41,7 +57,7 @@ export class LocationModal extends Modal {
       .setButtonText(t('modal.create'))
       .setCta()
       .onClick(async () => {
-        await this.plugin.createLocation(this.name, this.description);
+        await this.plugin.createLocation(this.name, this.description, this.templateId);
         this.close();
       });
   }

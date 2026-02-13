@@ -21,9 +21,11 @@ import {
   CharacterListData,
   LocationListData,
   ChapterStatus,
-  SceneData
+  SceneData,
+  CharacterTemplate,
+  LocationTemplate
 } from './types';
-import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS } from './settings/NovalistSettings';
+import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS, DEFAULT_CHARACTER_TEMPLATE, DEFAULT_LOCATION_TEMPLATE, cloneCharacterTemplate, cloneLocationTemplate } from './settings/NovalistSettings';
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
 import { NovalistExplorerView, NOVELIST_EXPLORER_VIEW_TYPE } from './views/NovalistExplorerView';
 import { CharacterMapView, CHARACTER_MAP_VIEW_TYPE } from './views/CharacterMapView';
@@ -405,6 +407,24 @@ export default class NovalistPlugin extends Plugin {
     if (!pb.cardLabels) pb.cardLabels = {};
     if (!pb.viewMode) pb.viewMode = 'board';
     if (!pb.collapsedActs) pb.collapsedActs = [];
+
+    // Migrate templates: ensure templates exist for older saved data
+    if (!this.settings.characterTemplates || this.settings.characterTemplates.length === 0) {
+      this.settings.characterTemplates = [cloneCharacterTemplate(DEFAULT_CHARACTER_TEMPLATE)];
+    }
+    if (!this.settings.locationTemplates || this.settings.locationTemplates.length === 0) {
+      this.settings.locationTemplates = [cloneLocationTemplate(DEFAULT_LOCATION_TEMPLATE)];
+    }
+    // Remove deprecated FaceShot field from saved character templates
+    for (const tpl of this.settings.characterTemplates) {
+      tpl.fields = tpl.fields.filter(f => f.key !== 'FaceShot');
+    }
+    if (!this.settings.activeCharacterTemplateId) {
+      this.settings.activeCharacterTemplateId = 'default';
+    }
+    if (!this.settings.activeLocationTemplateId) {
+      this.settings.activeLocationTemplateId = 'default';
+    }
   }
 
   async saveSettings(): Promise<void> {
@@ -618,7 +638,6 @@ export default class NovalistPlugin extends Plugin {
       `${root}/${this.settings.locationFolder}`,
       `${root}/${this.settings.chapterFolder}`,
       `${root}/${this.settings.imageFolder}`,
-      `${root}/Templates`
     ];
 
     for (const folder of folders) {
@@ -627,77 +646,121 @@ export default class NovalistPlugin extends Plugin {
       }
     }
 
-    await this.createTemplateFiles();
     new Notice(t('notice.projectInitialized'));
   }
 
-  async createTemplateFiles(): Promise<void> {
-    const root = this.settings.projectPath;
-    const templatePath = `${root}/Templates`;
-
-    const templates = [
-      {
-        name: 'Character Template.md',
-        content: `# Name Surname
-
-## General Information
-- **Role**: Side
-- **Gender**: 
-- **Age**: 
-- **Relationship**: 
-
-## Appearance
-(Describe how the character looks)
-
-## Personality
-(Describe traits and behavior)
-
-## Relationships
-(List connections to other characters)
-
-## Images
-- **Main**: `
-      },
-      {
-        name: 'Location Template.md',
-        content: `# Location Name
-
-## General Information
-- **Type**: 
-- **Importance**: 
-
-## Description
-(General overview of the place)
-
-## History
-(Background and events)
-
-## Images
-- **Main**: `
-      },
-      {
-        name: 'Chapter Template.md',
-        content: `---
-      guid: 
-      order: 1
-    ---
-
-    # Chapter Name
-
-    (Write your story here)
-    `
-      }
-    ];
-
-    for (const t of templates) {
-      const path = `${templatePath}/${t.name}`;
-      if (!this.app.vault.getAbstractFileByPath(path)) {
-        await this.app.vault.create(path, t.content);
-      }
-    }
+  getCharacterTemplate(templateId?: string): CharacterTemplate {
+    const id = templateId ?? this.settings.activeCharacterTemplateId;
+    return this.settings.characterTemplates.find(t => t.id === id)
+      ?? this.settings.characterTemplates[0]
+      ?? DEFAULT_CHARACTER_TEMPLATE;
   }
 
-  async createCharacter(name: string, surname: string): Promise<void> {
+  getLocationTemplate(templateId?: string): LocationTemplate {
+    const id = templateId ?? this.settings.activeLocationTemplateId;
+    return this.settings.locationTemplates.find(t => t.id === id)
+      ?? this.settings.locationTemplates[0]
+      ?? DEFAULT_LOCATION_TEMPLATE;
+  }
+
+  generateCharacterContent(name: string, surname: string, template: CharacterTemplate): string {
+    const fullName = `${name} ${surname}`.trim();
+    const lines: string[] = [
+      `# ${fullName}`,
+      '',
+      '## CharacterSheet',
+      `TemplateId: ${template.id}`,
+      `Name: ${name}`,
+      `Surname: ${surname}`,
+    ];
+
+    for (const field of template.fields) {
+      lines.push(`${field.key}: ${field.defaultValue}`);
+    }
+
+    lines.push('');
+
+    if (template.includeRelationships) {
+      lines.push('Relationships:', '');
+    }
+
+    if (template.includeImages) {
+      lines.push('Images:', '');
+    }
+
+    lines.push('CustomProperties:');
+    for (const [key, value] of Object.entries(template.customProperties)) {
+      lines.push(`- ${key}: ${value}`);
+    }
+    lines.push('');
+
+    lines.push('Sections:');
+    for (const section of template.sections) {
+      lines.push(section.title);
+      if (section.defaultContent) {
+        lines.push(section.defaultContent);
+      }
+      lines.push('---');
+    }
+    lines.push('');
+
+    if (template.includeChapterOverrides) {
+      lines.push('ChapterOverrides:');
+    }
+
+    return lines.join('\n');
+  }
+
+  generateLocationContent(name: string, description: string, template: LocationTemplate): string {
+    const lines: string[] = [
+      `# ${name}`,
+      '',
+      '## LocationSheet',
+      `TemplateId: ${template.id}`,
+      `Name: ${name}`,
+    ];
+
+    for (const field of template.fields) {
+      if (field.key === 'Description') {
+        lines.push('Description:');
+        lines.push(description || field.defaultValue || '');
+      } else {
+        lines.push(`${field.key}: ${field.defaultValue}`);
+      }
+    }
+
+    // If template doesn't have a Description field, add description inline if provided
+    if (!template.fields.some(f => f.key === 'Description') && description) {
+      lines.push('Description:');
+      lines.push(description);
+    }
+
+    if (template.includeImages) {
+      lines.push('Images:', '');
+    }
+
+    if (Object.keys(template.customProperties).length > 0) {
+      lines.push('CustomProperties:');
+      for (const [key, value] of Object.entries(template.customProperties)) {
+        lines.push(`- ${key}: ${value}`);
+      }
+    }
+
+    if (template.sections.length > 0) {
+      lines.push('Sections:');
+      for (const section of template.sections) {
+        lines.push(section.title);
+        if (section.defaultContent) {
+          lines.push(section.defaultContent);
+        }
+        lines.push('---');
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  async createCharacter(name: string, surname: string, templateId?: string): Promise<void> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.characterFolder}`;
     const fileName = `${name} ${surname}`.trim();
@@ -708,33 +771,14 @@ export default class NovalistPlugin extends Plugin {
       return;
     }
 
-    const content = [
-      `# ${fileName}`,
-      '',
-      '## CharacterSheet',
-      `Name: ${name}`,
-      `Surname: ${surname}`,
-      'Gender: ',
-      'Age: ',
-      'Role: ',
-      'FaceShot: ',
-      '',
-      'Relationships:',
-      '',
-      'Images:',
-      '',
-      'CustomProperties:',
-      '',
-      'Sections:',
-      '',
-      'ChapterOverrides:'
-    ].join('\n');
+    const template = this.getCharacterTemplate(templateId);
+    const content = this.generateCharacterContent(name, surname, template);
 
     await this.app.vault.create(path, content);
     new Notice(t('notice.characterCreated', { name: fileName }));
   }
 
-  async createLocation(name: string, description: string): Promise<void> {
+  async createLocation(name: string, description: string, templateId?: string): Promise<void> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.locationFolder}`;
     const path = `${folder}/${name}.md`;
@@ -744,16 +788,8 @@ export default class NovalistPlugin extends Plugin {
       return;
     }
 
-    const content = `# ${name}
-
-## Description
-${description}
-
-## History
-
-## Images
-- **Main**: 
-`;
+    const template = this.getLocationTemplate(templateId);
+    const content = this.generateLocationContent(name, description, template);
 
     await this.app.vault.create(path, content);
     new Notice(t('notice.locationCreated', { name }));
@@ -1046,13 +1082,13 @@ order: ${orderValue}
     const sheetContent = sheetLines.join('\n');
     
     const parseField = (fieldName: string): string => {
-      const pattern = new RegExp(`^\\s*${fieldName}:\\s*(.*?)$`, 'm');
+      const pattern = new RegExp(`^[ \\t]*${fieldName}:[ \\t]*(.*?)$`, 'm');
       const match = sheetContent.match(pattern);
       if (!match) return '';
       const value = match[1].trim();
       // Check for corrupted data
       // Images: is a section, not a field.
-      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'FaceShot:', 'Relationships:', 'Images:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:'];
+      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'FaceShot:', 'EyeColor:', 'HairColor:', 'HairLength:', 'Height:', 'Build:', 'SkinTone:', 'DistinguishingFeatures:', 'Relationships:', 'Images:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:', 'TemplateId:'];
       for (const field of knownFields) {
         if (value.includes(field)) return '';
       }
@@ -1559,7 +1595,7 @@ order: ${orderValue}
          const sheetLines = this.getSectionLines(content, 'CharacterSheet');
          if (sheetLines.length > 0) {
            const sheetContent = sheetLines.join('\n');
-           const match = sheetContent.match(/^\s*Role:\s*(.*?)$/m);
+           const match = sheetContent.match(/^[ \t]*Role:[ \t]*(.*?)$/m);
            if (match) role = match[1].trim();
          }
       }

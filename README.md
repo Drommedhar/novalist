@@ -6,7 +6,7 @@ A comprehensive novel writing environment for Obsidian. Novalist turns your vaul
 
 ## Getting Started
 
-On first launch Novalist opens a **Startup Wizard** that walks you through project setup. Pick a project folder name, choose your preferred dialogue language (for smart-quote auto-replacement), and Novalist creates the folder structure for you: `Characters/`, `Locations/`, `Chapters/`, `Images/`, and `Templates/` with ready-to-use template files.
+On first launch Novalist opens a **Startup Wizard** that walks you through project setup. Pick a project folder name, choose your preferred dialogue language (for smart-quote auto-replacement), and Novalist creates the folder structure for you: `Characters/`, `Locations/`, `Chapters/`, and `Images/`.
 
 You can re-run the wizard at any time from the command palette with **Novalist: Initialize novel project structure**.
 
@@ -47,6 +47,16 @@ Renaming a character in the sheet automatically renames the underlying file. A *
 ### Location Sheet View
 
 A structured form editor for location files with fields for name, type, description, custom properties, images, and free-form sections. Works the same way as the character sheet.
+
+### Entity Templates
+
+Templates control the structure of new character and location files. Each template defines which fields, sections, images, relationships, and custom properties are included when an entity is created. A built-in `Default` template ships with all standard fields enabled.
+
+- **Character templates** configure fields (gender, age, role, physical attributes, etc.), whether to include relationships, images, and chapter overrides, plus optional pre-populated custom properties and free-form sections.
+- **Location templates** configure fields (type, description), images, custom properties, and sections.
+- Create, duplicate, edit, and delete templates from **Settings > Character templates / Location templates**. Built-in templates can be edited but not deleted.
+- Set an **active template** per entity type. The active template is pre-selected in the creation dialog. When multiple templates exist, a dropdown appears in the creation modal.
+- A `TemplateId` is stored in each generated file. When opening a sheet, missing custom properties and sections from the associated template are automatically merged in, so template changes propagate to existing entities.
 
 ### Context Sidebar
 
@@ -129,6 +139,10 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 | Location folder | Subfolder name for locations | `Locations` |
 | Chapter folder | Subfolder name for chapters | `Chapters` |
 | Image folder | Subfolder name for images | `Images` |
+| Character templates | Define which fields, sections, and options new character files include | One built-in `Default` template |
+| Location templates | Define which fields, sections, and options new location files include | One built-in `Default` template |
+| Active character template | Pre-selected template when creating a character | `Default` |
+| Active location template | Pre-selected template when creating a location | `Default` |
 | Language | Auto-replacement language preset | `de-low` |
 | Auto-replacements | Editable token → replacement pairs (in Custom mode) | Language-dependent |
 | Book paragraph spacing | Toggle book-style paragraph gaps in edit mode | Off |

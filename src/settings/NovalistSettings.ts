@@ -1,4 +1,4 @@
-﻿import { LanguageKey, AutoReplacementPair, NovalistSettings } from '../types';
+﻿import { LanguageKey, AutoReplacementPair, NovalistSettings, CharacterTemplate, LocationTemplate } from '../types';
 import { t } from '../i18n';
 
 export function getLanguageLabels(): Record<LanguageKey, string> {
@@ -73,6 +73,62 @@ export const LANGUAGE_DEFAULTS: Record<Exclude<LanguageKey, 'custom'>, AutoRepla
 export const cloneAutoReplacements = (pairs: AutoReplacementPair[]): AutoReplacementPair[] =>
   pairs.map((pair) => ({ ...pair }));
 
+// ── Default entity templates ──────────────────────────────────────────
+
+export const DEFAULT_CHARACTER_TEMPLATE: CharacterTemplate = {
+  id: 'default',
+  name: 'Default',
+  builtIn: true,
+  fields: [
+    { key: 'Gender', defaultValue: '' },
+    { key: 'Age', defaultValue: '' },
+    { key: 'Role', defaultValue: '' },
+    { key: 'EyeColor', defaultValue: '' },
+    { key: 'HairColor', defaultValue: '' },
+    { key: 'HairLength', defaultValue: '' },
+    { key: 'Height', defaultValue: '' },
+    { key: 'Build', defaultValue: '' },
+    { key: 'SkinTone', defaultValue: '' },
+    { key: 'DistinguishingFeatures', defaultValue: '' },
+  ],
+  customProperties: {},
+  sections: [],
+  includeRelationships: true,
+  includeImages: true,
+  includeChapterOverrides: true,
+};
+
+export const DEFAULT_LOCATION_TEMPLATE: LocationTemplate = {
+  id: 'default',
+  name: 'Default',
+  builtIn: true,
+  fields: [
+    { key: 'Type', defaultValue: '' },
+    { key: 'Description', defaultValue: '' },
+  ],
+  customProperties: {},
+  sections: [],
+  includeImages: true,
+};
+
+export function cloneCharacterTemplate(tpl: CharacterTemplate): CharacterTemplate {
+  return {
+    ...tpl,
+    fields: tpl.fields.map(f => ({ ...f })),
+    customProperties: { ...tpl.customProperties },
+    sections: tpl.sections.map(s => ({ ...s })),
+  };
+}
+
+export function cloneLocationTemplate(tpl: LocationTemplate): LocationTemplate {
+  return {
+    ...tpl,
+    fields: tpl.fields.map(f => ({ ...f })),
+    customProperties: { ...tpl.customProperties },
+    sections: tpl.sections.map(s => ({ ...s })),
+  };
+}
+
 export const DEFAULT_SETTINGS: NovalistSettings = {
   projectPath: 'NovelProject',
   autoReplacements: cloneAutoReplacements(LANGUAGE_DEFAULTS['de-low']),
@@ -99,5 +155,9 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   enableToolbar: true,
   enableAnnotations: true,
   commentThreads: [],
-  plotBoard: { columns: [], cells: {}, labels: [], cardColors: {}, cardLabels: {}, viewMode: 'board', collapsedActs: [] }
+  plotBoard: { columns: [], cells: {}, labels: [], cardColors: {}, cardLabels: {}, viewMode: 'board', collapsedActs: [] },
+  characterTemplates: [cloneCharacterTemplate(DEFAULT_CHARACTER_TEMPLATE)],
+  locationTemplates: [cloneLocationTemplate(DEFAULT_LOCATION_TEMPLATE)],
+  activeCharacterTemplateId: 'default',
+  activeLocationTemplateId: 'default',
 };

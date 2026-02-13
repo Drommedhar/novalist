@@ -229,6 +229,7 @@ export class CharacterSheetView extends TextFileView {
     const content = await this.app.vault.read(file);
     this.originalData = content;
     this.data = parseCharacterSheet(content);
+    this.mergeFromTemplate();
     this.loadKnownSections();
     void this.render();
   }
@@ -257,8 +258,30 @@ export class CharacterSheetView extends TextFileView {
   setViewData(data: string, _clear: boolean): void {
     this.originalData = data;
     this.data = parseCharacterSheet(data);
+    this.mergeFromTemplate();
     this.loadKnownSections();
     void this.render();
+  }
+
+  /** Merge missing custom properties and sections from the associated template. */
+  private mergeFromTemplate(): void {
+    const template = this.plugin.getCharacterTemplate(this.data.templateId);
+    // Add custom properties defined in the template but missing from the data
+    for (const [key, value] of Object.entries(template.customProperties)) {
+      if (!(key in this.data.customProperties)) {
+        this.data.customProperties[key] = value;
+      }
+    }
+    // Add sections defined in the template but missing from the data
+    for (const section of template.sections) {
+      if (!this.data.sections.some(s => s.title === section.title)) {
+        this.data.sections.push({ title: section.title, content: section.defaultContent });
+      }
+    }
+    // Ensure templateId is set
+    if (!this.data.templateId) {
+      this.data.templateId = template.id;
+    }
   }
 
   private loadKnownSections(): void {

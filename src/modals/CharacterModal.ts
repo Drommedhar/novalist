@@ -11,10 +11,12 @@ export class CharacterModal extends Modal {
   plugin: NovalistPlugin;
   name: string = '';
   surname: string = '';
+  templateId: string;
 
   constructor(app: App, plugin: NovalistPlugin) {
     super(app);
     this.plugin = plugin;
+    this.templateId = plugin.settings.activeCharacterTemplateId;
   }
 
   onOpen() {
@@ -32,6 +34,20 @@ export class CharacterModal extends Modal {
     new Setting(contentEl)
       .setName(t('modal.surname'))
       .addText(text => text.onChange(value => this.surname = value));
+
+    // Template selector
+    const templates = this.plugin.settings.characterTemplates;
+    if (templates.length > 1) {
+      new Setting(contentEl)
+        .setName(t('modal.template'))
+        .addDropdown(dropdown => {
+          for (const tpl of templates) {
+            dropdown.addOption(tpl.id, tpl.name);
+          }
+          dropdown.setValue(this.templateId);
+          dropdown.onChange(value => { this.templateId = value; });
+        });
+    }
     
     // Buttons
     const buttonDiv = contentEl.createDiv('modal-button-container');
@@ -46,7 +62,8 @@ export class CharacterModal extends Modal {
       .onClick(async () => {
         await this.plugin.createCharacter(
           this.name,
-          this.surname
+          this.surname,
+          this.templateId
         );
         this.close();
       });

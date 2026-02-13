@@ -29,11 +29,11 @@ export function parseLocationSheet(content: string): LocationSheetData {
     
     // Helper to parse a single-line value
     const parseField = (content: string, fieldName: string): string => {
-      const pattern = new RegExp(`^\\s*${fieldName}:\\s*(.*?)$`, 'm');
+      const pattern = new RegExp(`^[ \\t]*${fieldName}:[ \\t]*(.*?)$`, 'm');
       const match = content.match(pattern);
       if (!match) return '';
       const value = match[1].trim();
-      const knownFields = ['Name:', 'Type:', 'Description:', 'Relationships:', 'CustomProperties:', 'Sections:'];
+      const knownFields = ['Name:', 'Type:', 'Description:', 'Relationships:', 'CustomProperties:', 'Sections:', 'TemplateId:', 'Images:'];
       for (const field of knownFields) {
         if (value.includes(field)) {
           return value.substring(0, value.indexOf(field)).trim();
@@ -46,6 +46,7 @@ export function parseLocationSheet(content: string): LocationSheetData {
     if (parsedName) data.name = parsedName;
     
     data.type = parseField(sheetContent, 'Type');
+    data.templateId = parseField(sheetContent, 'TemplateId') || undefined;
 
     // Parse description (multi-line)
     const descSectionIdx = sheetContent.indexOf('\nDescription:\n');
@@ -193,6 +194,9 @@ export function serializeLocationSheet(data: LocationSheetData): string {
   
   // LocationSheet block
   result += '## LocationSheet\n';
+  if (data.templateId) {
+    result += `TemplateId: ${sanitize(data.templateId)}\n`;
+  }
   result += `Name: ${sanitize(data.name)}\n`;
   result += `Type: ${sanitize(data.type)}\n`;
 

@@ -87,8 +87,30 @@ export class LocationSheetView extends TextFileView {
   setViewData(data: string, _clear: boolean): void {
     this.originalData = data;
     this.data = parseLocationSheet(data);
+    this.mergeFromTemplate();
     this.loadKnownSections();
     this.render();
+  }
+
+  /** Merge missing custom properties and sections from the associated template. */
+  private mergeFromTemplate(): void {
+    const template = this.plugin.getLocationTemplate(this.data.templateId);
+    // Add custom properties defined in the template but missing from the data
+    for (const [key, value] of Object.entries(template.customProperties)) {
+      if (!(key in this.data.customProperties)) {
+        this.data.customProperties[key] = value;
+      }
+    }
+    // Add sections defined in the template but missing from the data
+    for (const section of template.sections) {
+      if (!this.data.sections.some(s => s.title === section.title)) {
+        this.data.sections.push({ title: section.title, content: section.defaultContent });
+      }
+    }
+    // Ensure templateId is set
+    if (!this.data.templateId) {
+      this.data.templateId = template.id;
+    }
   }
 
   private loadKnownSections(): void {

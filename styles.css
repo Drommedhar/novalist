@@ -4126,3 +4126,24 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   cursor: pointer;
   font-weight: 600;
 }
+
+/* ── Template editor & settings spacing ────────────────────────────── */
+
+.novalist-char-templates > button:last-child,
+.novalist-loc-templates > button:last-child {
+  margin-bottom: 24px;
+}
+
+.novalist-template-editor > button {
+  margin-bottom: 16px;
+}
+
+.novalist-template-section {
+  margin-bottom: 8px;
+  padding-left: 8px;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.novalist-template-textarea {
+  width: 100%;
+}

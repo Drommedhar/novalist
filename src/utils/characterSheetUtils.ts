@@ -45,12 +45,12 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
     
     // Helper to parse a single-line value (stops at newline or next known field)
     const parseField = (content: string, fieldName: string): string => {
-      const pattern = new RegExp(`^\\s*${fieldName}:\\s*(.*?)$`, 'm');
+      const pattern = new RegExp(`^[ \\t]*${fieldName}:[ \\t]*(.*?)$`, 'm');
       const match = content.match(pattern);
       if (!match) return '';
       const value = match[1].trim();
       // Check if the value contains another known field name (corrupted data)
-      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'FaceShot:', 'EyeColor:', 'HairColor:', 'HairLength:', 'Height:', 'Build:', 'SkinTone:', 'DistinguishingFeatures:', 'Relationships:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:'];
+      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'FaceShot:', 'EyeColor:', 'HairColor:', 'HairLength:', 'Height:', 'Build:', 'SkinTone:', 'DistinguishingFeatures:', 'Relationships:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:', 'TemplateId:'];
       for (const field of knownFields) {
         if (value.includes(field)) {
           // Value is corrupted, return empty
@@ -74,6 +74,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
     data.build = parseField(sheetContent, 'Build');
     data.skinTone = parseField(sheetContent, 'SkinTone');
     data.distinguishingFeatures = parseField(sheetContent, 'DistinguishingFeatures');
+    data.templateId = parseField(sheetContent, 'TemplateId') || undefined;
     
     // Parse relationships section within CharacterSheet
     const relSectionIdx = sheetContent.indexOf('\nRelationships:\n');
@@ -387,12 +388,17 @@ export function serializeCharacterSheet(data: CharacterSheetData): string {
   
   // CharacterSheet block
   result += '## CharacterSheet\n';
+  if (data.templateId) {
+    result += `TemplateId: ${sanitize(data.templateId)}\n`;
+  }
   result += `Name: ${sanitize(data.name)}\n`;
   result += `Surname: ${sanitize(data.surname)}\n`;
   result += `Gender: ${sanitize(data.gender)}\n`;
   result += `Age: ${sanitize(data.age)}\n`;
   result += `Role: ${sanitize(data.role)}\n`;
-  result += `FaceShot: ${sanitize(data.faceShot)}\n`;
+  if (data.faceShot) {
+    result += `FaceShot: ${sanitize(data.faceShot)}\n`;
+  }
   result += `EyeColor: ${sanitize(data.eyeColor)}\n`;
   result += `HairColor: ${sanitize(data.hairColor)}\n`;
   result += `HairLength: ${sanitize(data.hairLength)}\n`;
