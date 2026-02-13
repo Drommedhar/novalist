@@ -99,17 +99,34 @@ export class NovalistExplorerView extends ItemView {
         scenes: chapter.scenes
       }));
       this.renderChapterList(list, chapterItems, t('explorer.noChapters'));
-      return;
-    }
-
-    if (this.activeTab === 'characters') {
+    } else if (this.activeTab === 'characters') {
       const characters = await this.plugin.getCharacterList();
       this.renderCharacterGroupedList(list, characters, t('explorer.noCharacters'));
-      return;
+    } else {
+      const locations = this.plugin.getLocationList();
+      this.renderList(list, locations, t('explorer.noLocations'));
     }
 
-    const locations = this.plugin.getLocationList();
-    this.renderList(list, locations, t('explorer.noLocations'));
+    this.renderProjectSwitcher(container);
+  }
+
+  /** Render a sticky project switcher bar at the bottom of the explorer. */
+  private renderProjectSwitcher(container: HTMLElement): void {
+    const projects = this.plugin.getProjects();
+    if (projects.length <= 1) return;
+
+    const activeProject = this.plugin.getActiveProject();
+    const bar = container.createDiv('novalist-explorer-project-bar');
+
+    const select = bar.createEl('select', { cls: 'novalist-explorer-project-select' });
+    for (const project of projects) {
+      const opt = select.createEl('option', { text: project.name, value: project.id });
+      if (project.id === activeProject?.id) opt.selected = true;
+    }
+
+    select.addEventListener('change', () => {
+      void this.plugin.switchProject(select.value);
+    });
   }
 
   private handleContextMenu(evt: MouseEvent, file: TFile) {
@@ -159,6 +176,45 @@ export class NovalistExplorerView extends ItemView {
               .setIcon('x')
               .onClick(async () => {
                 await this.plugin.removeChapterFromAct(file);
+                void this.render();
+              });
+          });
+        }
+      }
+    }
+
+    // ── Move entity (character / location) between WB and projects ──
+    const isEntity = this.plugin.isCharacterFile(file) || this.plugin.isLocationFile(file);
+    if (isEntity) {
+      const isWB = this.plugin.isWorldBiblePath(file.path);
+      const wb = this.plugin.settings.worldBiblePath;
+
+      if (!isWB && wb) {
+        // Entity is in a project → offer "Move to World Bible"
+        menu.addItem((item) => {
+          item
+            .setTitle(t('project.moveToWorldBible'))
+            .setIcon('globe')
+            .onClick(async () => {
+              await this.plugin.moveEntityToWorldBible(file);
+              void this.render();
+            });
+        });
+      }
+
+      // Offer "Move to project" (one entry per project, skip current if file is in that project)
+      const projects = this.plugin.getProjects();
+      if (projects.length > 0) {
+        menu.addSeparator();
+        for (const project of projects) {
+          // Skip if entity already lives under this project
+          if (file.path.startsWith(project.path + '/')) continue;
+          menu.addItem((item) => {
+            item
+              .setTitle(t('project.moveToProject', { project: project.name }))
+              .setIcon('folder-input')
+              .onClick(async () => {
+                await this.plugin.moveEntityToProject(file, project.id);
                 void this.render();
               });
           });
@@ -526,6 +582,12 @@ export class NovalistExplorerView extends ItemView {
         row.setAttribute('draggable', 'true');
         row.dataset.path = item.file.path;
         if (roleColor) row.style.setProperty('--novalist-role-color', roleColor);
+
+        // World Bible badge (before name)
+        if (this.plugin.isWorldBiblePath(item.file.path)) {
+          row.createEl('span', { text: t('project.wbBadge'), cls: 'novalist-explorer-badge novalist-wb-badge' });
+        }
+
         row.createEl('span', { text: item.name, cls: 'novalist-explorer-label' });
         
         if (item.gender) {
@@ -756,6 +818,10 @@ export class NovalistExplorerView extends ItemView {
 
     for (const item of items) {
       const row = list.createDiv('novalist-explorer-item');
+      // World Bible badge (before name)
+      if (this.plugin.isWorldBiblePath(item.file.path)) {
+        row.createEl('span', { text: t('project.wbBadge'), cls: 'novalist-explorer-badge novalist-wb-badge' });
+      }
       row.createEl('span', { text: item.name, cls: 'novalist-explorer-label' });
       row.addEventListener('click', () => {
         void this.openFileInExplorer(item.file);

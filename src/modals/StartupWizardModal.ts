@@ -83,6 +83,11 @@ export class StartupWizardModal extends Modal {
         .setValue(this.plugin.settings.projectPath)
         .onChange(async (value) => {
           this.plugin.settings.projectPath = value;
+          const active = this.plugin.getActiveProject();
+          if (active) {
+            active.name = value;
+            active.path = value;
+          }
           await this.plugin.saveSettings();
         }));
 
@@ -122,6 +127,13 @@ export class StartupWizardModal extends Modal {
         .setButtonText(t('wizard.initAndNext'))
         .setCta()
         .onClick(async () => {
+          // Ensure a project entry exists for this path
+          const projectPath = this.plugin.settings.projectPath;
+          const active = this.plugin.getActiveProject();
+          if (active) {
+            active.name = projectPath;
+            active.path = projectPath;
+          }
           await this.plugin.initializeProjectStructure();
           this.currentStep++;
           this.display();

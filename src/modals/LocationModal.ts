@@ -12,6 +12,7 @@ export class LocationModal extends Modal {
   name: string = '';
   description: string = '';
   templateId: string;
+  useWorldBible: boolean = false;
 
   constructor(app: App, plugin: NovalistPlugin) {
     super(app);
@@ -46,6 +47,16 @@ export class LocationModal extends Modal {
           dropdown.onChange(value => { this.templateId = value; });
         });
     }
+
+    // World Bible toggle (only if World Bible is configured)
+    if (this.plugin.settings.worldBiblePath) {
+      new Setting(contentEl)
+        .setName(t('project.addToWorldBible'))
+        .setDesc(t('project.addToWorldBibleDesc'))
+        .addToggle(toggle => toggle
+          .setValue(this.useWorldBible)
+          .onChange(value => { this.useWorldBible = value; }));
+    }
     
     const buttonDiv = contentEl.createDiv('modal-button-container');
     
@@ -57,7 +68,7 @@ export class LocationModal extends Modal {
       .setButtonText(t('modal.create'))
       .setCta()
       .onClick(async () => {
-        await this.plugin.createLocation(this.name, this.description, this.templateId);
+        await this.plugin.createLocation(this.name, this.description, this.templateId, this.useWorldBible);
         this.close();
       });
   }

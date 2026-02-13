@@ -17,6 +17,7 @@ import {
 import { LanguageKey } from '../types';
 import { t } from '../i18n';
 import { CharacterTemplateEditorModal, LocationTemplateEditorModal } from '../modals/TemplateEditorModal';
+import { ProjectAddModal, ProjectRenameModal } from '../modals/ProjectModals';
 
 export class NovalistSettingTab extends PluginSettingTab {
   plugin: NovalistPlugin;
@@ -30,6 +31,74 @@ export class NovalistSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
+    // ── Projects ──────────────────────────────────────────────────────
+    new Setting(containerEl)
+      .setName(t('project.projects'))
+      .setHeading();
+
+    // Active project selector
+    new Setting(containerEl)
+      .setName(t('project.activeProject'))
+      .setDesc(t('project.activeProjectDesc'))
+      .addDropdown(dropdown => {
+        for (const proj of this.plugin.settings.projects) {
+          dropdown.addOption(proj.id, proj.name);
+        }
+        dropdown.setValue(this.plugin.settings.activeProjectId);
+        dropdown.onChange(async (value) => {
+          await this.plugin.switchProject(value);
+          this.display();
+        });
+      });
+
+    // Project management buttons
+    const projectBtnSetting = new Setting(containerEl);
+    projectBtnSetting.addButton(btn => btn
+      .setButtonText(t('project.addProject'))
+      .onClick(() => {
+        new ProjectAddModal(this.app, this.plugin, () => this.display()).open();
+      }));
+    projectBtnSetting.addButton(btn => btn
+      .setButtonText(t('project.renameProject'))
+      .onClick(() => {
+        new ProjectRenameModal(this.app, this.plugin, () => this.display()).open();
+      }));
+    if (this.plugin.settings.projects.length > 1) {
+      projectBtnSetting.addButton(btn => btn
+        .setButtonText(t('project.deleteProject'))
+        .setWarning()
+        .onClick(async () => {
+          await this.plugin.deleteProject(this.plugin.settings.activeProjectId);
+          this.display();
+        }));
+    }
+
+    // World Bible
+    new Setting(containerEl)
+      .setName(t('project.worldBible'))
+      .setHeading();
+    containerEl.createEl('p', { text: t('project.worldBibleDesc') });
+
+    new Setting(containerEl)
+      .setName(t('project.worldBiblePath'))
+      .setDesc(t('project.worldBiblePathDesc'))
+      .addText(text => text
+        .setPlaceholder(t('project.worldBiblePathPlaceholder'))
+        .setValue(this.plugin.settings.worldBiblePath)
+        .onChange(async (value) => {
+          this.plugin.settings.worldBiblePath = value;
+          await this.plugin.saveSettings();
+        }));
+
+    if (this.plugin.settings.worldBiblePath) {
+      new Setting(containerEl)
+        .addButton(btn => btn
+          .setButtonText(t('project.initWorldBible'))
+          .onClick(async () => {
+            await this.plugin.initializeWorldBible();
+          }));
+    }
+
     new Setting(containerEl)
       .setName(t('settings.preferences'))
       .setHeading();
@@ -42,6 +111,11 @@ export class NovalistSettingTab extends PluginSettingTab {
         .setValue(this.plugin.settings.projectPath)
         .onChange(async (value) => {
           this.plugin.settings.projectPath = value;
+          // Also update the active project entry
+          const active = this.plugin.getActiveProject();
+          if (active) {
+            active.path = value;
+          }
           await this.plugin.saveSettings();
         }));
 

@@ -1,7 +1,29 @@
 ﻿import { t } from '../i18n';
 
+// ─── Multi-project & World Bible ────────────────────────────────────
+export interface NovalistProject {
+  id: string;
+  name: string;
+  path: string;
+}
+
+/** Per-project data stored alongside global settings. */
+export interface ProjectData {
+  commentThreads: CommentThread[];
+  plotBoard: PlotBoardData;
+  wordCountGoals: WordCountGoals;
+  explorerGroupCollapsed: Record<string, boolean>;
+  relationshipPairs: Record<string, string[]>;
+}
+
 export interface NovalistSettings {
   projectPath: string;
+  /** All registered projects inside this vault. */
+  projects: NovalistProject[];
+  /** ID of the currently active project. */
+  activeProjectId: string;
+  /** Optional shared "World Bible" folder for characters & locations used across projects. */
+  worldBiblePath: string;
   autoReplacements: AutoReplacementPair[];
   language: LanguageKey;
   customLanguageLabel: string;
@@ -33,6 +55,8 @@ export interface NovalistSettings {
   locationTemplates: LocationTemplate[];
   activeCharacterTemplateId: string;
   activeLocationTemplateId: string;
+  /** Per-project data, keyed by project ID. */
+  projectData: Record<string, ProjectData>;
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────

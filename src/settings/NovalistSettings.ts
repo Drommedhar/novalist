@@ -1,4 +1,4 @@
-﻿import { LanguageKey, AutoReplacementPair, NovalistSettings, CharacterTemplate, LocationTemplate } from '../types';
+﻿import { LanguageKey, AutoReplacementPair, NovalistSettings, CharacterTemplate, LocationTemplate, NovalistProject, ProjectData } from '../types';
 import { t } from '../i18n';
 
 export function getLanguageLabels(): Record<LanguageKey, string> {
@@ -129,8 +129,35 @@ export function cloneLocationTemplate(tpl: LocationTemplate): LocationTemplate {
   };
 }
 
+export const DEFAULT_PROJECT_ID = 'project-default';
+
+export function createDefaultProject(): NovalistProject {
+  return {
+    id: DEFAULT_PROJECT_ID,
+    name: 'NovelProject',
+    path: 'NovelProject',
+  };
+}
+
+export function createDefaultProjectData(): ProjectData {
+  return {
+    commentThreads: [],
+    plotBoard: { columns: [], cells: {}, labels: [], cardColors: {}, cardLabels: {}, viewMode: 'board', collapsedActs: [] },
+    wordCountGoals: {
+      dailyGoal: 1000,
+      projectGoal: 50000,
+      dailyHistory: []
+    },
+    explorerGroupCollapsed: {},
+    relationshipPairs: {},
+  };
+}
+
 export const DEFAULT_SETTINGS: NovalistSettings = {
   projectPath: 'NovelProject',
+  projects: [createDefaultProject()],
+  activeProjectId: DEFAULT_PROJECT_ID,
+  worldBiblePath: 'WorldBible',
   autoReplacements: cloneAutoReplacements(LANGUAGE_DEFAULTS['de-low']),
   language: 'de-low',
   customLanguageLabel: 'Custom',
@@ -160,4 +187,5 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   locationTemplates: [cloneLocationTemplate(DEFAULT_LOCATION_TEMPLATE)],
   activeCharacterTemplateId: 'default',
   activeLocationTemplateId: 'default',
+  projectData: {},
 };

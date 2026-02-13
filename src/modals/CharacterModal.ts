@@ -12,6 +12,7 @@ export class CharacterModal extends Modal {
   name: string = '';
   surname: string = '';
   templateId: string;
+  useWorldBible: boolean = false;
 
   constructor(app: App, plugin: NovalistPlugin) {
     super(app);
@@ -48,6 +49,16 @@ export class CharacterModal extends Modal {
           dropdown.onChange(value => { this.templateId = value; });
         });
     }
+
+    // World Bible toggle (only if World Bible is configured)
+    if (this.plugin.settings.worldBiblePath) {
+      new Setting(contentEl)
+        .setName(t('project.addToWorldBible'))
+        .setDesc(t('project.addToWorldBibleDesc'))
+        .addToggle(toggle => toggle
+          .setValue(this.useWorldBible)
+          .onChange(value => { this.useWorldBible = value; }));
+    }
     
     // Buttons
     const buttonDiv = contentEl.createDiv('modal-button-container');
@@ -63,7 +74,8 @@ export class CharacterModal extends Modal {
         await this.plugin.createCharacter(
           this.name,
           this.surname,
-          this.templateId
+          this.templateId,
+          this.useWorldBible
         );
         this.close();
       });

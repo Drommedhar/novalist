@@ -2,15 +2,35 @@
 
 <img src="images/novalist.png" alt="Novalist Logo" width="400"/>
 
-A comprehensive novel writing environment for Obsidian. Novalist turns your vault into a full-featured writing workspace with structured character and location management, an interactive relationship map, a plot board, inline annotations, real-time statistics, and multi-format export — all without leaving Obsidian.
+A comprehensive novel writing environment for Obsidian. Novalist turns your vault into a full-featured writing workspace with structured character and location management, an interactive relationship map, a plot board, inline annotations, real-time statistics, multi-project support, a shared World Bible, and multi-format export — all without leaving Obsidian.
 
 ## Getting Started
 
 On first launch Novalist opens a **Startup Wizard** that walks you through project setup. Pick a project folder name, choose your preferred dialogue language (for smart-quote auto-replacement), and Novalist creates the folder structure for you: `Characters/`, `Locations/`, `Chapters/`, and `Images/`.
 
-You can re-run the wizard at any time from the command palette with **Novalist: Initialize novel project structure**.
+You can re-run the wizard at any time from the command palette with **Novalist: Initialize novel project structure**. To manage multiple projects or configure a shared World Bible, open **Settings > Novalist > Projects**.
 
 ## Features
+
+### Multi-Project Support
+
+A single vault can hold multiple novel projects. Each project has its own folder with independent chapters, characters, locations, and images. Per-project data — plot board, annotations, word count goals, and relationship pairs — is stored separately and swapped automatically when you switch projects.
+
+- **Add a project** from Settings > Projects or from the `Add project` button. Novalist creates the folder structure for the new project and switches to it.
+- **Switch projects** via Settings > Projects dropdown, the command palette (`Switch project`), or the project switcher modal that lists all projects with a single click to switch.
+- **Rename a project** from Settings or the command palette (`Rename active project`). The vault folder is renamed and all internal references (including annotation file paths) are updated.
+- **Delete a project** from Settings. The project entry is removed from Novalist's data; the vault folder is left untouched so no files are lost.
+- Existing single-project vaults are migrated automatically on first load — no manual action needed.
+
+### World Bible
+
+A World Bible is a shared folder whose characters, locations, and images are available to every project in the vault. Enabled by default with the folder name `WorldBible`. Useful for book series or shared-universe stories where multiple projects reference the same cast and setting.
+
+- Configure the World Bible folder path in Settings > Projects > World Bible. Click `Initialize World Bible folders` to create the sub-folder structure.
+- When creating a character or location, toggle `Add to World Bible` in the creation modal to place the entity in the shared folder instead of the current project.
+- Right-click any character or location in the explorer to `Move to World Bible` or `Move to <project>` to relocate existing entities between the World Bible and any project.
+- World Bible entities appear alongside project entities in the explorer, sidebar, character map, and focus peek. A `WB` badge in the explorer distinguishes shared entities from project-local ones.
+- Entity scanning, mention detection, word counting, and file lookups all search both the active project and the World Bible folder.
 
 ### Toolbar
 
@@ -134,6 +154,8 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 
 | Setting | Description | Default |
 |---|---|---|
+| Active project | Select which project to work on | First project |
+| World Bible folder | Root folder for shared entities across projects | `WorldBible` |
 | Project path | Root vault folder for the novel project | `NovelProject` |
 | Character folder | Subfolder name for characters | `Characters` |
 | Location folder | Subfolder name for locations | `Locations` |
@@ -168,6 +190,8 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 | Add new location | Create a new location file |
 | Add new chapter | Create a new chapter file |
 | Add new scene | Add a scene heading to the current chapter |
+| Switch project | Switch the active project |
+| Rename active project | Rename the active project and its vault folder |
 
 ## Internationalization
 
