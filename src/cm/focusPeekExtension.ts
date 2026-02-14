@@ -131,9 +131,32 @@ class FocusPeekPlugin implements PluginValue {
   private navigationStack: string[] = [];
   /** The entity currently displayed in the card. */
   private currentEntityName: string | null = null;
+  private lastHoverPos = -1;
+  private readonly mouseMoveHandler: (e: MouseEvent) => void;
+  private readonly mouseLeaveHandler: () => void;
 
   constructor(view: EditorView) {
     this.view = view;
+
+    this.mouseMoveHandler = (e: MouseEvent) => {
+      if (this.destroyed || this.pinned) return;
+      if (e.buttons !== 0) return;
+
+      const pos = this.view.posAtCoords({ x: e.clientX, y: e.clientY });
+      if (pos === null) return;
+      if (pos === this.lastHoverPos) return;
+
+      this.lastHoverPos = pos;
+      this.schedulePeek(pos);
+    };
+
+    this.mouseLeaveHandler = () => {
+      this.lastHoverPos = -1;
+      this.hideIfNotPinned();
+    };
+
+    this.view.dom.addEventListener('mousemove', this.mouseMoveHandler, { passive: true });
+    this.view.dom.addEventListener('mouseleave', this.mouseLeaveHandler, { passive: true });
   }
 
   update(update: ViewUpdate): void {
@@ -153,6 +176,8 @@ class FocusPeekPlugin implements PluginValue {
   destroy(): void {
     this.destroyed = true;
     this.clearDebounce();
+    this.view.dom.removeEventListener('mousemove', this.mouseMoveHandler);
+    this.view.dom.removeEventListener('mouseleave', this.mouseLeaveHandler);
     this.removeCard();
   }
 
@@ -180,12 +205,7 @@ class FocusPeekPlugin implements PluginValue {
     if (this.destroyed) return;
 
     const cb = this.view.state.facet(focusPeekCallbacks);
-    const doc = this.view.state.doc;
-    if (pos < 0 || pos > doc.length) { this.hideIfNotPinned(); return; }
-
-    const line = doc.lineAt(pos);
-    const ch = pos - line.from;
-    const entity = cb.getEntityAtPosition(line.text, ch);
+    const entity = this.getEntityAtPos(pos);
 
     if (!entity) {
       this.hideIfNotPinned();
@@ -207,10 +227,26 @@ class FocusPeekPlugin implements PluginValue {
   }
 
   private hideIfNotPinned(): void {
-    if (!this.pinned) {
-      this.lastEntityName = null;
-      this.removeCard();
-    }
+    if (this.pinned) return;
+    if (this.isCaretOnEntity()) return;
+
+    this.lastEntityName = null;
+    this.removeCard();
+  }
+
+  private isCaretOnEntity(): boolean {
+    const pos = this.view.state.selection.main.anchor;
+    return this.getEntityAtPos(pos) !== null;
+  }
+
+  private getEntityAtPos(pos: number): { display: string; type: 'character' | 'location' } | null {
+    const cb = this.view.state.facet(focusPeekCallbacks);
+    const doc = this.view.state.doc;
+    if (pos < 0 || pos > doc.length) return null;
+
+    const line = doc.lineAt(pos);
+    const ch = pos - line.from;
+    return cb.getEntityAtPosition(line.text, ch);
   }
 
   // ── Card rendering ────────────────────────────────────────────────
