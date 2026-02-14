@@ -1,4 +1,4 @@
-﻿import { LanguageKey, AutoReplacementPair, NovalistSettings, CharacterTemplate, LocationTemplate, NovalistProject, ProjectData, CustomPropertyDefinition } from '../types';
+﻿import { LanguageKey, AutoReplacementPair, NovalistSettings, CharacterTemplate, LocationTemplate, ItemTemplate, LoreTemplate, NovalistProject, ProjectData, CustomPropertyDefinition } from '../types';
 import { t } from '../i18n';
 
 export function getLanguageLabels(): Record<LanguageKey, string> {
@@ -111,6 +111,33 @@ export const DEFAULT_LOCATION_TEMPLATE: LocationTemplate = {
   includeImages: true,
 };
 
+export const DEFAULT_ITEM_TEMPLATE: ItemTemplate = {
+  id: 'default',
+  name: 'Default',
+  builtIn: true,
+  fields: [
+    { key: 'Type', defaultValue: '' },
+    { key: 'Description', defaultValue: '' },
+    { key: 'Origin', defaultValue: '' },
+  ],
+  customPropertyDefs: [],
+  sections: [],
+  includeImages: true,
+};
+
+export const DEFAULT_LORE_TEMPLATE: LoreTemplate = {
+  id: 'default',
+  name: 'Default',
+  builtIn: true,
+  fields: [
+    { key: 'Category', defaultValue: '' },
+    { key: 'Description', defaultValue: '' },
+  ],
+  customPropertyDefs: [],
+  sections: [],
+  includeImages: true,
+};
+
 function clonePropertyDef(d: CustomPropertyDefinition): CustomPropertyDefinition {
   return { ...d, enumOptions: d.enumOptions ? [...d.enumOptions] : undefined };
 }
@@ -125,6 +152,24 @@ export function cloneCharacterTemplate(tpl: CharacterTemplate): CharacterTemplat
 }
 
 export function cloneLocationTemplate(tpl: LocationTemplate): LocationTemplate {
+  return {
+    ...tpl,
+    fields: tpl.fields.map(f => ({ ...f })),
+    customPropertyDefs: (tpl.customPropertyDefs ?? []).map(clonePropertyDef),
+    sections: tpl.sections.map(s => ({ ...s })),
+  };
+}
+
+export function cloneItemTemplate(tpl: ItemTemplate): ItemTemplate {
+  return {
+    ...tpl,
+    fields: tpl.fields.map(f => ({ ...f })),
+    customPropertyDefs: (tpl.customPropertyDefs ?? []).map(clonePropertyDef),
+    sections: tpl.sections.map(s => ({ ...s })),
+  };
+}
+
+export function cloneLoreTemplate(tpl: LoreTemplate): LoreTemplate {
   return {
     ...tpl,
     fields: tpl.fields.map(f => ({ ...f })),
@@ -203,6 +248,8 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   enableCustomExplorer: true,
   characterFolder: 'Characters',
   locationFolder: 'Locations',
+  itemFolder: 'Items',
+  loreFolder: 'Lore',
   imageFolder: 'Images',
   chapterFolder: 'Chapters',
   relationshipPairs: {},
@@ -222,7 +269,11 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   plotBoard: { columns: [], cells: {}, labels: [], cardColors: {}, cardLabels: {}, viewMode: 'board', collapsedActs: [] },
   characterTemplates: [cloneCharacterTemplate(DEFAULT_CHARACTER_TEMPLATE)],
   locationTemplates: [cloneLocationTemplate(DEFAULT_LOCATION_TEMPLATE)],
+  itemTemplates: [cloneItemTemplate(DEFAULT_ITEM_TEMPLATE)],
+  loreTemplates: [cloneLoreTemplate(DEFAULT_LORE_TEMPLATE)],
   activeCharacterTemplateId: 'default',
   activeLocationTemplateId: 'default',
+  activeItemTemplateId: 'default',
+  activeLoreTemplateId: 'default',
   projectData: {},
 };

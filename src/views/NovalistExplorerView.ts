@@ -10,7 +10,7 @@
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { normalizeCharacterRole } from '../utils/characterUtils';
-import { ChapterListData, CharacterListData, LocationListData, CHAPTER_STATUSES, ChapterStatus } from '../types';
+import { ChapterListData, CharacterListData, CHAPTER_STATUSES, ChapterStatus } from '../types';
 import { ChapterEditData } from '../modals/ChapterDescriptionModal';
 import { SceneNameModal } from '../modals/SceneNameModal';
 import { t } from '../i18n';
@@ -19,7 +19,7 @@ export const NOVELIST_EXPLORER_VIEW_TYPE = 'novalist-explorer';
 
 export class NovalistExplorerView extends ItemView {
   plugin: NovalistPlugin;
-  private activeTab: 'chapters' | 'characters' | 'locations' = 'chapters';
+  private activeTab: 'chapters' | 'characters' | 'locations' | 'items' | 'lore' = 'chapters';
   private dragChapterIndex: number | null = null;
   private selectedFiles: Set<string> = new Set();
   private lastSelectedPath: string | null = null;
@@ -81,13 +81,15 @@ export class NovalistExplorerView extends ItemView {
     container.createEl('h3', { text: t('explorer.displayName'), cls: 'novalist-explorer-header' });
 
     const tabs = container.createDiv('novalist-explorer-tabs');
-    const tabOrder: Array<{ id: 'chapters' | 'characters' | 'locations'; label: string }> = [
+    const tabOrder: Array<{ id: 'chapters' | 'characters' | 'locations' | 'items' | 'lore'; label: string }> = [
       { id: 'chapters', label: t('explorer.chapters') },
       { id: 'characters', label: t('explorer.characters') },
-      { id: 'locations', label: t('explorer.locations') }
+      { id: 'locations', label: t('explorer.locations') },
+      { id: 'items', label: t('explorer.items') },
+      { id: 'lore', label: t('explorer.lore') }
     ];
 
-    const setTab = (tab: 'chapters' | 'characters' | 'locations') => {
+    const setTab = (tab: 'chapters' | 'characters' | 'locations' | 'items' | 'lore') => {
       this.activeTab = tab;
       this.propertyFilter = '';
       this.filteredPaths = null;
@@ -103,8 +105,8 @@ export class NovalistExplorerView extends ItemView {
       btn.addEventListener('click', () => setTab(tab.id));
     }
 
-    // Property filter bar for characters and locations tabs
-    if (this.activeTab === 'characters' || this.activeTab === 'locations') {
+    // Property filter bar for characters, locations, items, and lore tabs
+    if (this.activeTab === 'characters' || this.activeTab === 'locations' || this.activeTab === 'items' || this.activeTab === 'lore') {
       this.renderPropertyFilterBar(container);
       // Preload the property index for suggestions
       if (!this.propertyIndex) {
@@ -146,7 +148,7 @@ export class NovalistExplorerView extends ItemView {
       } else {
         this.renderCharacterGroupedList(list, characters, t('explorer.noCharacters'));
       }
-    } else {
+    } else if (this.activeTab === 'locations') {
       let locations = this.plugin.getLocationList();
       if (this.filteredPaths) {
         const filtered = this.filteredPaths;
@@ -156,6 +158,28 @@ export class NovalistExplorerView extends ItemView {
         list.createEl('p', { text: t('explorer.filterNoResults'), cls: 'novalist-empty' });
       } else {
         this.renderList(list, locations, t('explorer.noLocations'));
+      }
+    } else if (this.activeTab === 'items') {
+      let items = this.plugin.getItemList();
+      if (this.filteredPaths) {
+        const filtered = this.filteredPaths;
+        items = items.filter(i => filtered.has(i.file.path));
+      }
+      if (this.propertyFilter && items.length === 0) {
+        list.createEl('p', { text: t('explorer.filterNoResults'), cls: 'novalist-empty' });
+      } else {
+        this.renderList(list, items, t('explorer.noItems'));
+      }
+    } else if (this.activeTab === 'lore') {
+      let lore = this.plugin.getLoreList();
+      if (this.filteredPaths) {
+        const filtered = this.filteredPaths;
+        lore = lore.filter(l => filtered.has(l.file.path));
+      }
+      if (this.propertyFilter && lore.length === 0) {
+        list.createEl('p', { text: t('explorer.filterNoResults'), cls: 'novalist-empty' });
+      } else {
+        this.renderList(list, lore, t('explorer.noLore'));
       }
     }
   }
@@ -1181,7 +1205,7 @@ export class NovalistExplorerView extends ItemView {
 
   private renderList(
     list: HTMLElement,
-    items: LocationListData[],
+    items: Array<{ name: string; file: TFile }>,
     emptyMessage: string
   ) {
     if (items.length === 0) {
@@ -1215,6 +1239,16 @@ export class NovalistExplorerView extends ItemView {
 
     if (this.plugin.isLocationFile(file)) {
       await this.plugin.openLocationSheet(file, targetLeaf);
+      return;
+    }
+
+    if (this.plugin.isItemFile(file)) {
+      await this.plugin.openItemSheet(file, targetLeaf);
+      return;
+    }
+
+    if (this.plugin.isLoreFile(file)) {
+      await this.plugin.openLoreSheet(file, targetLeaf);
       return;
     }
 

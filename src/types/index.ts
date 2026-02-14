@@ -34,6 +34,8 @@ export interface NovalistSettings {
   enableCustomExplorer: boolean;
   characterFolder: string;
   locationFolder: string;
+  itemFolder: string;
+  loreFolder: string;
   imageFolder: string;
   chapterFolder: string;
   relationshipPairs: Record<string, string[]>;
@@ -55,8 +57,12 @@ export interface NovalistSettings {
   // Entity Templates
   characterTemplates: CharacterTemplate[];
   locationTemplates: LocationTemplate[];
+  itemTemplates: ItemTemplate[];
+  loreTemplates: LoreTemplate[];
   activeCharacterTemplateId: string;
   activeLocationTemplateId: string;
+  activeItemTemplateId: string;
+  activeLoreTemplateId: string;
   /** Per-project data, keyed by project ID. */
   projectData: Record<string, ProjectData>;
 }
@@ -261,6 +267,47 @@ export interface LocationSheetData {
   templateId?: string;
 }
 
+// ─── Item / Artifact Sheet Data ──────────────────────────────────────
+
+export interface ItemSheetData {
+  name: string;
+  type: string;
+  description: string;
+  origin: string;
+  images: CharacterImage[];
+  customProperties: Record<string, string>;
+  sections: CharacterSheetSection[];
+  templateId?: string;
+}
+
+export interface ItemListData {
+  name: string;
+  file: TFile;
+  type: string;
+}
+
+// ─── Lore / Encyclopedia Sheet Data ──────────────────────────────────
+
+export type LoreCategory = 'Organization' | 'Culture' | 'History' | 'Other';
+
+export const LORE_CATEGORIES: LoreCategory[] = ['Organization', 'Culture', 'History', 'Other'];
+
+export interface LoreSheetData {
+  name: string;
+  category: string;
+  description: string;
+  images: CharacterImage[];
+  customProperties: Record<string, string>;
+  sections: CharacterSheetSection[];
+  templateId?: string;
+}
+
+export interface LoreListData {
+  name: string;
+  file: TFile;
+  category: string;
+}
+
 // ─── Entity Templates ────────────────────────────────────────────────
 
 /** Supported data types for custom properties. */
@@ -341,6 +388,28 @@ export interface LocationTemplate {
   includeImages: boolean;
 }
 
+export interface ItemTemplate {
+  id: string;
+  name: string;
+  builtIn: boolean;
+  /** Fields included in the ItemSheet block (besides Name which is always present). */
+  fields: TemplateField[];
+  customPropertyDefs: CustomPropertyDefinition[];
+  sections: TemplateSection[];
+  includeImages: boolean;
+}
+
+export interface LoreTemplate {
+  id: string;
+  name: string;
+  builtIn: boolean;
+  /** Fields included in the LoreSheet block (besides Name which is always present). */
+  fields: TemplateField[];
+  customPropertyDefs: CustomPropertyDefinition[];
+  sections: TemplateSection[];
+  includeImages: boolean;
+}
+
 /** All known fields for character sheets (used in template editor). */
 export const CHARACTER_TEMPLATE_KNOWN_FIELDS: string[] = [
   'Gender', 'Age', 'Role',
@@ -351,6 +420,16 @@ export const CHARACTER_TEMPLATE_KNOWN_FIELDS: string[] = [
 /** All known fields for location sheets (used in template editor). */
 export const LOCATION_TEMPLATE_KNOWN_FIELDS: string[] = [
   'Type', 'Description',
+];
+
+/** All known fields for item sheets (used in template editor). */
+export const ITEM_TEMPLATE_KNOWN_FIELDS: string[] = [
+  'Type', 'Description', 'Origin',
+];
+
+/** All known fields for lore sheets (used in template editor). */
+export const LORE_TEMPLATE_KNOWN_FIELDS: string[] = [
+  'Category', 'Description',
 ];
 
 /** All available custom-property data types. */

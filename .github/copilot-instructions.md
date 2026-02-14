@@ -4,6 +4,14 @@ Before responding that work is finished, you MUST run `npm run verify` and confi
 Warnings are strictly disallowed; resolve all warnings before considering work finished.
 Do NOT use `eslint-disable` comments to suppress lint errors; fix the underlying issue instead.
 
+## New Entity Types / Views Checklist
+
+When adding a new entity type (like Characters, Locations, Items, Lore) or a new view, ensure the following are updated:
+
+- **Ribbon toolbar** (`src/utils/toolbarUtils.ts`): Add a create button in the Create panel and/or a view button in the Views panel. Add the corresponding SVG icon path to the `createLucideIcon` icon map.
+- **Peek cards** (`src/cm/focusPeekExtension.ts` + `src/main.ts` `setupFocusPeek`): Extend `EntityPeekData.type`, update `getEntityAtPosition` to detect the new folder path, update `getEntityPeekData` to parse the new sheet and return the correct fields, and update card rendering (icon, badge, pills, description).
+- **Folder creation**: In the `createXxx` method, ensure the target folder is created if it doesn't exist (`vault.createFolder`) before calling `vault.create`. Older projects won't have folders for newly introduced entity types.
+
 ## README Maintenance
 
 When adding, removing, or changing user-facing features, update `README.md` to reflect the current state. Follow these style rules:

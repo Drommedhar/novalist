@@ -193,6 +193,12 @@ export class NovalistToolbarManager {
     this.createRibbonButton(createItems, 'map-pin', t('toolbar.location'), t('toolbar.addLocation'), () => {
       this.plugin.openLocationModal();
     });
+    this.createRibbonButton(createItems, 'package', t('toolbar.item'), t('toolbar.addItem'), () => {
+      this.plugin.openItemModal();
+    });
+    this.createRibbonButton(createItems, 'scroll-text', t('toolbar.lore'), t('toolbar.addLore'), () => {
+      this.plugin.openLoreModal();
+    });
     this.createRibbonButton(createItems, 'file-plus', t('toolbar.chapter'), t('toolbar.addChapter'), () => {
       this.plugin.openChapterDescriptionModal();
     });
@@ -225,6 +231,9 @@ export class NovalistToolbarManager {
     });
     this.createRibbonButton(viewsItems, 'download', t('toolbar.export'), t('toolbar.export'), () => {
       void this.plugin.activateExportView();
+    });
+    this.createRibbonButton(viewsItems, 'image', t('toolbar.gallery'), t('toolbar.gallery'), () => {
+      void this.plugin.activateImageGalleryView();
     });
     viewsGroup.createEl('span', { text: t('toolbar.groupViews'), cls: 'novalist-ribbon-group-label' });
 
@@ -403,7 +412,10 @@ export class NovalistToolbarManager {
       'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
       'table': '<path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/>',
       'chevron-up': '<polyline points="18 15 12 9 6 15"/>',
-      'chevron-down': '<polyline points="6 9 12 15 18 9"/>'
+      'chevron-down': '<polyline points="6 9 12 15 18 9"/>',
+      'package': '<path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/>',
+      'scroll-text': '<path d="M15 3h-1a2 2 0 0 0-2 2v6a2 2 0 0 1-2 2H3"/><path d="M18 3a2 2 0 0 1 2 2v12a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V5a2 2 0 0 1 2-2z"/><path d="M7 7h4"/><path d="M7 11h2"/>',
+      'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'
     };
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

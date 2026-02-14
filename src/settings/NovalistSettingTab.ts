@@ -12,12 +12,16 @@ import {
   cloneAutoReplacements,
   DEFAULT_CHARACTER_TEMPLATE,
   DEFAULT_LOCATION_TEMPLATE,
+  DEFAULT_ITEM_TEMPLATE,
+  DEFAULT_LORE_TEMPLATE,
   cloneCharacterTemplate,
-  cloneLocationTemplate
+  cloneLocationTemplate,
+  cloneItemTemplate,
+  cloneLoreTemplate
 } from './NovalistSettings';
 import { LanguageKey } from '../types';
 import { t } from '../i18n';
-import { CharacterTemplateEditorModal, LocationTemplateEditorModal } from '../modals/TemplateEditorModal';
+import { CharacterTemplateEditorModal, LocationTemplateEditorModal, ItemTemplateEditorModal, LoreTemplateEditorModal } from '../modals/TemplateEditorModal';
 import { ProjectAddModal, ProjectRenameModal, RootMoveConfirmModal } from '../modals/ProjectModals';
 
 export class NovalistSettingTab extends PluginSettingTab {
@@ -201,12 +205,38 @@ export class NovalistSettingTab extends PluginSettingTab {
                 await this.plugin.saveSettings();
             }));
 
+    new Setting(containerEl)
+        .setName(t('settings.itemFolder'))
+        .setDesc(t('settings.itemFolderDesc'))
+        .addText(text => text
+            .setValue(this.plugin.settings.itemFolder)
+            .onChange(async (value) => {
+                this.plugin.settings.itemFolder = value;
+                await this.plugin.saveSettings();
+            }));
+
+    new Setting(containerEl)
+        .setName(t('settings.loreFolder'))
+        .setDesc(t('settings.loreFolderDesc'))
+        .addText(text => text
+            .setValue(this.plugin.settings.loreFolder)
+            .onChange(async (value) => {
+                this.plugin.settings.loreFolder = value;
+                await this.plugin.saveSettings();
+            }));
+
     // ── Templates ──────────────────────────────────────────────────
     const charTplSection = containerEl.createDiv('novalist-char-templates');
     this.renderCharacterTemplates(charTplSection);
 
     const locTplSection = containerEl.createDiv('novalist-loc-templates');
     this.renderLocationTemplates(locTplSection);
+
+    const itemTplSection = containerEl.createDiv('novalist-item-templates');
+    this.renderItemTemplates(itemTplSection);
+
+    const loreTplSection = containerEl.createDiv('novalist-lore-templates');
+    this.renderLoreTemplates(loreTplSection);
 
     const roleSection = containerEl.createDiv('novalist-role-colors');
     void this.renderRoleColorSettings(roleSection);
@@ -524,6 +554,170 @@ export class NovalistSettingTab extends PluginSettingTab {
         this.plugin.settings.locationTemplates.push(newTpl);
         await this.plugin.saveSettings();
         this.renderLocationTemplates(containerEl);
+      });
+  }
+
+  private renderItemTemplates(containerEl: HTMLElement): void {
+    containerEl.empty();
+
+    new Setting(containerEl)
+      .setName(t('template.itemTemplates'))
+      .setHeading();
+    containerEl.createEl('p', { text: t('template.itemTemplatesDesc') });
+
+    for (const tpl of this.plugin.settings.itemTemplates) {
+      const isActive = tpl.id === this.plugin.settings.activeItemTemplateId;
+      const row = new Setting(containerEl)
+        .setName(tpl.name + (tpl.builtIn ? ` (${t('template.builtIn')})` : ''));
+
+      if (isActive) {
+        row.setDesc(t('template.active'));
+      }
+
+      if (!isActive) {
+        row.addButton(btn => btn
+          .setButtonText(t('template.setActive'))
+          .onClick(async () => {
+            this.plugin.settings.activeItemTemplateId = tpl.id;
+            await this.plugin.saveSettings();
+            this.renderItemTemplates(containerEl);
+          }));
+      }
+
+      row.addButton(btn => btn
+        .setIcon('pencil')
+        .setTooltip(t('template.edit'))
+        .onClick(() => {
+          new ItemTemplateEditorModal(this.app, this.plugin, tpl, async (updated) => {
+            const idx = this.plugin.settings.itemTemplates.findIndex(t => t.id === tpl.id);
+            if (idx !== -1) {
+              this.plugin.settings.itemTemplates[idx] = updated;
+              await this.plugin.saveSettings();
+              this.renderItemTemplates(containerEl);
+            }
+          }).open();
+        }));
+
+      row.addButton(btn => btn
+        .setIcon('copy')
+        .setTooltip(t('template.duplicate'))
+        .onClick(async () => {
+          const clone = cloneItemTemplate(tpl);
+          clone.id = `tpl-${Date.now()}`;
+          clone.name = `${tpl.name} (${t('template.copy')})`;
+          clone.builtIn = false;
+          this.plugin.settings.itemTemplates.push(clone);
+          await this.plugin.saveSettings();
+          this.renderItemTemplates(containerEl);
+        }));
+
+      if (!tpl.builtIn) {
+        row.addButton(btn => btn
+          .setIcon('trash')
+          .setTooltip(t('template.delete'))
+          .onClick(async () => {
+            this.plugin.settings.itemTemplates = this.plugin.settings.itemTemplates.filter(t => t.id !== tpl.id);
+            if (this.plugin.settings.activeItemTemplateId === tpl.id) {
+              this.plugin.settings.activeItemTemplateId = 'default';
+            }
+            await this.plugin.saveSettings();
+            this.renderItemTemplates(containerEl);
+          }));
+      }
+    }
+
+    new ButtonComponent(containerEl)
+      .setButtonText(t('template.addTemplate'))
+      .onClick(async () => {
+        const newTpl = cloneItemTemplate(DEFAULT_ITEM_TEMPLATE);
+        newTpl.id = `tpl-${Date.now()}`;
+        newTpl.name = t('template.newTemplate');
+        newTpl.builtIn = false;
+        this.plugin.settings.itemTemplates.push(newTpl);
+        await this.plugin.saveSettings();
+        this.renderItemTemplates(containerEl);
+      });
+  }
+
+  private renderLoreTemplates(containerEl: HTMLElement): void {
+    containerEl.empty();
+
+    new Setting(containerEl)
+      .setName(t('template.loreTemplates'))
+      .setHeading();
+    containerEl.createEl('p', { text: t('template.loreTemplatesDesc') });
+
+    for (const tpl of this.plugin.settings.loreTemplates) {
+      const isActive = tpl.id === this.plugin.settings.activeLoreTemplateId;
+      const row = new Setting(containerEl)
+        .setName(tpl.name + (tpl.builtIn ? ` (${t('template.builtIn')})` : ''));
+
+      if (isActive) {
+        row.setDesc(t('template.active'));
+      }
+
+      if (!isActive) {
+        row.addButton(btn => btn
+          .setButtonText(t('template.setActive'))
+          .onClick(async () => {
+            this.plugin.settings.activeLoreTemplateId = tpl.id;
+            await this.plugin.saveSettings();
+            this.renderLoreTemplates(containerEl);
+          }));
+      }
+
+      row.addButton(btn => btn
+        .setIcon('pencil')
+        .setTooltip(t('template.edit'))
+        .onClick(() => {
+          new LoreTemplateEditorModal(this.app, this.plugin, tpl, async (updated) => {
+            const idx = this.plugin.settings.loreTemplates.findIndex(t => t.id === tpl.id);
+            if (idx !== -1) {
+              this.plugin.settings.loreTemplates[idx] = updated;
+              await this.plugin.saveSettings();
+              this.renderLoreTemplates(containerEl);
+            }
+          }).open();
+        }));
+
+      row.addButton(btn => btn
+        .setIcon('copy')
+        .setTooltip(t('template.duplicate'))
+        .onClick(async () => {
+          const clone = cloneLoreTemplate(tpl);
+          clone.id = `tpl-${Date.now()}`;
+          clone.name = `${tpl.name} (${t('template.copy')})`;
+          clone.builtIn = false;
+          this.plugin.settings.loreTemplates.push(clone);
+          await this.plugin.saveSettings();
+          this.renderLoreTemplates(containerEl);
+        }));
+
+      if (!tpl.builtIn) {
+        row.addButton(btn => btn
+          .setIcon('trash')
+          .setTooltip(t('template.delete'))
+          .onClick(async () => {
+            this.plugin.settings.loreTemplates = this.plugin.settings.loreTemplates.filter(t => t.id !== tpl.id);
+            if (this.plugin.settings.activeLoreTemplateId === tpl.id) {
+              this.plugin.settings.activeLoreTemplateId = 'default';
+            }
+            await this.plugin.saveSettings();
+            this.renderLoreTemplates(containerEl);
+          }));
+      }
+    }
+
+    new ButtonComponent(containerEl)
+      .setButtonText(t('template.addTemplate'))
+      .onClick(async () => {
+        const newTpl = cloneLoreTemplate(DEFAULT_LORE_TEMPLATE);
+        newTpl.id = `tpl-${Date.now()}`;
+        newTpl.name = t('template.newTemplate');
+        newTpl.builtIn = false;
+        this.plugin.settings.loreTemplates.push(newTpl);
+        await this.plugin.saveSettings();
+        this.renderLoreTemplates(containerEl);
       });
   }
 

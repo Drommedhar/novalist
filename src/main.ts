@@ -25,9 +25,13 @@ import {
   ChapterStatus,
   SceneData,
   CharacterTemplate,
-  LocationTemplate
+  LocationTemplate,
+  ItemTemplate,
+  LoreTemplate,
+  ItemListData,
+  LoreListData
 } from './types';
-import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS, DEFAULT_CHARACTER_TEMPLATE, DEFAULT_LOCATION_TEMPLATE, cloneCharacterTemplate, cloneLocationTemplate, createDefaultProject, createDefaultProjectData, migrateTemplateDefs } from './settings/NovalistSettings';
+import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS, DEFAULT_CHARACTER_TEMPLATE, DEFAULT_LOCATION_TEMPLATE, DEFAULT_ITEM_TEMPLATE, DEFAULT_LORE_TEMPLATE, cloneCharacterTemplate, cloneLocationTemplate, cloneItemTemplate, cloneLoreTemplate, createDefaultProject, createDefaultProjectData, migrateTemplateDefs } from './settings/NovalistSettings';
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
 import { NovalistExplorerView, NOVELIST_EXPLORER_VIEW_TYPE } from './views/NovalistExplorerView';
 import { CharacterMapView, CHARACTER_MAP_VIEW_TYPE } from './views/CharacterMapView';
@@ -35,6 +39,9 @@ import { LocationSheetView, LOCATION_SHEET_VIEW_TYPE } from './views/LocationShe
 import { CharacterSheetView, CHARACTER_SHEET_VIEW_TYPE } from './views/CharacterSheetView';
 import { ExportView, EXPORT_VIEW_TYPE } from './views/ExportView';
 import { PlotBoardView, PLOT_BOARD_VIEW_TYPE } from './views/PlotBoardView';
+import { ItemSheetView, ITEM_SHEET_VIEW_TYPE } from './views/ItemSheetView';
+import { LoreSheetView, LORE_SHEET_VIEW_TYPE } from './views/LoreSheetView';
+import { ImageGalleryView, IMAGE_GALLERY_VIEW_TYPE } from './views/ImageGalleryView';
 import { NovalistToolbarManager } from './utils/toolbarUtils';
 
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
@@ -42,6 +49,8 @@ import { RelationshipKeySuggester } from './suggesters/RelationshipKeySuggester'
 import { ImageSuggester } from './suggesters/ImageSuggester';
 import { CharacterModal } from './modals/CharacterModal';
 import { LocationModal } from './modals/LocationModal';
+import { ItemModal } from './modals/ItemModal';
+import { LoreModal } from './modals/LoreModal';
 import { ChapterDescriptionModal, ChapterEditData } from './modals/ChapterDescriptionModal';
 import { SceneNameModal } from './modals/SceneNameModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
@@ -50,6 +59,8 @@ import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole, computeInterval } from './utils/characterUtils';
 import { parseCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
 import { parseLocationSheet } from './utils/locationSheetUtils';
+import { parseItemSheet } from './utils/itemSheetUtils';
+import { parseLoreSheet } from './utils/loreSheetUtils';
 import { initLocale, t } from './i18n';
 import {
   annotationExtension,
@@ -138,6 +149,24 @@ export default class NovalistPlugin extends Plugin {
     this.registerView(
       PLOT_BOARD_VIEW_TYPE,
       (leaf) => new PlotBoardView(leaf, this)
+    );
+
+    // Register item sheet view
+    this.registerView(
+      ITEM_SHEET_VIEW_TYPE,
+      (leaf) => new ItemSheetView(leaf, this)
+    );
+
+    // Register lore sheet view
+    this.registerView(
+      LORE_SHEET_VIEW_TYPE,
+      (leaf) => new LoreSheetView(leaf, this)
+    );
+
+    // Register image gallery view
+    this.registerView(
+      IMAGE_GALLERY_VIEW_TYPE,
+      (leaf) => new ImageGalleryView(leaf, this)
     );
 
     // Register annotation CM6 extension
@@ -259,6 +288,63 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
+    // Add new item command
+    this.addCommand({
+      id: 'add-item',
+      name: t('cmd.addItem'),
+      callback: () => {
+        this.openItemModal();
+      }
+    });
+
+    // Add new lore command
+    this.addCommand({
+      id: 'add-lore',
+      name: t('cmd.addLore'),
+      callback: () => {
+        this.openLoreModal();
+      }
+    });
+
+    // Command to open current item file in sheet view
+    this.addCommand({
+      id: 'open-item-sheet',
+      name: t('cmd.openItemSheet'),
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isItemFile(file);
+        if (checking) return canRun;
+        if (canRun && file) {
+          const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+          void this.openItemSheet(file, activeView?.leaf);
+        }
+      }
+    });
+
+    // Command to open current lore file in sheet view
+    this.addCommand({
+      id: 'open-lore-sheet',
+      name: t('cmd.openLoreSheet'),
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isLoreFile(file);
+        if (checking) return canRun;
+        if (canRun && file) {
+          const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+          void this.openLoreSheet(file, activeView?.leaf);
+        }
+      }
+    });
+
+    // Open image gallery
+    this.addCommand({
+      id: 'open-image-gallery',
+      name: t('cmd.openImageGallery'),
+      callback: () => {
+        void this.activateImageGalleryView();
+      }
+    });
+
     // Add new chapter command
     this.addCommand({
       id: 'add-chapter-description',
@@ -335,8 +421,10 @@ export default class NovalistPlugin extends Plugin {
       
       const isChar = this.isCharacterFile(file);
       const isLoc = this.isLocationFile(file);
+      const isItem = this.isItemFile(file);
+      const isLore = this.isLoreFile(file);
       
-      if (!isChar && !isLoc) return;
+      if (!isChar && !isLoc && !isItem && !isLore) return;
       
       // Skip if we already processed this file recently (avoid loops)
       if (processedFiles.has(file.path)) return;
@@ -350,8 +438,12 @@ export default class NovalistPlugin extends Plugin {
       setTimeout(() => {
         if (isChar) {
             void this.openCharacterSheet(file, activeLeaf);
-        } else {
+        } else if (isLoc) {
             void this.openLocationSheet(file, activeLeaf);
+        } else if (isItem) {
+            void this.openItemSheet(file, activeLeaf);
+        } else {
+            void this.openLoreSheet(file, activeLeaf);
         }
         // Remove from processed after a delay
         setTimeout(() => processedFiles.delete(file.path), 500);
@@ -494,6 +586,29 @@ export default class NovalistPlugin extends Plugin {
     }
     if (!this.settings.activeLocationTemplateId) {
       this.settings.activeLocationTemplateId = 'default';
+    }
+
+    // Migrate item/lore templates: ensure templates exist for older saved data
+    if (!this.settings.itemTemplates || this.settings.itemTemplates.length === 0) {
+      this.settings.itemTemplates = [cloneItemTemplate(DEFAULT_ITEM_TEMPLATE)];
+    }
+    if (!this.settings.loreTemplates || this.settings.loreTemplates.length === 0) {
+      this.settings.loreTemplates = [cloneLoreTemplate(DEFAULT_LORE_TEMPLATE)];
+    }
+    for (const tpl of this.settings.itemTemplates) migrateTemplateDefs(tpl);
+    for (const tpl of this.settings.loreTemplates) migrateTemplateDefs(tpl);
+    if (!this.settings.activeItemTemplateId) {
+      this.settings.activeItemTemplateId = 'default';
+    }
+    if (!this.settings.activeLoreTemplateId) {
+      this.settings.activeLoreTemplateId = 'default';
+    }
+    // Ensure item/lore folder names exist
+    if (!this.settings.itemFolder) {
+      this.settings.itemFolder = 'Items';
+    }
+    if (!this.settings.loreFolder) {
+      this.settings.loreFolder = 'Lore';
     }
   }
 
@@ -818,6 +933,8 @@ export default class NovalistPlugin extends Plugin {
       wb,
       `${wb}/${this.settings.characterFolder}`,
       `${wb}/${this.settings.locationFolder}`,
+      `${wb}/${this.settings.itemFolder}`,
+      `${wb}/${this.settings.loreFolder}`,
       `${wb}/${this.settings.imageFolder}`,
     ];
 
@@ -834,8 +951,12 @@ export default class NovalistPlugin extends Plugin {
   private getEntitySubfolder(file: TFile): string | null {
     const charFolder = this.settings.characterFolder;
     const locFolder = this.settings.locationFolder;
+    const itemFolder = this.settings.itemFolder;
+    const loreFolder = this.settings.loreFolder;
     if (file.path.includes(`/${charFolder}/`)) return charFolder;
     if (file.path.includes(`/${locFolder}/`)) return locFolder;
+    if (file.path.includes(`/${itemFolder}/`)) return itemFolder;
+    if (file.path.includes(`/${loreFolder}/`)) return loreFolder;
     return null;
   }
 
@@ -1087,6 +1208,8 @@ export default class NovalistPlugin extends Plugin {
       root,
       `${root}/${this.settings.characterFolder}`,
       `${root}/${this.settings.locationFolder}`,
+      `${root}/${this.settings.itemFolder}`,
+      `${root}/${this.settings.loreFolder}`,
       `${root}/${this.settings.chapterFolder}`,
       `${root}/${this.settings.imageFolder}`,
     ];
@@ -1112,6 +1235,20 @@ export default class NovalistPlugin extends Plugin {
     return this.settings.locationTemplates.find(t => t.id === id)
       ?? this.settings.locationTemplates[0]
       ?? DEFAULT_LOCATION_TEMPLATE;
+  }
+
+  getItemTemplate(templateId?: string): ItemTemplate {
+    const id = templateId ?? this.settings.activeItemTemplateId;
+    return this.settings.itemTemplates.find(t => t.id === id)
+      ?? this.settings.itemTemplates[0]
+      ?? DEFAULT_ITEM_TEMPLATE;
+  }
+
+  getLoreTemplate(templateId?: string): LoreTemplate {
+    const id = templateId ?? this.settings.activeLoreTemplateId;
+    return this.settings.loreTemplates.find(t => t.id === id)
+      ?? this.settings.loreTemplates[0]
+      ?? DEFAULT_LORE_TEMPLATE;
   }
 
   generateCharacterContent(name: string, surname: string, template: CharacterTemplate): string {
@@ -1246,6 +1383,145 @@ export default class NovalistPlugin extends Plugin {
     new Notice(t('notice.locationCreated', { name }));
   }
 
+  generateItemContent(name: string, description: string, template: ItemTemplate): string {
+    const lines: string[] = [
+      `# ${name}`,
+      '',
+      '## ItemSheet',
+      `TemplateId: ${template.id}`,
+      `Name: ${name}`,
+    ];
+
+    for (const field of template.fields) {
+      if (field.key === 'Description') {
+        lines.push('Description:');
+        lines.push(description || field.defaultValue || '');
+      } else {
+        lines.push(`${field.key}: ${field.defaultValue}`);
+      }
+    }
+
+    if (!template.fields.some(f => f.key === 'Description') && description) {
+      lines.push('Description:');
+      lines.push(description);
+    }
+
+    if (template.includeImages) {
+      lines.push('Images:', '');
+    }
+
+    if (template.customPropertyDefs.length > 0) {
+      lines.push('CustomProperties:');
+      for (const def of template.customPropertyDefs) {
+        lines.push(`- ${def.key}: ${def.defaultValue}`);
+      }
+    }
+
+    if (template.sections.length > 0) {
+      lines.push('Sections:');
+      for (const section of template.sections) {
+        lines.push(section.title);
+        if (section.defaultContent) {
+          lines.push(section.defaultContent);
+        }
+        lines.push('---');
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  generateLoreContent(name: string, description: string, category: string, template: LoreTemplate): string {
+    const lines: string[] = [
+      `# ${name}`,
+      '',
+      '## LoreSheet',
+      `TemplateId: ${template.id}`,
+      `Name: ${name}`,
+      `Category: ${category}`,
+    ];
+
+    for (const field of template.fields) {
+      if (field.key === 'Description') {
+        lines.push('Description:');
+        lines.push(description || field.defaultValue || '');
+      } else if (field.key !== 'Category') {
+        lines.push(`${field.key}: ${field.defaultValue}`);
+      }
+    }
+
+    if (!template.fields.some(f => f.key === 'Description') && description) {
+      lines.push('Description:');
+      lines.push(description);
+    }
+
+    if (template.includeImages) {
+      lines.push('Images:', '');
+    }
+
+    if (template.customPropertyDefs.length > 0) {
+      lines.push('CustomProperties:');
+      for (const def of template.customPropertyDefs) {
+        lines.push(`- ${def.key}: ${def.defaultValue}`);
+      }
+    }
+
+    if (template.sections.length > 0) {
+      lines.push('Sections:');
+      for (const section of template.sections) {
+        lines.push(section.title);
+        if (section.defaultContent) {
+          lines.push(section.defaultContent);
+        }
+        lines.push('---');
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  async createItem(name: string, description: string, templateId?: string, useWorldBible?: boolean): Promise<void> {
+    const root = useWorldBible && this.settings.worldBiblePath ? this.resolvedWorldBiblePath() : this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.itemFolder}`;
+    const path = `${folder}/${name}.md`;
+
+    if (this.app.vault.getAbstractFileByPath(path)) {
+      new Notice(t('notice.itemExists'));
+      return;
+    }
+
+    if (!this.app.vault.getAbstractFileByPath(folder)) {
+      await this.app.vault.createFolder(folder);
+    }
+
+    const template = this.getItemTemplate(templateId);
+    const content = this.generateItemContent(name, description, template);
+
+    await this.app.vault.create(path, content);
+    new Notice(t('notice.itemCreated', { name }));
+  }
+
+  async createLore(name: string, description: string, category: string, templateId?: string, useWorldBible?: boolean): Promise<void> {
+    const root = useWorldBible && this.settings.worldBiblePath ? this.resolvedWorldBiblePath() : this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.loreFolder}`;
+    const path = `${folder}/${name}.md`;
+
+    if (this.app.vault.getAbstractFileByPath(path)) {
+      new Notice(t('notice.loreExists'));
+      return;
+    }
+
+    if (!this.app.vault.getAbstractFileByPath(folder)) {
+      await this.app.vault.createFolder(folder);
+    }
+
+    const template = this.getLoreTemplate(templateId);
+    const content = this.generateLoreContent(name, description, category, template);
+
+    await this.app.vault.create(path, content);
+    new Notice(t('notice.loreCreated', { name }));
+  }
+
   async createChapter(name: string, order: string): Promise<void> {
     const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.chapterFolder}`;
@@ -1366,6 +1642,14 @@ order: ${orderValue}
 
   openLocationModal(): void {
     new LocationModal(this.app, this).open();
+  }
+
+  openItemModal(): void {
+    new ItemModal(this.app, this).open();
+  }
+
+  openLoreModal(): void {
+    new LoreModal(this.app, this).open();
   }
 
   openChapterDescriptionModal(existing?: ChapterEditData, onSave?: (data: ChapterEditData) => void): void {
@@ -2302,6 +2586,38 @@ order: ${orderValue}
     })).sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  getItemList(): ItemListData[] {
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.itemFolder}/`;
+    const wb = this.resolvedWorldBiblePath();
+    const wbFolder = wb ? `${wb}/${this.settings.itemFolder}/` : '';
+    const files = this.app.vault.getFiles().filter((f) =>
+      (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
+    );
+
+    return files.map((file) => ({
+      name: file.basename,
+      file,
+      type: ''
+    })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  getLoreList(): LoreListData[] {
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.loreFolder}/`;
+    const wb = this.resolvedWorldBiblePath();
+    const wbFolder = wb ? `${wb}/${this.settings.loreFolder}/` : '';
+    const files = this.app.vault.getFiles().filter((f) =>
+      (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
+    );
+
+    return files.map((file) => ({
+      name: file.basename,
+      file,
+      category: ''
+    })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   getChapterNameForFileSync(file: TFile): string {
     const cache = this.app.metadataCache.getFileCache(file);
     const heading = cache?.headings?.find(h => h.level === 1)?.heading;
@@ -2323,7 +2639,7 @@ order: ${orderValue}
     return this.getChapterIdForFileSync(file);
   }
 
-  async parseChapterFile(file: TFile): Promise<{ characters: string[]; locations: string[] }> {
+  async parseChapterFile(file: TFile): Promise<{ characters: string[]; locations: string[]; items: string[]; lore: string[] }> {
     const content = await this.app.vault.read(file);
     const body = this.stripFrontmatter(content);
     
@@ -2331,13 +2647,17 @@ order: ${orderValue}
 
     return {
       characters: mentions.characters,
-      locations: mentions.locations
+      locations: mentions.locations,
+      items: mentions.items,
+      lore: mentions.lore
     };
   }
 
-  scanMentions(content: string): { characters: string[]; locations: string[] } {
+  scanMentions(content: string): { characters: string[]; locations: string[]; items: string[]; lore: string[] } {
     const characters: Set<string> = new Set();
     const locations: Set<string> = new Set();
+    const items: Set<string> = new Set();
+    const lore: Set<string> = new Set();
     // contentLower removed as we use regex 'i' flag
 
     for (const [name, info] of this.entityIndex.entries()) {
@@ -2367,10 +2687,14 @@ order: ${orderValue}
         if (info.path.includes(`/${charFolder}/`) || info.path.startsWith(charFolder + '/')) characters.add(name);
         const locFolder = this.settings.locationFolder;
         if (info.path.includes(`/${locFolder}/`) || info.path.startsWith(locFolder + '/')) locations.add(name);
+        const itemFolder = this.settings.itemFolder;
+        if (info.path.includes(`/${itemFolder}/`) || info.path.startsWith(itemFolder + '/')) items.add(name);
+        const loreFolder = this.settings.loreFolder;
+        if (info.path.includes(`/${loreFolder}/`) || info.path.startsWith(loreFolder + '/')) lore.add(name);
       }
     }
 
-    return { characters: Array.from(characters), locations: Array.from(locations) };
+    return { characters: Array.from(characters), locations: Array.from(locations), items: Array.from(items), lore: Array.from(lore) };
   }
 
   parseFrontmatter(content: string): Record<string, string | Record<string, string>> {
@@ -2475,6 +2799,80 @@ order: ${orderValue}
     }
 
     return null;
+  }
+
+  findItemFile(name: string): TFile | null {
+    let cleanName = name.replace(/^\[{2}/, '').replace(/\]{2}$/, '').split('|')[0].trim();
+
+    const info = this.entityIndex.get(cleanName);
+    if (info && info.path.includes(this.settings.itemFolder)) {
+      const file = this.app.vault.getAbstractFileByPath(info.path);
+      if (file instanceof TFile) return file;
+    }
+
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.itemFolder}`;
+    const path = `${folder}/${cleanName}.md`;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) return file;
+
+    const wb = this.resolvedWorldBiblePath();
+    if (wb) {
+      const wbPath = `${wb}/${this.settings.itemFolder}/${cleanName}.md`;
+      const wbFile = this.app.vault.getAbstractFileByPath(wbPath);
+      if (wbFile instanceof TFile) return wbFile;
+    }
+
+    return null;
+  }
+
+  findLoreFile(name: string): TFile | null {
+    let cleanName = name.replace(/^\[{2}/, '').replace(/\]{2}$/, '').split('|')[0].trim();
+
+    const info = this.entityIndex.get(cleanName);
+    if (info && info.path.includes(this.settings.loreFolder)) {
+      const file = this.app.vault.getAbstractFileByPath(info.path);
+      if (file instanceof TFile) return file;
+    }
+
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.loreFolder}`;
+    const path = `${folder}/${cleanName}.md`;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) return file;
+
+    const wb = this.resolvedWorldBiblePath();
+    if (wb) {
+      const wbPath = `${wb}/${this.settings.loreFolder}/${cleanName}.md`;
+      const wbFile = this.app.vault.getAbstractFileByPath(wbPath);
+      if (wbFile instanceof TFile) return wbFile;
+    }
+
+    return null;
+  }
+
+  async parseItemFile(file: TFile): Promise<{ name: string; type: string; description: string }> {
+    const content = await this.app.vault.read(file);
+    const body = this.stripFrontmatter(content);
+    const typeLines = this.getSectionLines(body, 'Type');
+    const descLines = this.getSectionLines(body, 'Description');
+    return {
+      name: file.basename,
+      type: typeLines.join('\n').trim(),
+      description: descLines.join('\n').trim()
+    };
+  }
+
+  async parseLoreFile(file: TFile): Promise<{ name: string; category: string; description: string }> {
+    const content = await this.app.vault.read(file);
+    const body = this.stripFrontmatter(content);
+    const catLines = this.getSectionLines(body, 'Category');
+    const descLines = this.getSectionLines(body, 'Description');
+    return {
+      name: file.basename,
+      category: catLines.join('\n').trim(),
+      description: descLines.join('\n').trim()
+    };
   }
 
   handleBoldFieldFormatting(): void {
@@ -2618,19 +3016,25 @@ order: ${orderValue}
 
     const charFolder = `${root}/${this.settings.characterFolder}`;
     const locFolder = `${root}/${this.settings.locationFolder}`;
+    const itemFolder = `${root}/${this.settings.itemFolder}`;
+    const loreFolder = `${root}/${this.settings.loreFolder}`;
 
     // Also scan World Bible folders
     const wb = this.resolvedWorldBiblePath();
     const wbCharFolder = wb ? `${wb}/${this.settings.characterFolder}` : '';
     const wbLocFolder = wb ? `${wb}/${this.settings.locationFolder}` : '';
+    const wbItemFolder = wb ? `${wb}/${this.settings.itemFolder}` : '';
+    const wbLoreFolder = wb ? `${wb}/${this.settings.loreFolder}` : '';
 
     const files = this.app.vault.getFiles();
     
     for (const file of files) {
         const isChar = file.path.startsWith(charFolder) || (wbCharFolder && file.path.startsWith(wbCharFolder));
         const isLoc = file.path.startsWith(locFolder) || (wbLocFolder && file.path.startsWith(wbLocFolder));
+        const isItem = file.path.startsWith(itemFolder) || (wbItemFolder && file.path.startsWith(wbItemFolder));
+        const isLore = file.path.startsWith(loreFolder) || (wbLoreFolder && file.path.startsWith(wbLoreFolder));
 
-        if (isChar || isLoc) {
+        if (isChar || isLoc || isItem || isLore) {
             this.entityIndex.set(file.basename, {
                 path: file.path,
                 display: file.basename
@@ -2885,6 +3289,30 @@ order: ${orderValue}
     return false;
   }
 
+  isItemFile(file: TFile): boolean {
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.itemFolder}/`;
+    if (file.path.startsWith(folder) && file.extension === 'md') return true;
+    const wb = this.resolvedWorldBiblePath();
+    if (wb) {
+      const wbFolder = `${wb}/${this.settings.itemFolder}/`;
+      if (file.path.startsWith(wbFolder) && file.extension === 'md') return true;
+    }
+    return false;
+  }
+
+  isLoreFile(file: TFile): boolean {
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.loreFolder}/`;
+    if (file.path.startsWith(folder) && file.extension === 'md') return true;
+    const wb = this.resolvedWorldBiblePath();
+    if (wb) {
+      const wbFolder = `${wb}/${this.settings.loreFolder}/`;
+      if (file.path.startsWith(wbFolder) && file.extension === 'md') return true;
+    }
+    return false;
+  }
+
   async openCharacterSheet(file: TFile, targetLeaf?: WorkspaceLeaf): Promise<void> {
     const existingLeaf = this.app.workspace.getLeavesOfType(CHARACTER_SHEET_VIEW_TYPE)
       .find((leaf) => leaf.view instanceof CharacterSheetView && leaf.view.file?.path === file.path);
@@ -2916,6 +3344,56 @@ order: ${orderValue}
       type: LOCATION_SHEET_VIEW_TYPE,
       state: { file: file.path }
     });
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async openItemSheet(file: TFile, targetLeaf?: WorkspaceLeaf): Promise<void> {
+    const existingLeaf = this.app.workspace.getLeavesOfType(ITEM_SHEET_VIEW_TYPE)
+      .find((leaf) => leaf.view instanceof ItemSheetView && leaf.view.file?.path === file.path);
+
+    if (existingLeaf) {
+      void this.app.workspace.revealLeaf(existingLeaf);
+      return;
+    }
+
+    const leaf = targetLeaf ?? this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: ITEM_SHEET_VIEW_TYPE,
+      state: { file: file.path }
+    });
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async openLoreSheet(file: TFile, targetLeaf?: WorkspaceLeaf): Promise<void> {
+    const existingLeaf = this.app.workspace.getLeavesOfType(LORE_SHEET_VIEW_TYPE)
+      .find((leaf) => leaf.view instanceof LoreSheetView && leaf.view.file?.path === file.path);
+
+    if (existingLeaf) {
+      void this.app.workspace.revealLeaf(existingLeaf);
+      return;
+    }
+
+    const leaf = targetLeaf ?? this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: LORE_SHEET_VIEW_TYPE,
+      state: { file: file.path }
+    });
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async activateImageGalleryView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(IMAGE_GALLERY_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: IMAGE_GALLERY_VIEW_TYPE,
+      active: true
+    });
+
     void this.app.workspace.revealLeaf(leaf);
   }
 
@@ -3057,19 +3535,25 @@ order: ${orderValue}
       getEntityAtPosition: (lineText: string, ch: number) => {
         const info = this.findEntityAtPosition(lineText, ch);
         if (!info) return null;
-        const isChar = info.path.includes(this.settings.characterFolder);
-        return { display: info.display, type: isChar ? 'character' : 'location' };
+        let entityType: 'character' | 'location' | 'item' | 'lore' = 'location';
+        if (info.path.includes(`/${this.settings.characterFolder}/`)) entityType = 'character';
+        else if (info.path.includes(`/${this.settings.itemFolder}/`)) entityType = 'item';
+        else if (info.path.includes(`/${this.settings.loreFolder}/`)) entityType = 'lore';
+        return { display: info.display, type: entityType };
       },
       getEntityPeekData: async (name: string): Promise<EntityPeekData | null> => {
         const info = this.entityIndex.get(name);
         if (!info) return null;
         const file = this.app.vault.getAbstractFileByPath(info.path);
         if (!(file instanceof TFile)) return null;
-        const isChar = info.path.includes(this.settings.characterFolder);
+        let entityType: 'character' | 'location' | 'item' | 'lore' = 'location';
+        if (info.path.includes(`/${this.settings.characterFolder}/`)) entityType = 'character';
+        else if (info.path.includes(`/${this.settings.itemFolder}/`)) entityType = 'item';
+        else if (info.path.includes(`/${this.settings.loreFolder}/`)) entityType = 'lore';
 
         const content = await this.app.vault.cachedRead(file);
 
-        if (isChar) {
+        if (entityType === 'character') {
           const sheet = this.parseCharacterSheetForSidebar(content);
           if (!sheet) return null;
 
@@ -3214,6 +3698,33 @@ order: ${orderValue}
             skinTone: effectiveSheet.skinTone,
             distinguishingFeatures: effectiveSheet.distinguishingFeatures,
             sections: charSheet.sections.map(s => ({ title: s.title, content: s.content }))
+          };
+        } else if (entityType === 'item') {
+          const itemSheet = parseItemSheet(content);
+
+          return {
+            type: 'item',
+            name: itemSheet.name || file.basename,
+            entityFilePath: file.path,
+            images: itemSheet.images.map(i => ({ name: i.name, path: i.path })),
+            itemType: itemSheet.type,
+            origin: itemSheet.origin,
+            description: itemSheet.description,
+            customProperties: itemSheet.customProperties,
+            sections: itemSheet.sections.map(s => ({ title: s.title, content: s.content }))
+          };
+        } else if (entityType === 'lore') {
+          const loreSheet = parseLoreSheet(content);
+
+          return {
+            type: 'lore',
+            name: loreSheet.name || file.basename,
+            entityFilePath: file.path,
+            images: loreSheet.images.map(i => ({ name: i.name, path: i.path })),
+            loreCategory: loreSheet.category,
+            description: loreSheet.description,
+            customProperties: loreSheet.customProperties,
+            sections: loreSheet.sections.map(s => ({ title: s.title, content: s.content }))
           };
         } else {
           const locationName = file.basename;

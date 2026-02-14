@@ -355,6 +355,7 @@
 
 .novalist-explorer-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   background: var(--background-secondary);
   padding: 6px;
@@ -4938,4 +4939,210 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   font-size: inherit;
   line-height: 1;
   pointer-events: none;
+}
+
+/* ── Item Sheet View ─────────────────────────────────────────────── */
+.item-sheet-view .character-sheet-section > .setting-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.item-sheet-view .character-sheet-section > .setting-item .setting-item-info,
+.item-sheet-view .character-sheet-section > .setting-item .setting-item-control {
+  margin: 0;
+  width: 100%;
+}
+
+.item-sheet-view .character-sheet-section > .setting-item input,
+.item-sheet-view .character-sheet-section > .setting-item textarea {
+  width: 100%;
+}
+
+/* ── Lore Sheet View ─────────────────────────────────────────────── */
+.lore-sheet-view .character-sheet-section > .setting-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.lore-sheet-view .character-sheet-section > .setting-item .setting-item-info,
+.lore-sheet-view .character-sheet-section > .setting-item .setting-item-control {
+  margin: 0;
+  width: 100%;
+}
+
+.lore-sheet-view .character-sheet-section > .setting-item input,
+.lore-sheet-view .character-sheet-section > .setting-item textarea {
+  width: 100%;
+}
+
+/* ── Image Gallery View ──────────────────────────────────────────── */
+.novalist-image-gallery {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.novalist-image-gallery-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.novalist-image-gallery-search {
+  flex: 1;
+  min-width: 120px;
+}
+
+.novalist-image-gallery-search-input {
+  width: 100%;
+}
+
+.novalist-image-gallery-mode-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.novalist-image-gallery-mode-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.novalist-image-gallery-mode-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.novalist-image-gallery-count {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.novalist-image-gallery-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.novalist-image-gallery-empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--text-muted);
+}
+
+/* Grid mode */
+.novalist-image-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.novalist-image-gallery-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--background-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+.novalist-image-gallery-card-thumb {
+  aspect-ratio: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-primary);
+}
+
+.novalist-image-gallery-card-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.novalist-image-gallery-card-info {
+  padding: 6px 8px;
+  font-size: var(--font-ui-smaller);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.novalist-image-gallery-card-actions {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 8px;
+}
+
+.novalist-image-gallery-action-btn {
+  padding: 2px 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.novalist-image-gallery-action-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* List mode */
+.novalist-image-gallery-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.novalist-image-gallery-list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.novalist-image-gallery-list-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.novalist-image-gallery-list-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.novalist-image-gallery-list-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.novalist-image-gallery-list-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }

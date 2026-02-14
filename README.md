@@ -6,7 +6,7 @@ A comprehensive novel writing environment for Obsidian. Novalist turns your vaul
 
 ## Getting Started
 
-On first launch Novalist opens a **Startup Wizard** that walks you through project setup. Pick a project folder name, choose your preferred dialogue language (for smart-quote auto-replacement), and Novalist creates the folder structure for you: `Characters/`, `Locations/`, `Chapters/`, and `Images/`.
+On first launch Novalist opens a **Startup Wizard** that walks you through project setup. Pick a project folder name, choose your preferred dialogue language (for smart-quote auto-replacement), and Novalist creates the folder structure for you: `Characters/`, `Locations/`, `Items/`, `Lore/`, `Chapters/`, and `Images/`.
 
 You can re-run the wizard at any time from the command palette with **Novalist: Initialize novel project structure**. To manage multiple projects or configure a shared World Bible, open **Settings > Novalist > Projects**.
 
@@ -14,7 +14,7 @@ You can re-run the wizard at any time from the command palette with **Novalist: 
 
 ### Multi-Project Support
 
-A single vault can hold multiple novel projects. Each project has its own folder with independent chapters, characters, locations, and images. Per-project data — plot board, annotations, word count goals, and relationship pairs — is stored separately and swapped automatically when you switch projects.
+A single vault can hold multiple novel projects. Each project has its own folder with independent chapters, characters, locations, items, lore, and images. Per-project data — plot board, annotations, word count goals, and relationship pairs — is stored separately and swapped automatically when you switch projects.
 
 - **Add a project** from Settings > Projects or from the `Add project` button. Novalist creates the folder structure for the new project and switches to it.
 - **Switch projects** via Settings > Projects dropdown, the command palette (`Switch project`), or the project switcher modal that lists all projects with a single click to switch.
@@ -24,10 +24,10 @@ A single vault can hold multiple novel projects. Each project has its own folder
 
 ### World Bible
 
-A World Bible is a shared folder whose characters, locations, and images are available to every project in the vault. Enabled by default with the folder name `WorldBible`. Useful for book series or shared-universe stories where multiple projects reference the same cast and setting.
+A World Bible is a shared folder whose characters, locations, items, lore, and images are available to every project in the vault. Enabled by default with the folder name `WorldBible`. Useful for book series or shared-universe stories where multiple projects reference the same cast and setting.
 
 - Configure the World Bible folder path in Settings > Projects > World Bible. Click `Initialize World Bible folders` to create the sub-folder structure.
-- When creating a character or location, toggle `Add to World Bible` in the creation modal to place the entity in the shared folder instead of the current project.
+- When creating a character, location, item, or lore entry, toggle `Add to World Bible` in the creation modal to place the entity in the shared folder instead of the current project.
 - Right-click any character or location in the explorer to `Move to World Bible` or `Move to <project>` to relocate existing entities between the World Bible and any project.
 - World Bible entities appear alongside project entities in the explorer, sidebar, character map, and focus peek. A `WB` badge in the explorer distinguishes shared entities from project-local ones.
 - Entity scanning, mention detection, word counting, and file lookups all search both the active project and the World Bible folder.
@@ -36,19 +36,21 @@ A World Bible is a shared folder whose characters, locations, and images are ava
 
 An always-visible toolbar is injected into every editor tab header. It provides one-click access to all major actions:
 
-- **Create group** — Add Character, Add Location, Add Chapter
-- **Views group** — Explorer, Context Sidebar, Character Map, Plot Board, Export
+- **Create group** — Add Character, Add Location, Add Item, Add Lore, Add Chapter
+- **Views group** — Explorer, Context Sidebar, Character Map, Plot Board, Image Gallery, Export
 - **Chapter status dropdown** — Visible on chapter files. Change between Outline (○), First Draft (◔), Revised (◑), Edited (◕), and Final (●). The status is stored in the chapter's frontmatter and reflected in the explorer.
 
 ### Project Explorer
 
-A specialized file explorer in the left panel with three tabs:
+A specialized file explorer in the left panel with five tabs:
 
 - **Chapters** — Listed in order, grouped by act when acts are defined. Drag and drop to reorder (updates frontmatter automatically). Status icons indicate progress. Scenes within each chapter are listed as nested sub-items. Right-click a chapter to edit its metadata (name, order, status, act, date), add a scene, assign to an act, or delete. Right-click a scene to edit its name and date. An `Add act` button lets you create new acts, and act headers support right-click to rename or delete.
 - **Characters** — Grouped by role with collapsible sections. Drag characters between groups to reassign roles. Multi-select with Ctrl/Shift+click. Gender badges shown with configurable colors. A property filter bar lets you search by any built-in or custom property (e.g. `Eye Color: Blue`, `Role: Protagonist`). Results update as you type.
 - **Locations** — A simple navigable list. Click to open, right-click to delete. Supports the same property filter bar (e.g. `Type: Tavern`).
+- **Items** — Lists all items/artifacts across the project and World Bible. Click to open in the Item Sheet View. Supports the property filter bar.
+- **Lore** — Lists all lore/encyclopedia entries. Click to open in the Lore Sheet View. Supports the property filter bar.
 
-Clicking any character or location opens it in its dedicated Sheet View.
+Clicking any character, location, item, or lore entry opens it in its dedicated Sheet View.
 
 ### Character Sheet View
 
@@ -68,19 +70,53 @@ Renaming a character in the sheet automatically renames the underlying file. A *
 
 A structured form editor for location files with fields for name, type, description, custom properties, images, and free-form sections. Works the same way as the character sheet.
 
+### Item Sheet View
+
+A structured form editor for item/artifact files. Track significant objects — a family heirloom, a magical weapon, a key plot device — across your story. Fields include:
+
+- **Basic info** — Name, type, description, origin
+- **Custom properties** — Typed key-value pairs (same data types as characters: text, integer, boolean, date, enum, timespan)
+- **Images** — Named image slots with drag-and-drop upload and thumbnail previews
+- **Free-form sections** — User-defined Markdown sections (e.g. History, Powers, Notes)
+
+Renaming an item in the sheet automatically renames the underlying file. Items mentioned in chapter text appear in the context sidebar with their type and description.
+
+### Lore Sheet View
+
+A structured form editor for lore/encyclopedia entries. Organize world-building knowledge — organizations, cultures, historical events, or any other reference material — in dedicated files. Fields include:
+
+- **Basic info** — Name, category (Organization, Culture, History, Other), description
+- **Custom properties** — Typed key-value pairs
+- **Images** — Named image slots with drag-and-drop upload
+- **Free-form sections** — User-defined Markdown sections
+
+Lore entries mentioned in chapter text appear in the context sidebar with their category and description.
+
+### Image Gallery
+
+A central view for browsing all images in your project's `Images/` folder. Accessible from the toolbar, command palette, or ribbon. Features:
+
+- **Grid mode** — Thumbnail cards with image name, copy-wikilink button, and open-file button
+- **List mode** — Compact rows with small thumbnails, file name, path, and action buttons
+- **Search** — Filter images by name as you type
+- **Image count** — Displays total and filtered image counts
+- Auto-refreshes when images are added, removed, or renamed in the vault
+
 ### Entity Templates
 
-Templates control the structure of new character and location files. Each template defines which fields, sections, images, relationships, and custom properties are included when an entity is created. A built-in `Default` template ships with all standard fields enabled.
+Templates control the structure of new character, location, item, and lore files. Each template defines which fields, sections, images, relationships, and custom properties are included when an entity is created. A built-in `Default` template ships with all standard fields enabled.
 
 - **Character templates** configure fields (gender, age, role, physical attributes, etc.), whether to include relationships, images, and chapter overrides, plus optional typed custom property definitions and free-form sections. The age field can be set to `Number` (plain text) or `Date (Birthdate)` mode with a configurable interval unit (years, months, or days). Timespan properties include an interval unit setting that controls how the elapsed time is displayed.
 - **Location templates** configure fields (type, description), images, typed custom properties, and sections.
-- Create, duplicate, edit, and delete templates from **Settings > Character templates / Location templates**. Built-in templates can be edited but not deleted.
+- **Item templates** configure fields (type, description, origin), images, typed custom properties, and sections.
+- **Lore templates** configure fields (category, description), images, typed custom properties, and sections.
+- Create, duplicate, edit, and delete templates from **Settings > Character / Location / Item / Lore templates**. Built-in templates can be edited but not deleted.
 - Set an **active template** per entity type. The active template is pre-selected in the creation dialog. When multiple templates exist, a dropdown appears in the creation modal.
 - A `TemplateId` is stored in each generated file. When opening a sheet, missing custom properties and sections from the associated template are automatically merged in, so template changes propagate to existing entities.
 
 ### Context Sidebar
 
-A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters and locations, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, and location descriptions. Character data reflects the full override cascade (scene > chapter > act > base). When you are inside a scene (an `## heading` section), the sidebar shows the current scene name and applies the most specific matching override. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. A **Mention Frequency** graph shows a heatmap of which chapters each character appears in, with a warning badge when a character has been absent for three or more consecutive chapters. Accessible via the toolbar, ribbon icon, or command palette.
+A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters, locations, items, and lore entries, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, location descriptions, item types, and lore categories. Character data reflects the full override cascade (scene > chapter > act > base). When you are inside a scene (an `## heading` section), the sidebar shows the current scene name and applies the most specific matching override. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. A **Mention Frequency** graph shows a heatmap of which chapters each character appears in, with a warning badge when a character has been absent for three or more consecutive chapters. Accessible via the toolbar, ribbon icon, or command palette.
 
 ### Character Map
 
@@ -163,12 +199,18 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 | Focus Peek size | Button that clears stored Focus Peek dimensions and restores default card size on next open | Default card size |
 | Character folder | Subfolder name for characters | `Characters` |
 | Location folder | Subfolder name for locations | `Locations` |
+| Item folder | Subfolder name for items/artifacts | `Items` |
+| Lore folder | Subfolder name for lore/encyclopedia entries | `Lore` |
 | Chapter folder | Subfolder name for chapters | `Chapters` |
 | Image folder | Subfolder name for images | `Images` |
 | Character templates | Define which fields, sections, and options new character files include | One built-in `Default` template |
 | Location templates | Define which fields, sections, and options new location files include | One built-in `Default` template |
+| Item templates | Define which fields, sections, and options new item files include | One built-in `Default` template |
+| Lore templates | Define which fields, sections, and options new lore files include | One built-in `Default` template |
 | Active character template | Pre-selected template when creating a character | `Default` |
 | Active location template | Pre-selected template when creating a location | `Default` |
+| Active item template | Pre-selected template when creating an item | `Default` |
+| Active lore template | Pre-selected template when creating a lore entry | `Default` |
 | Language | Auto-replacement language preset | `de-low` |
 | Auto-replacements | Editable token → replacement pairs (in Custom mode) | Language-dependent |
 | Book paragraph spacing | Toggle book-style paragraph gaps in edit mode | Off |
@@ -190,8 +232,13 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 | Export novel | Open the export view |
 | Open character sheet view | View the active character file as a form |
 | Open location sheet view | View the active location file as a form |
+| Open item sheet view | View the active item file as a form |
+| Open lore sheet view | View the active lore file as a form |
+| Open image gallery | Browse all project images |
 | Add new character | Create a new character file |
 | Add new location | Create a new location file |
+| Add new item | Create a new item/artifact file |
+| Add new lore entry | Create a new lore/encyclopedia file |
 | Add new chapter | Create a new chapter file |
 | Add new scene | Add a scene heading to the current chapter |
 | Switch project | Switch the active project |

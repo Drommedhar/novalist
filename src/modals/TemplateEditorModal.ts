@@ -10,6 +10,8 @@ import { t } from '../i18n';
 import type {
   CharacterTemplate,
   LocationTemplate,
+  ItemTemplate,
+  LoreTemplate,
   CustomPropertyDefinition,
   CustomPropertyType,
   IntervalUnit
@@ -17,6 +19,8 @@ import type {
 import {
   CHARACTER_TEMPLATE_KNOWN_FIELDS,
   LOCATION_TEMPLATE_KNOWN_FIELDS,
+  ITEM_TEMPLATE_KNOWN_FIELDS,
+  LORE_TEMPLATE_KNOWN_FIELDS,
   CUSTOM_PROPERTY_TYPES,
   INTERVAL_UNITS,
 } from '../types';
@@ -400,6 +404,370 @@ export class LocationTemplateEditorModal extends Modal {
       });
 
     // Restore scroll position after re-render
+    window.requestAnimationFrame(() => {
+      scrollEl.scrollTop = scrollTop;
+    });
+  }
+
+  private renderCustomProperties(containerEl: HTMLElement): void {
+    renderCustomPropertyDefs(containerEl, this.template.customPropertyDefs, (defs) => {
+      this.template.customPropertyDefs = defs;
+      this.render();
+    });
+  }
+
+  private renderSections(containerEl: HTMLElement): void {
+    new Setting(containerEl)
+      .setName(t('template.sections'))
+      .setHeading();
+
+    for (let i = 0; i < this.template.sections.length; i++) {
+      const section = this.template.sections[i];
+      const sectionContainer = containerEl.createDiv('novalist-template-section');
+
+      new Setting(sectionContainer)
+        .setName(t('template.sectionTitle'))
+        .addText(text => text
+          .setValue(section.title)
+          .onChange(value => { section.title = value; }))
+        .addButton(btn => btn
+          .setIcon('trash')
+          .setTooltip(t('template.removeSection'))
+          .onClick(() => {
+            this.template.sections.splice(i, 1);
+            this.render();
+          }));
+
+      const ta = new TextAreaComponent(sectionContainer);
+      ta.setPlaceholder(t('template.sectionDefaultContent'));
+      ta.setValue(section.defaultContent);
+      ta.onChange(value => { section.defaultContent = value; });
+      ta.inputEl.rows = 3;
+      ta.inputEl.classList.add('novalist-template-textarea');
+    }
+
+    new ButtonComponent(containerEl)
+      .setButtonText(t('template.addSection'))
+      .onClick(() => {
+        this.template.sections.push({ title: '', defaultContent: '' });
+        this.render();
+      });
+  }
+
+  onClose(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+}
+
+// ── Item Template Editor ──────────────────────────────────────────────
+
+export class ItemTemplateEditorModal extends Modal {
+  plugin: NovalistPlugin;
+  template: ItemTemplate;
+  onSave: (template: ItemTemplate) => void | Promise<void>;
+
+  constructor(app: App, plugin: NovalistPlugin, template: ItemTemplate, onSave: (t: ItemTemplate) => void | Promise<void>) {
+    super(app);
+    this.plugin = plugin;
+    this.template = {
+      ...template,
+      fields: template.fields.map(f => ({ ...f })),
+      customPropertyDefs: (template.customPropertyDefs ?? []).map(clonePropertyDef),
+      sections: template.sections.map(s => ({ ...s })),
+    };
+    this.onSave = onSave;
+  }
+
+  onOpen(): void {
+    this.render();
+  }
+
+  private render(): void {
+    const scrollEl = this.modalEl;
+    const scrollTop = scrollEl.scrollTop;
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('novalist-template-editor');
+
+    contentEl.createEl('h2', { text: t('template.editItemTemplate') });
+
+    new Setting(contentEl)
+      .setName(t('template.templateName'))
+      .addText(text => text
+        .setValue(this.template.name)
+        .setDisabled(this.template.builtIn)
+        .onChange(value => { this.template.name = value; }));
+
+    new Setting(contentEl)
+      .setName(t('template.fields'))
+      .setHeading();
+
+    const activeKeys = new Set(this.template.fields.map(f => f.key));
+
+    for (const knownKey of ITEM_TEMPLATE_KNOWN_FIELDS) {
+      const isActive = activeKeys.has(knownKey);
+      const field = this.template.fields.find(f => f.key === knownKey);
+
+      const row = new Setting(contentEl)
+        .setName(knownKey)
+        .addToggle(toggle => toggle
+          .setValue(isActive)
+          .onChange(value => {
+            if (value) {
+              this.template.fields.push({ key: knownKey, defaultValue: '' });
+            } else {
+              this.template.fields = this.template.fields.filter(f => f.key !== knownKey);
+            }
+            this.render();
+          }));
+
+      if (isActive && field) {
+        row.addText(text => text
+          .setPlaceholder(t('template.defaultValue'))
+          .setValue(field.defaultValue)
+          .onChange(value => { field.defaultValue = value; }));
+      }
+    }
+
+    const customFields = this.template.fields.filter(f => !ITEM_TEMPLATE_KNOWN_FIELDS.includes(f.key));
+    for (const field of customFields) {
+      new Setting(contentEl)
+        .addText(text => text
+          .setPlaceholder(t('template.fieldKey'))
+          .setValue(field.key)
+          .onChange(value => { field.key = value; }))
+        .addText(text => text
+          .setPlaceholder(t('template.defaultValue'))
+          .setValue(field.defaultValue)
+          .onChange(value => { field.defaultValue = value; }))
+        .addButton(btn => btn
+          .setIcon('trash')
+          .setTooltip(t('template.removeField'))
+          .onClick(() => {
+            this.template.fields = this.template.fields.filter(f => f !== field);
+            this.render();
+          }));
+    }
+
+    new ButtonComponent(contentEl)
+      .setButtonText(t('template.addCustomField'))
+      .onClick(() => {
+        this.template.fields.push({ key: '', defaultValue: '' });
+        this.render();
+      });
+
+    new Setting(contentEl)
+      .setName(t('template.options'))
+      .setHeading();
+
+    new Setting(contentEl)
+      .setName(t('template.includeImages'))
+      .addToggle(toggle => toggle
+        .setValue(this.template.includeImages)
+        .onChange(value => { this.template.includeImages = value; }));
+
+    this.renderCustomProperties(contentEl);
+    this.renderSections(contentEl);
+
+    const buttonDiv = contentEl.createDiv('modal-button-container');
+
+    new ButtonComponent(buttonDiv)
+      .setButtonText(t('modal.cancel'))
+      .onClick(() => this.close());
+
+    new ButtonComponent(buttonDiv)
+      .setButtonText(t('template.save'))
+      .setCta()
+      .onClick(() => {
+        this.template.fields = this.template.fields.filter(f => f.key.trim() !== '');
+        this.template.customPropertyDefs = this.template.customPropertyDefs.filter(d => d.key.trim() !== '');
+        void this.onSave(this.template);
+        this.close();
+      });
+
+    window.requestAnimationFrame(() => {
+      scrollEl.scrollTop = scrollTop;
+    });
+  }
+
+  private renderCustomProperties(containerEl: HTMLElement): void {
+    renderCustomPropertyDefs(containerEl, this.template.customPropertyDefs, (defs) => {
+      this.template.customPropertyDefs = defs;
+      this.render();
+    });
+  }
+
+  private renderSections(containerEl: HTMLElement): void {
+    new Setting(containerEl)
+      .setName(t('template.sections'))
+      .setHeading();
+
+    for (let i = 0; i < this.template.sections.length; i++) {
+      const section = this.template.sections[i];
+      const sectionContainer = containerEl.createDiv('novalist-template-section');
+
+      new Setting(sectionContainer)
+        .setName(t('template.sectionTitle'))
+        .addText(text => text
+          .setValue(section.title)
+          .onChange(value => { section.title = value; }))
+        .addButton(btn => btn
+          .setIcon('trash')
+          .setTooltip(t('template.removeSection'))
+          .onClick(() => {
+            this.template.sections.splice(i, 1);
+            this.render();
+          }));
+
+      const ta = new TextAreaComponent(sectionContainer);
+      ta.setPlaceholder(t('template.sectionDefaultContent'));
+      ta.setValue(section.defaultContent);
+      ta.onChange(value => { section.defaultContent = value; });
+      ta.inputEl.rows = 3;
+      ta.inputEl.classList.add('novalist-template-textarea');
+    }
+
+    new ButtonComponent(containerEl)
+      .setButtonText(t('template.addSection'))
+      .onClick(() => {
+        this.template.sections.push({ title: '', defaultContent: '' });
+        this.render();
+      });
+  }
+
+  onClose(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+}
+
+// ── Lore Template Editor ──────────────────────────────────────────────
+
+export class LoreTemplateEditorModal extends Modal {
+  plugin: NovalistPlugin;
+  template: LoreTemplate;
+  onSave: (template: LoreTemplate) => void | Promise<void>;
+
+  constructor(app: App, plugin: NovalistPlugin, template: LoreTemplate, onSave: (t: LoreTemplate) => void | Promise<void>) {
+    super(app);
+    this.plugin = plugin;
+    this.template = {
+      ...template,
+      fields: template.fields.map(f => ({ ...f })),
+      customPropertyDefs: (template.customPropertyDefs ?? []).map(clonePropertyDef),
+      sections: template.sections.map(s => ({ ...s })),
+    };
+    this.onSave = onSave;
+  }
+
+  onOpen(): void {
+    this.render();
+  }
+
+  private render(): void {
+    const scrollEl = this.modalEl;
+    const scrollTop = scrollEl.scrollTop;
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('novalist-template-editor');
+
+    contentEl.createEl('h2', { text: t('template.editLoreTemplate') });
+
+    new Setting(contentEl)
+      .setName(t('template.templateName'))
+      .addText(text => text
+        .setValue(this.template.name)
+        .setDisabled(this.template.builtIn)
+        .onChange(value => { this.template.name = value; }));
+
+    new Setting(contentEl)
+      .setName(t('template.fields'))
+      .setHeading();
+
+    const activeKeys = new Set(this.template.fields.map(f => f.key));
+
+    for (const knownKey of LORE_TEMPLATE_KNOWN_FIELDS) {
+      const isActive = activeKeys.has(knownKey);
+      const field = this.template.fields.find(f => f.key === knownKey);
+
+      const row = new Setting(contentEl)
+        .setName(knownKey)
+        .addToggle(toggle => toggle
+          .setValue(isActive)
+          .onChange(value => {
+            if (value) {
+              this.template.fields.push({ key: knownKey, defaultValue: '' });
+            } else {
+              this.template.fields = this.template.fields.filter(f => f.key !== knownKey);
+            }
+            this.render();
+          }));
+
+      if (isActive && field) {
+        row.addText(text => text
+          .setPlaceholder(t('template.defaultValue'))
+          .setValue(field.defaultValue)
+          .onChange(value => { field.defaultValue = value; }));
+      }
+    }
+
+    const customFields = this.template.fields.filter(f => !LORE_TEMPLATE_KNOWN_FIELDS.includes(f.key));
+    for (const field of customFields) {
+      new Setting(contentEl)
+        .addText(text => text
+          .setPlaceholder(t('template.fieldKey'))
+          .setValue(field.key)
+          .onChange(value => { field.key = value; }))
+        .addText(text => text
+          .setPlaceholder(t('template.defaultValue'))
+          .setValue(field.defaultValue)
+          .onChange(value => { field.defaultValue = value; }))
+        .addButton(btn => btn
+          .setIcon('trash')
+          .setTooltip(t('template.removeField'))
+          .onClick(() => {
+            this.template.fields = this.template.fields.filter(f => f !== field);
+            this.render();
+          }));
+    }
+
+    new ButtonComponent(contentEl)
+      .setButtonText(t('template.addCustomField'))
+      .onClick(() => {
+        this.template.fields.push({ key: '', defaultValue: '' });
+        this.render();
+      });
+
+    new Setting(contentEl)
+      .setName(t('template.options'))
+      .setHeading();
+
+    new Setting(contentEl)
+      .setName(t('template.includeImages'))
+      .addToggle(toggle => toggle
+        .setValue(this.template.includeImages)
+        .onChange(value => { this.template.includeImages = value; }));
+
+    this.renderCustomProperties(contentEl);
+    this.renderSections(contentEl);
+
+    const buttonDiv = contentEl.createDiv('modal-button-container');
+
+    new ButtonComponent(buttonDiv)
+      .setButtonText(t('modal.cancel'))
+      .onClick(() => this.close());
+
+    new ButtonComponent(buttonDiv)
+      .setButtonText(t('template.save'))
+      .setCta()
+      .onClick(() => {
+        this.template.fields = this.template.fields.filter(f => f.key.trim() !== '');
+        this.template.customPropertyDefs = this.template.customPropertyDefs.filter(d => d.key.trim() !== '');
+        void this.onSave(this.template);
+        this.close();
+      });
+
     window.requestAnimationFrame(() => {
       scrollEl.scrollTop = scrollTop;
     });

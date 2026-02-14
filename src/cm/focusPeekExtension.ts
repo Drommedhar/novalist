@@ -33,7 +33,7 @@ export interface PeekRelationship {
 
 /** Compact entity info returned by the plugin for display in the peek card. */
 export interface EntityPeekData {
-  type: 'character' | 'location';
+  type: 'character' | 'location' | 'item' | 'lore';
   name: string;
   /** File path of the entity (needed for image resolution). */
   entityFilePath: string;
@@ -62,13 +62,18 @@ export interface EntityPeekData {
   // Location fields
   locationType?: string;
   description?: string;
+  // Item fields
+  itemType?: string;
+  origin?: string;
+  // Lore fields
+  loreCategory?: string;
 }
 
 // ─── Facet: callbacks from the plugin ───────────────────────────────
 
 export interface FocusPeekCallbacks {
   /** Find entity at a line/ch position (reuses the plugin's existing logic). */
-  getEntityAtPosition: (lineText: string, ch: number) => { display: string; type: 'character' | 'location' } | null;
+  getEntityAtPosition: (lineText: string, ch: number) => { display: string; type: 'character' | 'location' | 'item' | 'lore' } | null;
   /** Fetch compact peek data for a named entity. */
   getEntityPeekData: (name: string) => Promise<EntityPeekData | null>;
   /** Resolve an image wiki-link path to a displayable src URL (or null). */
@@ -260,7 +265,7 @@ class FocusPeekPlugin implements PluginValue {
     return this.getEntityAtPos(pos) !== null;
   }
 
-  private getEntityAtPos(pos: number): { display: string; type: 'character' | 'location' } | null {
+  private getEntityAtPos(pos: number): { display: string; type: 'character' | 'location' | 'item' | 'lore' } | null {
     const cb = this.view.state.facet(focusPeekCallbacks);
     const doc = this.view.state.doc;
     if (pos < 0 || pos > doc.length) return null;
@@ -385,15 +390,21 @@ class FocusPeekPlugin implements PluginValue {
 
     header.createEl('span', { text: fullName, cls: 'novalist-peek-name' });
 
+    const badgeLabelMap: Record<string, string> = {
+      character: t('peek.character'),
+      location: t('peek.location'),
+      item: t('peek.item'),
+      lore: t('peek.lore')
+    };
     const badge = header.createEl('span', {
-      text: data.type === 'character' ? t('peek.character') : t('peek.location'),
+      text: badgeLabelMap[data.type] ?? data.type,
       cls: 'novalist-peek-badge'
     });
     if (data.type === 'character') {
       badge.addClass('novalist-peek-badge--character');
       if (data.roleColor) badge.style.setProperty('--novalist-peek-badge-bg', data.roleColor);
     } else {
-      badge.addClass('novalist-peek-badge--location');
+      badge.addClass(`novalist-peek-badge--${data.type}`);
     }
 
     // Spacer
@@ -479,10 +490,24 @@ class FocusPeekPlugin implements PluginValue {
           cls: 'novalist-peek-pill-value'
         });
       }
-    } else {
+    } else if (data.type === 'location') {
       if (data.locationType) {
         const pill = props.createDiv('novalist-peek-pill');
         pill.createEl('span', { text: data.locationType, cls: 'novalist-peek-pill-value' });
+      }
+    } else if (data.type === 'item') {
+      if (data.itemType) {
+        const pill = props.createDiv('novalist-peek-pill');
+        pill.createEl('span', { text: data.itemType, cls: 'novalist-peek-pill-value' });
+      }
+      if (data.origin) {
+        const pill = props.createDiv('novalist-peek-pill novalist-peek-pill--dim');
+        pill.createEl('span', { text: data.origin, cls: 'novalist-peek-pill-value' });
+      }
+    } else if (data.type === 'lore') {
+      if (data.loreCategory) {
+        const pill = props.createDiv('novalist-peek-pill');
+        pill.createEl('span', { text: data.loreCategory, cls: 'novalist-peek-pill-value' });
       }
     }
 
@@ -566,8 +591,8 @@ class FocusPeekPlugin implements PluginValue {
       });
     }
 
-    // ── Location description excerpt
-    if (data.type === 'location' && data.description) {
+    // ── Description excerpt (location, item, lore)
+    if ((data.type === 'location' || data.type === 'item' || data.type === 'lore') && data.description) {
       const descDiv = details.createDiv('novalist-peek-desc');
       descDiv.createEl('span', {
         text: data.description.length > 140 ? data.description.substring(0, 140) + '…' : data.description,

@@ -272,6 +272,70 @@ export class NovalistSidebarView extends ItemView {
         }
       }
     }
+
+    // Items Section
+    if (chapterData.items.length > 0) {
+      const itemEntries: Array<{ name: string; type: string; description: string }> = [];
+
+      for (const itemName of chapterData.items) {
+        const itemFile = this.plugin.findItemFile(itemName);
+        if (!itemFile) continue;
+        const itemData = await this.plugin.parseItemFile(itemFile);
+        itemEntries.push(itemData);
+      }
+
+      if (itemEntries.length > 0) {
+        const itemSection = contextContent.createDiv('novalist-overview-section');
+        itemSection.createEl('div', { text: t('sidebar.items'), cls: 'novalist-overview-section-title' });
+
+        const itemList = itemSection.createDiv('novalist-overview-list');
+        for (const itemData of itemEntries) {
+          const card = itemList.createDiv('novalist-overview-card');
+
+          const topRow = card.createDiv('novalist-overview-card-top');
+          topRow.createEl('span', { text: itemData.name, cls: 'novalist-overview-card-name' });
+          if (itemData.type) {
+            topRow.createEl('span', { text: itemData.type, cls: 'novalist-overview-card-role' });
+          }
+
+          if (itemData.description) {
+            card.createEl('p', { text: itemData.description, cls: 'novalist-overview-card-desc' });
+          }
+        }
+      }
+    }
+
+    // Lore Section
+    if (chapterData.lore.length > 0) {
+      const loreEntries: Array<{ name: string; category: string; description: string }> = [];
+
+      for (const loreName of chapterData.lore) {
+        const loreFile = this.plugin.findLoreFile(loreName);
+        if (!loreFile) continue;
+        const loreData = await this.plugin.parseLoreFile(loreFile);
+        loreEntries.push(loreData);
+      }
+
+      if (loreEntries.length > 0) {
+        const loreSection = contextContent.createDiv('novalist-overview-section');
+        loreSection.createEl('div', { text: t('sidebar.lore'), cls: 'novalist-overview-section-title' });
+
+        const loreList = loreSection.createDiv('novalist-overview-list');
+        for (const loreData of loreEntries) {
+          const card = loreList.createDiv('novalist-overview-card');
+
+          const topRow = card.createDiv('novalist-overview-card-top');
+          topRow.createEl('span', { text: loreData.name, cls: 'novalist-overview-card-name' });
+          if (loreData.category) {
+            topRow.createEl('span', { text: loreData.category, cls: 'novalist-overview-card-role' });
+          }
+
+          if (loreData.description) {
+            card.createEl('p', { text: loreData.description, cls: 'novalist-overview-card-desc' });
+          }
+        }
+      }
+    }
   }
 
   onClose(): Promise<void> {
