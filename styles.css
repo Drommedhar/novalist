@@ -4235,6 +4235,11 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   width: 100%;
 }
 
+/* Align dropdowns with text inputs in template field rows */
+.novalist-template-editor > .setting-item > .setting-item-control > select.dropdown {
+  min-width: 12em;
+}
+
 /* Timespan interval unit row */
 .novalist-template-interval-row {
   padding-left: 24px;

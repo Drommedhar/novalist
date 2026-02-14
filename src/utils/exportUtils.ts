@@ -4,6 +4,12 @@ import JSZip from 'jszip';
 import { t } from '../i18n';
 import { stripComments } from './statisticsUtils';
 
+/** Internal marker used to represent scene breaks in compiled content. */
+const SCENE_BREAK_MARKER = '{{novalist-scene-break}}';
+
+/** Visual separator rendered for scene breaks in all output formats. */
+const SCENE_BREAK_TEXT = '* * *';
+
 export interface ExportOptions {
   format: 'epub' | 'pdf' | 'docx';
   includeTitlePage: boolean;
@@ -18,6 +24,8 @@ export interface ChapterContent {
   order: number;
 }
 
+// ─── Chapter Compilation ─────────────────────────────────────────────
+
 export async function compileChapters(
   plugin: NovalistPlugin,
   chapterFiles: TFile[]
@@ -25,7 +33,9 @@ export async function compileChapters(
   const chapters: ChapterContent[] = [];
   
   for (const file of chapterFiles) {
-    const content = await plugin.app.vault.read(file);
+    // Normalise line endings (Windows \r\n → \n) so that every regex
+    // and every split('\n\n') in the export pipeline works reliably.
+    const content = (await plugin.app.vault.read(file)).replace(/\r/g, '');
     const cache = plugin.app.metadataCache.getFileCache(file);
     const frontmatter = cache?.frontmatter || {};
     const order = Number(frontmatter.order) || 999;
@@ -42,6 +52,21 @@ export async function compileChapters(
     
     // Remove the H1 title (we'll use it separately)
     body = body.replace(/^#\s+.+\n?/m, '');
+    
+    // Strip markdown code fences (``` lines) left behind after comment removal
+    body = body.replace(/^```.*$/gm, '');
+    
+    // Replace scene headings (## …) with scene break markers.
+    // Scene names are internal organisational labels and must not
+    // appear in the exported book output.
+    body = body.replace(/^##\s+.+$/gm, SCENE_BREAK_MARKER);
+    
+    // The very first scene in a chapter doesn't need a visible break
+    // separator – strip a leading marker if present.
+    body = body.trim();
+    if (body.startsWith(SCENE_BREAK_MARKER)) {
+      body = body.substring(SCENE_BREAK_MARKER.length).trim();
+    }
     
     // Clean up markdown links - convert wiki links to plain text
     body = body.replace(/\[\[([^\]|]+)\|?([^\]]*)\]\]/g, (_: string, link: string, display: string) => {
@@ -64,13 +89,15 @@ export async function compileChapters(
   return chapters;
 }
 
+// ─── EPUB Export (EPUB 3 compliant) ──────────────────────────────────
+
 export async function exportToEPUB(
   plugin: NovalistPlugin,
   options: ExportOptions
 ): Promise<Blob> {
   const zip = new JSZip();
   
-  // mimetype - must be first and uncompressed
+  // mimetype – must be first entry and stored uncompressed
   zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
   
   // META-INF/container.xml
@@ -87,134 +114,267 @@ export async function exportToEPUB(
   const oebps = zip.folder('OEBPS');
   if (!oebps) throw new Error('Failed to create OEBPS folder');
   
-  // Get chapter contents
+  // Compile chapter contents
   const files = options.includeChapters
     .map(path => plugin.app.vault.getAbstractFileByPath(path))
     .filter((f): f is TFile => f instanceof TFile);
   const chapters = await compileChapters(plugin, files);
   
-  // Generate content.xhtml
-  const contentHtml = generateEPUBContent(chapters, options);
-  oebps.file('content.xhtml', contentHtml);
+  const bookId = `urn:uuid:${generateUUID()}`;
+  const modifiedDate = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   
-  // Generate toc.ncx
-  const tocNcx = generateTOCNCX(chapters, options);
-  oebps.file('toc.ncx', tocNcx);
+  // External stylesheet
+  oebps.file('styles.css', generateEPUBStylesheet());
   
-  // Generate content.opf
-  const contentOpf = generateContentOPF(chapters, options);
-  oebps.file('content.opf', contentOpf);
-  
-  // Generate title page if requested
+  // Title page (separate XHTML file)
   if (options.includeTitlePage) {
-    const titlePage = generateTitlePage(options);
-    oebps.file('title.xhtml', titlePage);
+    oebps.file('title.xhtml', generateTitlePageXHTML(options));
   }
+  
+  // One XHTML file per chapter (best-practice for EPUB readers)
+  for (let i = 0; i < chapters.length; i++) {
+    oebps.file(`chapter-${i + 1}.xhtml`, generateChapterXHTML(chapters[i], options));
+  }
+  
+  // EPUB 3 Navigation Document
+  oebps.file('nav.xhtml', generateNavXHTML(chapters, options));
+  
+  // EPUB 2 NCX for backward compatibility
+  oebps.file('toc.ncx', generateTOCNCX(chapters, options, bookId));
+  
+  // OPF package document
+  oebps.file('content.opf', generateContentOPF(chapters, options, bookId, modifiedDate));
   
   return zip.generateAsync({ type: 'blob' });
 }
 
-function generateEPUBContent(chapters: ChapterContent[], options: ExportOptions): string {
-  const chapterHtml = chapters.map((ch, i) => `
-    <div class="chapter" id="chapter-${i + 1}">
-      <h1>${escapeXml(ch.title)}</h1>
-      ${markdownToHtml(ch.content)}
-    </div>
-  `).join('\n');
+// ── EPUB helpers ─────────────────────────────────────────────────────
+
+function generateEPUBStylesheet(): string {
+  return `/* Novalist – Book Export Stylesheet */
+
+@page {
+  margin: 1in;
+}
+
+body {
+  font-family: Georgia, "Times New Roman", Times, serif;
+  line-height: 1.5;
+  margin: 1em;
+  padding: 0;
+}
+
+/* Chapter heading */
+h1.chapter-title {
+  font-size: 1.5em;
+  text-align: center;
+  font-weight: bold;
+  margin-top: 3em;
+  margin-bottom: 2em;
+}
+
+/* Body paragraphs – indented by default (standard book formatting) */
+p {
+  text-indent: 1.5em;
+  margin-top: 0;
+  margin-bottom: 0;
+  text-align: justify;
+  orphans: 2;
+  widows: 2;
+}
+
+/* First paragraph after heading or scene break – no indent */
+p.no-indent {
+  text-indent: 0;
+}
+
+/* Scene break separator */
+p.scene-break {
+  text-indent: 0;
+  text-align: center;
+  margin-top: 1.5em;
+  margin-bottom: 1.5em;
+}
+
+/* Title page */
+div.title-page {
+  text-align: center;
+  padding-top: 30%;
+}
+
+div.title-page h1 {
+  font-size: 2em;
+  font-weight: bold;
+  margin-bottom: 1em;
+  text-indent: 0;
+}
+
+div.title-page p.author {
+  font-size: 1.2em;
+  font-style: italic;
+  text-indent: 0;
+}
+`;
+}
+
+function generateChapterXHTML(chapter: ChapterContent, _options: ExportOptions): string {
+  const bodyHtml = markdownToHtml(chapter.content);
   
   return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en">
 <head>
-  <title>${escapeXml(options.title)}</title>
-  <style>
-    body { font-family: serif; line-height: 1.6; margin: 2em; }
-    h1 { font-size: 1.8em; text-align: center; margin-top: 0; margin-bottom: 2em; page-break-before: always; }
-    h2 { font-size: 1.3em; text-align: center; margin-top: 2em; margin-bottom: 1em; }
-    .chapter:first-of-type h1 { page-break-before: auto; }
-    p { text-indent: 1.5em; margin: 0 0 0.5em 0; }
-    p:first-of-type { text-indent: 0; }
-    .chapter { margin-bottom: 3em; }
-  </style>
+  <meta charset="UTF-8"/>
+  <title>${escapeXml(chapter.title)}</title>
+  <link rel="stylesheet" type="text/css" href="styles.css"/>
 </head>
 <body>
-${options.includeTitlePage ? '<div id="title-page" style="text-align: center; page-break-after: always;"><h1>' + escapeXml(options.title) + '</h1>' + (options.author ? '<p>by ' + escapeXml(options.author) + '</p>' : '') + '</div>' : ''}
-${chapterHtml}
+  <section epub:type="chapter">
+    <h1 class="chapter-title">${escapeXml(chapter.title)}</h1>
+${bodyHtml}
+  </section>
 </body>
 </html>`;
 }
 
-function generateTOCNCX(chapters: ChapterContent[], options: ExportOptions): string {
-  const navPoints = chapters.map((ch, i) => `
-    <navPoint id="chapter-${i + 1}" playOrder="${i + (options.includeTitlePage ? 2 : 1)}">
+function generateTitlePageXHTML(options: ExportOptions): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>${escapeXml(options.title)}</title>
+  <link rel="stylesheet" type="text/css" href="styles.css"/>
+</head>
+<body>
+  <div class="title-page" epub:type="titlepage">
+    <h1>${escapeXml(options.title)}</h1>
+    ${options.author ? `<p class="author">${escapeXml(options.author)}</p>` : ''}
+  </div>
+</body>
+</html>`;
+}
+
+function generateNavXHTML(chapters: ChapterContent[], options: ExportOptions): string {
+  const items: string[] = [];
+  
+  if (options.includeTitlePage) {
+    items.push(`      <li><a href="title.xhtml">${escapeXml(t('export.titlePage'))}</a></li>`);
+  }
+  
+  chapters.forEach((ch, i) => {
+    items.push(`      <li><a href="chapter-${i + 1}.xhtml">${escapeXml(ch.title)}</a></li>`);
+  });
+  
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Table of Contents</title>
+</head>
+<body>
+  <nav epub:type="toc" id="toc">
+    <h1>Table of Contents</h1>
+    <ol>
+${items.join('\n')}
+    </ol>
+  </nav>
+</body>
+</html>`;
+}
+
+function generateTOCNCX(chapters: ChapterContent[], options: ExportOptions, bookId: string): string {
+  const navPoints: string[] = [];
+  let playOrder = 1;
+  
+  if (options.includeTitlePage) {
+    navPoints.push(`    <navPoint id="title" playOrder="${playOrder}">
+      <navLabel><text>${escapeXml(t('export.titlePage'))}</text></navLabel>
+      <content src="title.xhtml"/>
+    </navPoint>`);
+    playOrder++;
+  }
+  
+  chapters.forEach((ch, i) => {
+    navPoints.push(`    <navPoint id="chapter-${i + 1}" playOrder="${playOrder}">
       <navLabel><text>${escapeXml(ch.title)}</text></navLabel>
-      <content src="content.xhtml#chapter-${i + 1}"/>
-    </navPoint>
-  `).join('\n');
+      <content src="chapter-${i + 1}.xhtml"/>
+    </navPoint>`);
+    playOrder++;
+  });
   
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
 <ncx version="2005-1" xmlns="http://www.daisy.org/z3986/2005/ncx/">
   <head>
-    <meta name="dtb:uid" content="novalist-export"/>
+    <meta name="dtb:uid" content="${escapeXml(bookId)}"/>
     <meta name="dtb:depth" content="1"/>
     <meta name="dtb:totalPageCount" content="0"/>
     <meta name="dtb:maxPageNumber" content="0"/>
   </head>
   <docTitle><text>${escapeXml(options.title)}</text></docTitle>
   <navMap>
-    ${options.includeTitlePage ? '<navPoint id="title" playOrder="1"><navLabel><text>' + t('export.titlePage') + '</text></navLabel><content src="content.xhtml#title-page"/></navPoint>' : ''}
-    ${navPoints}
+${navPoints.join('\n')}
   </navMap>
 </ncx>`;
 }
 
-function generateContentOPF(chapters: ChapterContent[], options: ExportOptions): string {
+function generateContentOPF(
+  chapters: ChapterContent[],
+  options: ExportOptions,
+  bookId: string,
+  modifiedDate: string
+): string {
+  const manifestItems: string[] = [];
+  const spineItems: string[] = [];
+  
+  // Stylesheet
+  manifestItems.push('    <item id="css" href="styles.css" media-type="text/css"/>');
+  
+  // Navigation document (EPUB 3 requirement)
+  manifestItems.push('    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>');
+  
+  // NCX (EPUB 2 backward compatibility)
+  manifestItems.push('    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>');
+  
+  // Title page
+  if (options.includeTitlePage) {
+    manifestItems.push('    <item id="title" href="title.xhtml" media-type="application/xhtml+xml"/>');
+    spineItems.push('    <itemref idref="title"/>');
+  }
+  
+  // Chapter files
+  chapters.forEach((_, i) => {
+    const id = `chapter-${i + 1}`;
+    manifestItems.push(`    <item id="${id}" href="${id}.xhtml" media-type="application/xhtml+xml"/>`);
+    spineItems.push(`    <itemref idref="${id}"/>`);
+  });
+  
   return `<?xml version="1.0" encoding="UTF-8"?>
-<package version="2.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+<package version="3.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="BookId">${escapeXml(bookId)}</dc:identifier>
     <dc:title>${escapeXml(options.title)}</dc:title>
-    ${options.author ? `<dc:creator opf:role="aut">${escapeXml(options.author)}</dc:creator>` : ''}
+    ${options.author ? `<dc:creator>${escapeXml(options.author)}</dc:creator>` : ''}
     <dc:language>en</dc:language>
-    <dc:identifier id="BookId">novalist-export-${Date.now()}</dc:identifier>
+    <meta property="dcterms:modified">${modifiedDate}</meta>
   </metadata>
   <manifest>
-    ${options.includeTitlePage ? '<item id="title" href="title.xhtml" media-type="application/xhtml+xml"/>' : ''}
-    <item id="content" href="content.xhtml" media-type="application/xhtml+xml"/>
-    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+${manifestItems.join('\n')}
   </manifest>
   <spine toc="ncx">
-    ${options.includeTitlePage ? '<itemref idref="title"/>' : ''}
-    <itemref idref="content"/>
+${spineItems.join('\n')}
   </spine>
 </package>`;
 }
 
-function generateTitlePage(options: ExportOptions): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <title>${escapeXml(options.title)}</title>
-  <style>
-    body { text-align: center; padding-top: 40%; }
-    h1 { font-size: 2.5em; margin-bottom: 1em; }
-    .author { font-size: 1.5em; color: #666; }
-  </style>
-</head>
-<body>
-  <h1>${escapeXml(options.title)}</h1>
-  ${options.author ? `<p class="author">by ${escapeXml(options.author)}</p>` : ''}
-</body>
-</html>`;
-}
+// ─── DOCX Export ─────────────────────────────────────────────────────
 
 export async function exportToDOCX(
   plugin: NovalistPlugin,
   options: ExportOptions
 ): Promise<Blob> {
-  // For now, create a simple HTML-based DOCX
-  // Full docx library integration would be better but this works for basic export
   const files = options.includeChapters
     .map(path => plugin.app.vault.getAbstractFileByPath(path))
     .filter((f): f is TFile => f instanceof TFile);
@@ -228,6 +388,7 @@ export async function exportToDOCX(
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 </Types>`);
   
   // _rels/.rels
@@ -239,57 +400,229 @@ export async function exportToDOCX(
 </Relationships>`);
   }
   
-  // word/document.xml
   const word = zip.folder('word');
   if (!word) throw new Error('Failed to create word folder');
   
+  // word/_rels/document.xml.rels  (references styles.xml)
+  const wordRels = word.folder('_rels');
+  if (wordRels) {
+    wordRels.file('document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`);
+  }
+  
+  // word/styles.xml  – proper style definitions for book formatting
+  word.file('styles.xml', generateDOCXStyles());
+  
+  // ── Build document body ──
   let bodyContent = '';
   
+  // Title page
   if (options.includeTitlePage) {
     bodyContent += `<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>${escapeXml(options.title)}</w:t></w:r></w:p>`;
     if (options.author) {
-      bodyContent += `<w:p><w:pPr><w:pStyle w:val="Subtitle"/></w:pPr><w:r><w:t>by ${escapeXml(options.author)}</w:t></w:r></w:p>`;
+      bodyContent += `<w:p><w:pPr><w:pStyle w:val="Subtitle"/></w:pPr><w:r><w:t>${escapeXml(options.author)}</w:t></w:r></w:p>`;
     }
   }
   
+  // Chapters
   for (let i = 0; i < chapters.length; i++) {
     const chapter = chapters[i];
-    // Add page break before chapter (except first)
-    if (i > 0 || options.includeTitlePage) {
-      bodyContent += `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+    const needsPageBreak = i > 0 || options.includeTitlePage;
+    
+    // Chapter heading (with page break when not the very first element)
+    if (needsPageBreak) {
+      bodyContent += `<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:pageBreakBefore/></w:pPr><w:r><w:t>${escapeXml(chapter.title)}</w:t></w:r></w:p>`;
+    } else {
+      bodyContent += `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>${escapeXml(chapter.title)}</w:t></w:r></w:p>`;
     }
     
-    bodyContent += `<w:p><w:pPr><w:pStyle w:val="Heading1"/><w:jc w:val="center"/></w:pPr><w:r><w:t>${escapeXml(chapter.title)}</w:t></w:r></w:p>`;
-    
-    const paragraphs = chapter.content.split('\n\n');
+    // Chapter body – each line is a paragraph (matches Obsidian editor view)
+    const paragraphs = chapter.content.split('\n');
     let isFirstPara = true;
+    
     for (const para of paragraphs) {
-      if (!para.trim()) continue;
-      // Handle H2 scene headings
-      const h2Match = para.trim().match(/^##\s+(.+)$/m);
-      if (h2Match) {
-        bodyContent += `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>${escapeXml(h2Match[1])}</w:t></w:r></w:p>`;
+      const trimmed = para.trim();
+      if (!trimmed) continue;
+      
+      // Scene break
+      if (trimmed === SCENE_BREAK_MARKER) {
+        bodyContent += `<w:p><w:pPr><w:pStyle w:val="SceneBreak"/></w:pPr><w:r><w:t>${SCENE_BREAK_TEXT}</w:t></w:r></w:p>`;
         isFirstPara = true;
         continue;
       }
-      const cleanPara = escapeXml(para.trim());
-      // First paragraph has no indent
-      const indent = isFirstPara ? '<w:ind w:firstLine="0"/>' : '<w:ind w:firstLine="720"/>';
-      bodyContent += `<w:p><w:pPr>${indent}</w:pPr><w:r><w:t>${cleanPara}</w:t></w:r></w:p>`;
+      
+      // Regular paragraph — first paragraph after heading / scene break
+      // uses no indent (standard book typesetting convention).
+      const style = isFirstPara ? 'NoIndent' : 'BodyText';
+      bodyContent += `<w:p><w:pPr><w:pStyle w:val="${style}"/></w:pPr>${markdownToDOCXRuns(trimmed)}</w:p>`;
       isFirstPara = false;
     }
   }
   
+  // word/document.xml
   word.file('document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     ${bodyContent}
-    <w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+    <w:sectPr>
+      <w:pgSz w:w="12240" w:h="15840"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+    </w:sectPr>
   </w:body>
 </w:document>`);
   
   return await zip.generateAsync({ type: 'blob' });
 }
+
+// ── DOCX helpers ─────────────────────────────────────────────────────
+
+function generateDOCXStyles(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault>
+      <w:rPr>
+        <w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:eastAsia="Georgia" w:cs="Georgia"/>
+        <w:sz w:val="24"/>
+        <w:szCs w:val="24"/>
+        <w:lang w:val="en-US"/>
+      </w:rPr>
+    </w:rPrDefault>
+    <w:pPrDefault>
+      <w:pPr>
+        <w:spacing w:line="360" w:lineRule="auto"/>
+      </w:pPr>
+    </w:pPrDefault>
+  </w:docDefaults>
+
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+  </w:style>
+
+  <w:style w:type="paragraph" w:styleId="Title">
+    <w:name w:val="Title"/>
+    <w:basedOn w:val="Normal"/>
+    <w:pPr>
+      <w:jc w:val="center"/>
+      <w:spacing w:before="4800" w:after="240"/>
+    </w:pPr>
+    <w:rPr>
+      <w:sz w:val="52"/>
+      <w:szCs w:val="52"/>
+      <w:b/>
+      <w:bCs/>
+    </w:rPr>
+  </w:style>
+
+  <w:style w:type="paragraph" w:styleId="Subtitle">
+    <w:name w:val="Subtitle"/>
+    <w:basedOn w:val="Normal"/>
+    <w:pPr>
+      <w:jc w:val="center"/>
+      <w:spacing w:before="240"/>
+    </w:pPr>
+    <w:rPr>
+      <w:sz w:val="32"/>
+      <w:szCs w:val="32"/>
+      <w:i/>
+      <w:iCs/>
+    </w:rPr>
+  </w:style>
+
+  <w:style w:type="paragraph" w:styleId="Heading1">
+    <w:name w:val="heading 1"/>
+    <w:basedOn w:val="Normal"/>
+    <w:pPr>
+      <w:jc w:val="center"/>
+      <w:spacing w:before="1440" w:after="720"/>
+    </w:pPr>
+    <w:rPr>
+      <w:sz w:val="36"/>
+      <w:szCs w:val="36"/>
+      <w:b/>
+      <w:bCs/>
+    </w:rPr>
+  </w:style>
+
+  <w:style w:type="paragraph" w:styleId="BodyText">
+    <w:name w:val="Body Text"/>
+    <w:basedOn w:val="Normal"/>
+    <w:pPr>
+      <w:ind w:firstLine="720"/>
+      <w:jc w:val="both"/>
+    </w:pPr>
+  </w:style>
+
+  <w:style w:type="paragraph" w:styleId="NoIndent">
+    <w:name w:val="No Indent"/>
+    <w:basedOn w:val="Normal"/>
+    <w:pPr>
+      <w:ind w:firstLine="0"/>
+      <w:jc w:val="both"/>
+    </w:pPr>
+  </w:style>
+
+  <w:style w:type="paragraph" w:styleId="SceneBreak">
+    <w:name w:val="Scene Break"/>
+    <w:basedOn w:val="Normal"/>
+    <w:pPr>
+      <w:jc w:val="center"/>
+      <w:spacing w:before="360" w:after="360"/>
+    </w:pPr>
+  </w:style>
+</w:styles>`;
+}
+
+/**
+ * Convert a paragraph of markdown text into OOXML `<w:r>` run elements,
+ * handling **bold**, *italic* and ***bold-italic*** inline formatting.
+ */
+function markdownToDOCXRuns(text: string): string {
+  const runs: string[] = [];
+  // Match bold+italic, bold, or italic in order of specificity
+  const regex = /\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  
+  while ((match = regex.exec(text)) !== null) {
+    // Plain text before this match
+    if (match.index > lastIndex) {
+      runs.push(docxRun(text.substring(lastIndex, match.index), false, false));
+    }
+    
+    if (match[1] !== undefined) {
+      // ***bold + italic***
+      runs.push(docxRun(match[1], true, true));
+    } else if (match[2] !== undefined) {
+      // **bold**
+      runs.push(docxRun(match[2], true, false));
+    } else if (match[3] !== undefined) {
+      // *italic*
+      runs.push(docxRun(match[3], false, true));
+    }
+    
+    lastIndex = regex.lastIndex;
+  }
+  
+  // Remaining plain text
+  if (lastIndex < text.length) {
+    runs.push(docxRun(text.substring(lastIndex), false, false));
+  }
+  
+  return runs.join('');
+}
+
+/** Build a single `<w:r>` element with optional bold / italic run properties. */
+function docxRun(text: string, bold: boolean, italic: boolean): string {
+  const rPr = (bold || italic)
+    ? `<w:rPr>${bold ? '<w:b/><w:bCs/>' : ''}${italic ? '<w:i/><w:iCs/>' : ''}</w:rPr>`
+    : '';
+  return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
+}
+
+// ─── Markdown Export ─────────────────────────────────────────────────
 
 export async function exportToMarkdown(
   plugin: NovalistPlugin,
@@ -305,7 +638,7 @@ export async function exportToMarkdown(
   if (options.includeTitlePage) {
     output += `# ${options.title}\n\n`;
     if (options.author) {
-      output += `by ${options.author}\n\n`;
+      output += `*${options.author}*\n\n`;
     }
     output += `---\n\n`;
   }
@@ -318,15 +651,24 @@ export async function exportToMarkdown(
     }
     // Centered chapter title
     output += `<h1 style="text-align: center; margin-top: 0;">${chapter.title}</h1>\n\n`;
-    // First paragraph has no indent, subsequent paragraphs have indent
-    const paragraphs = chapter.content.split('\n\n');
+    // Each line is a paragraph (matches Obsidian editor view)
+    const paragraphs = chapter.content.split('\n');
     let isFirstPara = true;
     for (const para of paragraphs) {
-      if (!para.trim()) continue;
+      const trimmed = para.trim();
+      if (!trimmed) continue;
+      
+      // Scene break
+      if (trimmed === SCENE_BREAK_MARKER) {
+        output += `<p style="text-align: center; margin: 1.5em 0;">${SCENE_BREAK_TEXT}</p>\n\n`;
+        isFirstPara = true;
+        continue;
+      }
+      
       if (isFirstPara) {
-        output += `<p style="text-indent: 0;">${para.trim()}</p>\n\n`;
+        output += `<p style="text-indent: 0;">${trimmed}</p>\n\n`;
       } else {
-        output += `<p style="text-indent: 1.5em;">${para.trim()}</p>\n\n`;
+        output += `<p style="text-indent: 1.5em;">${trimmed}</p>\n\n`;
       }
       isFirstPara = false;
     }
@@ -335,35 +677,41 @@ export async function exportToMarkdown(
   return output;
 }
 
+// ─── Shared Utilities ────────────────────────────────────────────────
+
+/**
+ * Convert markdown content to XHTML paragraphs suitable for EPUB.
+ * Handles scene break markers, bold, italic and first-paragraph rules.
+ */
 function markdownToHtml(markdown: string): string {
-  // Simple markdown to HTML conversion for EPUB
-  let html = escapeXml(markdown);
+  // Each line is a paragraph (matches Obsidian editor view)
+  const paragraphs = markdown.split('\n');
+  let isFirst = true;
   
-  // H2 scene headings
-  html = html.replace(/^##\s+(.+)$/gm, '</p><h2>$1</h2><p>');
-  
-  // Bold
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  
-  // Italic
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  
-  // Line breaks to paragraphs
-  const paragraphs = html.split('\n\n');
-  html = paragraphs
+  const result = paragraphs
     .filter(p => p.trim())
     .map(p => {
       const trimmed = p.trim();
-      // Don't wrap headings in <p> tags
-      if (trimmed.startsWith('<h2>') || trimmed.endsWith('</h2>')) return trimmed;
-      return `<p>${trimmed.replace(/\n/g, '<br/>')}</p>`;
+      
+      // Scene break
+      if (trimmed === SCENE_BREAK_MARKER) {
+        isFirst = true; // next real paragraph gets no-indent
+        return `    <p class="scene-break">${SCENE_BREAK_TEXT}</p>`;
+      }
+      
+      // Process inline formatting (escape first, then apply markdown)
+      let processed = escapeXml(trimmed);
+      processed = processed.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+      processed = processed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      processed = processed.replace(/\*(.+?)\*/g, '<em>$1</em>');
+      
+      const cls = isFirst ? ' class="no-indent"' : '';
+      isFirst = false;
+      return `    <p${cls}>${processed}</p>`;
     })
     .join('\n');
   
-  // Clean up any empty <p></p> tags created by the H2 substitution
-  html = html.replace(/<p>\s*<\/p>/g, '');
-  
-  return html;
+  return result;
 }
 
 function escapeXml(str: string): string {
@@ -373,6 +721,15 @@ function escapeXml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+/** Generate a v4-style UUID (random). */
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 export function downloadBlob(blob: Blob, filename: string): void {
