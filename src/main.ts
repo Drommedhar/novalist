@@ -62,7 +62,7 @@ import { statisticsPanelExtension, type StatisticsPanelConfig, type ChapterOverv
 import { focusPeekExtension, type FocusPeekCallbacks, type EntityPeekData } from './cm/focusPeekExtension';
 import { countWords, getTodayDate, getOrCreateDailyGoal } from './utils/statisticsUtils';
 import { calculateReadability } from './utils/readabilityUtils';
-import type { CommentThread, CommentMessage } from './types';
+import type { CommentThread, CommentMessage, ProjectData } from './types';
 
 export default class NovalistPlugin extends Plugin {
   settings: NovalistSettings;
@@ -506,14 +506,21 @@ export default class NovalistPlugin extends Plugin {
       this.settings.explorerGroupCollapsed = pd.explorerGroupCollapsed;
       this.settings.relationshipPairs = pd.relationshipPairs;
     } else {
-      // First time for this project — create default data
-      const defaults = createDefaultProjectData();
-      this.settings.projectData[this.settings.activeProjectId] = defaults;
-      this.settings.commentThreads = defaults.commentThreads;
-      this.settings.plotBoard = defaults.plotBoard;
-      this.settings.wordCountGoals = defaults.wordCountGoals;
-      this.settings.explorerGroupCollapsed = defaults.explorerGroupCollapsed;
-      this.settings.relationshipPairs = defaults.relationshipPairs;
+      // No projectData entry yet — preserve any top-level data that was
+      // loaded from an older version instead of replacing it with empty defaults.
+      const fallback: ProjectData = {
+        commentThreads: this.settings.commentThreads ?? [],
+        plotBoard: this.settings.plotBoard ?? createDefaultProjectData().plotBoard,
+        wordCountGoals: this.settings.wordCountGoals ?? createDefaultProjectData().wordCountGoals,
+        explorerGroupCollapsed: this.settings.explorerGroupCollapsed ?? {},
+        relationshipPairs: this.settings.relationshipPairs ?? {},
+      };
+      this.settings.projectData[this.settings.activeProjectId] = fallback;
+      this.settings.commentThreads = fallback.commentThreads;
+      this.settings.plotBoard = fallback.plotBoard;
+      this.settings.wordCountGoals = fallback.wordCountGoals;
+      this.settings.explorerGroupCollapsed = fallback.explorerGroupCollapsed;
+      this.settings.relationshipPairs = fallback.relationshipPairs;
     }
   }
 
