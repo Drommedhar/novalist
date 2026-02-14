@@ -206,6 +206,11 @@ If you find Novalist helpful in your writing journey, consider supporting its de
 
 [<img src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" alt="Donate with PayPal" />](https://www.paypal.com/donate/?hosted_button_id=EQJG5JHAKYU4S)
 
+<a href="https://ko-fi.com/L3L81U8JW8" target="_blank">
+  <img src="https://storage.ko-fi.com/cdn/kofi6.png?v=6" height="36" alt="Buy Me a Coffee at ko-fi.com">
+</a>
+
+
 **Quick note**: I’m a professional developer, but for Novalist I leaned heavily on LLMs. That may or may not align with your philosophy — either way, I appreciate you taking a look. I prefer to be transparent about how it was built.
 
 ---
