@@ -14,6 +14,7 @@ import type NovalistPlugin from '../main';
 import { CharacterSheetData, CharacterRelationship, CharacterChapterOverride, CharacterImage, CustomPropertyDefinition } from '../types';
 import { parseCharacterSheet, serializeCharacterSheet } from '../utils/characterSheetUtils';
 import { InverseRelationshipModal } from '../modals/InverseRelationshipModal';
+import { computeInterval, capitalize } from '../utils/characterUtils';
 import { t } from '../i18n';
 
 export const CHARACTER_SHEET_VIEW_TYPE = 'character-sheet';
@@ -555,11 +556,38 @@ export class CharacterSheetView extends TextFileView {
     new Setting(detailsRow1)
       .setName(t('charSheet.age'))
       .addText(text => {
+        const template = this.plugin.getCharacterTemplate(this.data.templateId);
+        const isDateMode = template.ageMode === 'date';
+        if (isDateMode) {
+          text.inputEl.type = 'date';
+          text.setPlaceholder(t('charSheet.datePlaceholder'));
+        }
         text.setValue(this.getEffectiveValue('age'));
         text.onChange(value => {
           this.setEffectiveValue('age', value);
+          if (isDateMode) void this.render();
         });
       });
+
+    // Show computed age interval for date mode when a chapter is selected
+    {
+      const template = this.plugin.getCharacterTemplate(this.data.templateId);
+      if (template.ageMode === 'date') {
+        const ageValue = this.getEffectiveValue('age');
+        if (ageValue && this.currentChapter) {
+          const chapterDate = this.plugin.getDateForChapterScene(this.currentChapter, this.currentScene);
+          if (chapterDate) {
+            const unit = template.ageIntervalUnit ?? 'years';
+            const interval = computeInterval(ageValue, chapterDate, unit);
+            if (interval !== null && interval >= 0) {
+              const unitKey = `charSheet.timespan${capitalize(unit)}` as Parameters<typeof t>[0];
+              const agePill = detailsRow1.createDiv('novalist-age-interval');
+              agePill.setText(`\u2192 ${t(unitKey, { count: String(interval) })}`);
+            }
+          }
+        }
+      }
+    }
 
     // Role row (compact)
     const roleRow = section.createDiv('character-sheet-row character-sheet-role-row');
@@ -1197,6 +1225,29 @@ export class CharacterSheetView extends TextFileView {
               this.setEffectiveCustomProperties(customProps);
             });
           });
+        }
+        break;
+      case 'timespan':
+        valueSetting.addText(text => {
+          text.setPlaceholder(t('charSheet.datePlaceholder'));
+          text.setValue(value);
+          text.inputEl.type = 'date';
+          text.onChange(newValue => {
+            customProps[currentKey] = newValue;
+            this.setEffectiveCustomProperties(customProps);
+            void this.render();
+          });
+        });
+        // Show computed interval if a chapter/scene date is available
+        if (value && this.currentChapter) {
+          const chapterDate = this.plugin.getDateForChapterScene(this.currentChapter, this.currentScene);
+          if (chapterDate) {
+            const interval = computeInterval(value, chapterDate, def?.intervalUnit ?? 'years');
+            if (interval !== null && interval >= 0) {
+              const unitKey = `charSheet.timespan${capitalize(def?.intervalUnit ?? 'years')}` as Parameters<typeof t>[0];
+              valueSetting.setDesc(`\u2192 ${t(unitKey, { count: String(interval) })}`);
+            }
+          }
         }
         break;
       default: // 'string'

@@ -11,12 +11,14 @@ import type {
   CharacterTemplate,
   LocationTemplate,
   CustomPropertyDefinition,
-  CustomPropertyType
+  CustomPropertyType,
+  IntervalUnit
 } from '../types';
 import {
   CHARACTER_TEMPLATE_KNOWN_FIELDS,
   LOCATION_TEMPLATE_KNOWN_FIELDS,
   CUSTOM_PROPERTY_TYPES,
+  INTERVAL_UNITS,
 } from '../types';
 
 // ── Character Template Editor ─────────────────────────────────────────
@@ -80,15 +82,53 @@ export class CharacterTemplateEditorModal extends Modal {
               this.template.fields.push({ key: knownKey, defaultValue: '' });
             } else {
               this.template.fields = this.template.fields.filter(f => f.key !== knownKey);
+              if (knownKey === 'Age') {
+                this.template.ageMode = undefined;
+                this.template.ageIntervalUnit = undefined;
+              }
             }
             this.render();
           }));
 
       if (isActive && field) {
-        row.addText(text => text
-          .setPlaceholder(t('template.defaultValue'))
-          .setValue(field.defaultValue)
-          .onChange(value => { field.defaultValue = value; }));
+        // Age field gets a mode dropdown instead of a plain text default
+        if (knownKey === 'Age') {
+          row.addDropdown(dropdown => {
+            const mode = this.template.ageMode ?? 'number';
+            dropdown.addOption('number', t('template.ageMode.number'));
+            dropdown.addOption('date', t('template.ageMode.date'));
+            dropdown.setValue(mode);
+            dropdown.onChange(value => {
+              this.template.ageMode = value as 'number' | 'date';
+              if (value === 'date' && !this.template.ageIntervalUnit) {
+                this.template.ageIntervalUnit = 'years';
+              }
+              this.render();
+            });
+          });
+        } else {
+          row.addText(text => text
+            .setPlaceholder(t('template.defaultValue'))
+            .setValue(field.defaultValue)
+            .onChange(value => { field.defaultValue = value; }));
+        }
+      }
+
+      // Show interval unit dropdown for Age in date mode
+      if (knownKey === 'Age' && isActive && this.template.ageMode === 'date') {
+        new Setting(contentEl)
+          .setClass('novalist-template-interval-row')
+          .setName(t('template.intervalUnit'))
+          .addDropdown(dropdown => {
+            for (const u of INTERVAL_UNITS) {
+              const labelKey = `template.intervalUnit.${u}` as Parameters<typeof t>[0];
+              dropdown.addOption(u, t(labelKey));
+            }
+            dropdown.setValue(this.template.ageIntervalUnit ?? 'years');
+            dropdown.onChange(val => {
+              this.template.ageIntervalUnit = val as IntervalUnit;
+            });
+          });
       }
     }
 
@@ -453,6 +493,7 @@ function renderCustomPropertyDefs(
         // Reset default value when switching type
         if (v === 'bool') def.defaultValue = def.defaultValue || 'false';
         if (v === 'enum' && !def.enumOptions) def.enumOptions = [];
+        if (v === 'timespan' && !def.intervalUnit) def.intervalUnit = 'years';
         onChange(defs);
       });
     });
@@ -497,6 +538,14 @@ function renderCustomPropertyDefs(
             .setDisabled(true));
         }
         break;
+      case 'timespan':
+        row.addText(text => {
+          text.setPlaceholder(t('template.datePlaceholder'));
+          text.setValue(def.defaultValue);
+          text.inputEl.type = 'date';
+          text.onChange(v => { def.defaultValue = v; });
+        });
+        break;
       default: // 'string'
         row.addText(text => text
           .setPlaceholder(t('template.propertyValue'))
@@ -515,6 +564,22 @@ function renderCustomPropertyDefs(
     // Row 2: enum options (only when type === 'enum')
     if (def.type === 'enum') {
       renderEnumOptions(wrapper, def, () => onChange(defs));
+    }
+
+    // Row 2: interval unit selector (only when type === 'timespan')
+    if (def.type === 'timespan') {
+      new Setting(wrapper)
+        .setName(t('template.intervalUnit'))
+        .setClass('novalist-template-interval-row')
+        .addDropdown(dd => {
+          for (const unit of INTERVAL_UNITS) {
+            dd.addOption(unit, t(`template.intervalUnit.${unit}` as Parameters<typeof t>[0]));
+          }
+          dd.setValue(def.intervalUnit ?? 'years');
+          dd.onChange(v => {
+            def.intervalUnit = v as IntervalUnit;
+          });
+        });
     }
   }
 

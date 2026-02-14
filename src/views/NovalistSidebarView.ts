@@ -6,7 +6,7 @@
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { CharacterData, CharacterChapterInfo, LocationData, PlotBoardColumn } from '../types';
-import { normalizeCharacterRole } from '../utils/characterUtils';
+import { normalizeCharacterRole, computeInterval } from '../utils/characterUtils';
 import { t } from '../i18n';
 
 export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
@@ -204,9 +204,24 @@ export class NovalistSidebarView extends ItemView {
             pill.createEl('span', { text: gender, cls: 'novalist-overview-pill-value' });
           }
           if (age) {
+            let displayAge = age;
+            // Compute age from birthdate when template uses date mode
+            if (charData.templateId) {
+              const charTemplate = this.plugin.getCharacterTemplate(charData.templateId);
+              if (charTemplate.ageMode === 'date' && chapterId) {
+                const scName = this.currentScene ?? undefined;
+                const chapterDate = this.plugin.getDateForChapterScene(chapterId, scName);
+                if (chapterDate) {
+                  const interval = computeInterval(age, chapterDate, charTemplate.ageIntervalUnit ?? 'years');
+                  if (interval !== null && interval >= 0) {
+                    displayAge = String(interval);
+                  }
+                }
+              }
+            }
             const pill = props.createDiv('novalist-overview-pill');
             pill.createEl('span', { text: t('sidebar.age'), cls: 'novalist-overview-pill-label' });
-            pill.createEl('span', { text: age, cls: 'novalist-overview-pill-value' });
+            pill.createEl('span', { text: displayAge, cls: 'novalist-overview-pill-value' });
           }
           if (relationship) {
             const pill = props.createDiv('novalist-overview-pill');

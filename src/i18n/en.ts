@@ -134,7 +134,12 @@ export default {
 
   // Chapter modal
   'modal.createChapter': 'Create chapter',
+  'modal.editChapter': 'Edit chapter',
   'modal.order': 'Order',
+  'modal.status': 'Status',
+  'modal.act': 'Act',
+  'modal.date': 'Date',
+  'modal.save': 'Save',
 
   // Inverse relationship modal
   'modal.defineInverse': 'Define inverse relationship',
@@ -145,6 +150,7 @@ export default {
 
   // Scene modal
   'modal.createScene': 'Create new scene',
+  'modal.editScene': 'Edit scene',
   'modal.sceneName': 'Scene name',
 
   // Act modal
@@ -214,6 +220,8 @@ export default {
   'explorer.deleteAct': 'Delete act',
   'explorer.renameAct': 'Rename act',
   'explorer.noAct': 'No act',
+  'explorer.editChapter': 'Edit chapter',
+  'explorer.editScene': 'Edit scene',
   'explorer.genderTooltip': 'Gender: {gender}',
 
   // ── Character map view ─────────────────────────────────────────────
@@ -263,6 +271,9 @@ export default {
   'charSheet.propertyNamePlaceholder': 'Property name',
   'charSheet.valuePlaceholder': 'Value',
   'charSheet.datePlaceholder': 'yyyy-mm-dd',
+  'charSheet.timespanYears': '{count} years',
+  'charSheet.timespanMonths': '{count} months',
+  'charSheet.timespanDays': '{count} days',
   'charSheet.sectionTitlePlaceholder': 'Section title',
   'charSheet.sectionContentPlaceholder': 'Write content here',
   'charSheet.save': 'Save',
@@ -487,6 +498,13 @@ export default {
   'template.propType.bool': 'Boolean',
   'template.propType.date': 'Date (ISO)',
   'template.propType.enum': 'Enum',
+  'template.propType.timespan': 'Timespan',
+  'template.intervalUnit': 'Interval unit',
+  'template.intervalUnit.years': 'Years',
+  'template.intervalUnit.months': 'Months',
+  'template.intervalUnit.days': 'Days',
+  'template.ageMode.number': 'Number',
+  'template.ageMode.date': 'Date (Birthdate)',
   'template.enumOption': 'Option name',
   'template.addEnumOption': 'Add option',
   'template.removeEnumOption': 'Remove option',

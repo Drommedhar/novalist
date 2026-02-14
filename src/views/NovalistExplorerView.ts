@@ -11,6 +11,8 @@
 import type NovalistPlugin from '../main';
 import { normalizeCharacterRole } from '../utils/characterUtils';
 import { ChapterListData, CharacterListData, LocationListData, CHAPTER_STATUSES, ChapterStatus } from '../types';
+import { ChapterEditData } from '../modals/ChapterDescriptionModal';
+import { SceneNameModal } from '../modals/SceneNameModal';
 import { t } from '../i18n';
 
 export const NOVELIST_EXPLORER_VIEW_TYPE = 'novalist-explorer';
@@ -134,6 +136,15 @@ export class NovalistExplorerView extends ItemView {
     const menu = new Menu();
 
     if (this.plugin.isChapterFile(file)) {
+      menu.addItem((item) => {
+        item
+          .setTitle(t('explorer.editChapter'))
+          .setIcon('pencil')
+          .onClick(() => {
+            this.openEditChapterModal(file);
+          });
+      });
+
       menu.addItem((item) => {
         item
           .setTitle(t('explorer.addScene'))
@@ -465,8 +476,95 @@ export class NovalistExplorerView extends ItemView {
           sceneRow.addEventListener('click', () => {
             void this.openSceneInChapter(item.file, sceneName);
           });
+          sceneRow.addEventListener('contextmenu', (evt) => {
+            evt.preventDefault();
+            evt.stopPropagation();
+            const sceneMenu = new Menu();
+            sceneMenu.addItem(mi => {
+              mi.setTitle(t('explorer.editScene'))
+                .setIcon('pencil')
+                .onClick(() => {
+                  this.openEditSceneModal(item.file, sceneName);
+                });
+            });
+            sceneMenu.showAtMouseEvent(evt);
+          });
         }
       }
+  }
+
+  private openEditChapterModal(file: TFile): void {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fm = cache?.frontmatter ?? {};
+    const heading = cache?.headings?.find(h => h.level === 1)?.heading;
+    const existing: ChapterEditData = {
+      name: heading ?? file.basename,
+      order: String(fm.order ?? ''),
+      status: (fm.status as ChapterStatus) ?? 'outline',
+      act: typeof fm.act === 'string' ? fm.act : '',
+      date: typeof fm.date === 'string' ? fm.date : '',
+    };
+    this.plugin.openChapterDescriptionModal(existing, (data) => {
+      void (async () => {
+      // Rename file if name changed
+      if (data.name !== existing.name) {
+        const newPath = file.path.replace(/[^/]+\.md$/, `${data.name}.md`);
+        await this.app.fileManager.renameFile(file, newPath);
+        // Update heading in the file body
+        const renamedFile = this.app.vault.getAbstractFileByPath(newPath);
+        if (renamedFile instanceof TFile) {
+          const content = await this.app.vault.read(renamedFile);
+          const updated = content.replace(/^# .+$/m, `# ${data.name}`);
+          if (updated !== content) await this.app.vault.modify(renamedFile, updated);
+          await this.plugin.updateChapterFrontmatter(renamedFile, {
+            order: data.order,
+            status: data.status,
+            act: data.act,
+            date: data.date,
+          });
+        }
+      } else {
+        await this.plugin.updateChapterFrontmatter(file, {
+          order: data.order,
+          status: data.status,
+          act: data.act,
+          date: data.date,
+        });
+      }
+      void this.render();
+      })();
+    });
+  }
+
+  private openEditSceneModal(chapterFile: TFile, sceneName: string): void {
+    const sceneDate = this.plugin.getSceneDateSync(chapterFile, sceneName);
+    // Use chapter date as inherited fallback display — but only pass explicit scene date
+    const chapterDate = this.plugin.getChapterDateSync(chapterFile);
+    const explicitDate = sceneDate !== chapterDate ? sceneDate : '';
+    const modal = new SceneNameModal(this.app, (data) => {
+      void (async () => {
+      // Rename scene heading if name changed
+      if (data.name !== sceneName) {
+        const content = await this.app.vault.read(chapterFile);
+        const updated = content.replace(
+          new RegExp(`^## ${sceneName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'),
+          `## ${data.name}`
+        );
+        if (updated !== content) await this.app.vault.modify(chapterFile, updated);
+        // Move scene date to new name
+        if (sceneDate) {
+          await this.plugin.setSceneDate(chapterFile, sceneName, '');
+          await this.plugin.setSceneDate(chapterFile, data.name, data.date || sceneDate);
+        } else if (data.date) {
+          await this.plugin.setSceneDate(chapterFile, data.name, data.date);
+        }
+      } else if (data.date !== explicitDate) {
+        await this.plugin.setSceneDate(chapterFile, sceneName, data.date);
+      }
+      void this.render();
+      })();
+    }, { name: sceneName, date: explicitDate });
+    modal.open();
   }
 
   private renderCharacterGroupedList(

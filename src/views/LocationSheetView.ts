@@ -272,6 +272,15 @@ export class LocationSheetView extends TextFileView {
               }
               break;
             }
+            case 'timespan': {
+              const tsInput = row.createEl('input', {
+                type: 'date',
+                cls: 'location-sheet-custom-value',
+              });
+              tsInput.value = value;
+              tsInput.addEventListener('input', () => { props[key] = tsInput.value; });
+              break;
+            }
             default: { // 'string'
               const valueInput = row.createEl('input', {
                 type: 'text',

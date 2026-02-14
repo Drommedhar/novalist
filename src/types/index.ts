@@ -133,6 +133,7 @@ export interface CharacterData {
   gender: string;
   age: string;
   relationship: string;
+  templateId?: string;
   customProperties?: Record<string, string>;
   chapterInfos: CharacterChapterInfo[];
 }
@@ -261,7 +262,12 @@ export interface LocationSheetData {
 // ─── Entity Templates ────────────────────────────────────────────────
 
 /** Supported data types for custom properties. */
-export type CustomPropertyType = 'string' | 'int' | 'bool' | 'date' | 'enum';
+export type CustomPropertyType = 'string' | 'int' | 'bool' | 'date' | 'enum' | 'timespan';
+
+/** Time interval unit for timespan custom properties. */
+export type IntervalUnit = 'years' | 'months' | 'days';
+
+export const INTERVAL_UNITS: IntervalUnit[] = ['years', 'months', 'days'];
 
 /** Schema definition for one custom property on a template. */
 export interface CustomPropertyDefinition {
@@ -273,6 +279,8 @@ export interface CustomPropertyDefinition {
   defaultValue: string;
   /** Options for 'enum' type properties (plain string list). */
   enumOptions?: string[];
+  /** Interval unit for 'timespan' type properties. */
+  intervalUnit?: IntervalUnit;
 }
 
 export interface TemplateField {
@@ -308,6 +316,10 @@ export interface CharacterTemplate {
   includeRelationships: boolean;
   includeImages: boolean;
   includeChapterOverrides: boolean;
+  /** Whether the Age field is a plain number or a date (birthdate) with timespan. */
+  ageMode?: 'number' | 'date';
+  /** Interval unit when ageMode is 'date'. */
+  ageIntervalUnit?: IntervalUnit;
 }
 
 export interface LocationTemplate {
@@ -341,7 +353,7 @@ export const LOCATION_TEMPLATE_KNOWN_FIELDS: string[] = [
 
 /** All available custom-property data types. */
 export const CUSTOM_PROPERTY_TYPES: CustomPropertyType[] = [
-  'string', 'int', 'bool', 'date', 'enum',
+  'string', 'int', 'bool', 'date', 'enum', 'timespan',
 ];
 
 // Word Count & Statistics

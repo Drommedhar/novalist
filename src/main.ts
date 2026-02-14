@@ -41,12 +41,12 @@ import { RelationshipKeySuggester } from './suggesters/RelationshipKeySuggester'
 import { ImageSuggester } from './suggesters/ImageSuggester';
 import { CharacterModal } from './modals/CharacterModal';
 import { LocationModal } from './modals/LocationModal';
-import { ChapterDescriptionModal } from './modals/ChapterDescriptionModal';
+import { ChapterDescriptionModal, ChapterEditData } from './modals/ChapterDescriptionModal';
 import { SceneNameModal } from './modals/SceneNameModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { ProjectSwitcherModal, ProjectRenameModal } from './modals/ProjectModals';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
-import { normalizeCharacterRole } from './utils/characterUtils';
+import { normalizeCharacterRole, computeInterval } from './utils/characterUtils';
 import { parseCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
 import { parseLocationSheet } from './utils/locationSheetUtils';
 import { initLocale, t } from './i18n';
@@ -1228,13 +1228,17 @@ order: ${orderValue}
     new LocationModal(this.app, this).open();
   }
 
-  openChapterDescriptionModal(): void {
-    new ChapterDescriptionModal(this.app, this).open();
+  openChapterDescriptionModal(existing?: ChapterEditData, onSave?: (data: ChapterEditData) => void): void {
+    new ChapterDescriptionModal(this.app, this, existing, onSave).open();
   }
 
   promptSceneName(chapterFile: TFile): void {
-    const modal = new SceneNameModal(this.app, (name) => {
-      void this.createScene(chapterFile, name);
+    const modal = new SceneNameModal(this.app, (data) => {
+      void this.createScene(chapterFile, data.name).then(async () => {
+        if (data.date) {
+          await this.setSceneDate(chapterFile, data.name, data.date);
+        }
+      });
     });
     modal.open();
   }
@@ -1369,6 +1373,7 @@ order: ${orderValue}
         gender: sheetData.gender,
         age: sheetData.age,
         relationship: '', // No longer used in new format
+        templateId: sheetData.templateId || undefined,
         customProperties: sheetData.customProperties,
         chapterInfos: mergedChapterInfos
       };
@@ -1386,7 +1391,7 @@ order: ${orderValue}
     };
   }
 
-  parseCharacterSheetForSidebar(content: string): { name: string; surname: string; gender: string; age: string; role: string; customProperties: Record<string, string> } | null {
+  parseCharacterSheetForSidebar(content: string): { name: string; surname: string; gender: string; age: string; role: string; templateId: string; customProperties: Record<string, string> } | null {
     const sheetLines = this.getSectionLines(content, 'CharacterSheet');
     if (sheetLines.length === 0) return null;
     
@@ -1436,6 +1441,7 @@ order: ${orderValue}
       gender: parseField('Gender'),
       age: parseField('Age'),
       role: parseField('Role'),
+      templateId: parseField('TemplateId'),
       customProperties
     };
   }
@@ -1804,12 +1810,12 @@ order: ${orderValue}
     }
   }
 
-  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; file: TFile; scenes: string[] }>> {
+  async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }>> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; file: TFile; scenes: string[] }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }> = [];
     for (const file of files) {
       const content = await this.app.vault.read(file);
       const { frontmatter, body } = this.extractFrontmatterAndBody(content);
@@ -1819,6 +1825,7 @@ order: ${orderValue}
       const title = this.extractTitle(body) || file.basename;
       const status = (frontmatter.status as ChapterStatus) || 'outline';
       const act = typeof frontmatter.act === 'string' ? frontmatter.act.trim() : '';
+      const date = typeof frontmatter.date === 'string' ? frontmatter.date.trim() : '';
       const scenes = await this.getScenesForChapterAsync(file);
       chapters.push({
         id: guid,
@@ -1826,6 +1833,7 @@ order: ${orderValue}
         order: Number(frontmatter.order) || 999,
         status,
         act,
+        date,
         file,
         scenes
       });
@@ -1848,18 +1856,19 @@ order: ${orderValue}
     }));
   }
 
-  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; file: TFile; scenes: string[] }> {
+  getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }> {
     const root = this.settings.projectPath;
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
-    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; file: TFile; scenes: string[] }> = [];
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }> = [];
     for (const file of files) {
       const cache = this.app.metadataCache.getFileCache(file);
       const frontmatter = cache?.frontmatter || {};
       const heading = cache?.headings?.find(h => h.level === 1)?.heading;
       const status = (frontmatter.status as ChapterStatus) || 'outline';
       const act = typeof frontmatter.act === 'string' ? frontmatter.act.trim() : '';
+      const date = typeof frontmatter.date === 'string' ? frontmatter.date.trim() : '';
       const scenes = this.getScenesForChapter(file);
       chapters.push({
         id: typeof frontmatter.guid === 'string' && frontmatter.guid.trim() ? frontmatter.guid.trim() : file.basename,
@@ -1867,6 +1876,7 @@ order: ${orderValue}
         order: Number(frontmatter.order) || 999,
         status,
         act,
+        date,
         file,
         scenes
       });
@@ -1898,6 +1908,80 @@ order: ${orderValue}
     frontmatter.status = status;
     const nextFrontmatter = this.serializeFrontmatter(frontmatter);
     await this.app.vault.modify(file, nextFrontmatter + body);
+  }
+
+  /** Update multiple frontmatter fields on a chapter file found by name. */
+  async updateChapterMetadata(chapterName: string, fields: Record<string, string>): Promise<void> {
+    const root = this.settings.projectPath;
+    const folder = `${root}/${this.settings.chapterFolder}`;
+    const path = `${folder}/${chapterName}.md`;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return;
+    await this.updateChapterFrontmatter(file, fields);
+  }
+
+  /** Update arbitrary frontmatter fields on a chapter file. */
+  async updateChapterFrontmatter(file: TFile, fields: Record<string, string>): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const { frontmatter, body } = this.extractFrontmatterAndBody(content);
+    for (const [key, value] of Object.entries(fields)) {
+      if (value) {
+        frontmatter[key] = value;
+      } else {
+        delete frontmatter[key];
+      }
+    }
+    const next = this.serializeFrontmatter(frontmatter);
+    await this.app.vault.modify(file, next + body);
+  }
+
+  /** Get the date assigned to a chapter (from frontmatter). */
+  getChapterDateSync(file: TFile): string {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fm = cache?.frontmatter;
+    return typeof fm?.date === 'string' ? fm.date.trim() : '';
+  }
+
+  /** Get the date for a specific scene within a chapter. Falls back to the chapter date. */
+  getSceneDateSync(file: TFile, sceneName: string): string {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fm = cache?.frontmatter;
+    if (fm?.sceneDates && typeof fm.sceneDates === 'object') {
+      const sd = fm.sceneDates as Record<string, string>;
+      if (typeof sd[sceneName] === 'string' && sd[sceneName].trim()) {
+        return sd[sceneName].trim();
+      }
+    }
+    // Fall back to chapter date
+    return typeof fm?.date === 'string' ? fm.date.trim() : '';
+  }
+
+  /** Set the date for a specific scene (stored in frontmatter sceneDates map). */
+  async setSceneDate(file: TFile, sceneName: string, date: string): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const { frontmatter, body } = this.extractFrontmatterAndBody(content);
+    if (!frontmatter.sceneDates || typeof frontmatter.sceneDates !== 'object') {
+      (frontmatter as Record<string, unknown>).sceneDates = {};
+    }
+    const sceneDates = (frontmatter as Record<string, Record<string, string>>).sceneDates;
+    if (date) {
+      sceneDates[sceneName] = date;
+    } else {
+      delete sceneDates[sceneName];
+    }
+    const next = this.serializeFrontmatter(frontmatter);
+    await this.app.vault.modify(file, next + body);
+  }
+
+  /** Get the date for a chapter/scene by IDs (used by character sheet). */
+  getDateForChapterScene(chapterId: string, sceneName?: string | null): string {
+    const chapters = this.getChapterDescriptionsSync();
+    const chapter = chapters.find(ch => ch.id === chapterId);
+    if (!chapter) return '';
+    if (sceneName) {
+      return this.getSceneDateSync(chapter.file, sceneName);
+    }
+    return chapter.date;
   }
 
   detectCharacterRole(content: string, frontmatter: Record<string, string>): string {
@@ -2013,9 +2097,22 @@ order: ${orderValue}
     new Notice(t('notice.updatedRole', { name: file.basename, role: trimmedRole || t('general.unassigned') }));
   }
 
-  serializeFrontmatter(fm: Record<string, string | number>): string {
-      const entries = Object.entries(fm).map(([k, v]) => `${k}: ${v}`);
-      return `---\n${entries.join('\n')}\n---\n`;
+  serializeFrontmatter(fm: Record<string, string | number | Record<string, string>>): string {
+      const lines: string[] = [];
+      for (const [k, v] of Object.entries(fm)) {
+        if (v !== null && typeof v === 'object') {
+          const entries = Object.entries(v);
+          if (entries.length === 0) continue;
+          lines.push(`${k}:`);
+          for (const [subK, subV] of entries) {
+            lines.push(`  ${subK}: ${String(subV)}`);
+          }
+        } else {
+          const scalar = v as string | number;
+          lines.push(`${k}: ${String(scalar)}`);
+        }
+      }
+      return `---\n${lines.join('\n')}\n---\n`;
   }
 
   generateGuid(): string {
@@ -2136,17 +2233,43 @@ order: ${orderValue}
     return { characters: Array.from(characters), locations: Array.from(locations) };
   }
 
-  parseFrontmatter(content: string): Record<string, string> {
+  parseFrontmatter(content: string): Record<string, string | Record<string, string>> {
     const normalized = content.replace(/\r\n/g, '\n');
     const match = normalized.match(/^---\n([\s\S]+?)\n---/);
     if (!match) return {};
 
-    const fm: Record<string, string> = {};
+    const fm: Record<string, string | Record<string, string>> = {};
     const lines = match[1].split('\n');
+    let currentKey: string | null = null;
     for (const line of lines) {
+      // Indented line — belongs to current nested object
+      if (/^\s{2,}/.test(line) && currentKey !== null) {
+        const parts = line.split(':');
+        if (parts.length >= 2) {
+          const subKey = parts[0].trim();
+          const subVal = parts.slice(1).join(':').trim();
+          if (subKey) {
+            if (typeof fm[currentKey] !== 'object') {
+              fm[currentKey] = {};
+            }
+            (fm[currentKey] as Record<string, string>)[subKey] = subVal;
+          }
+        }
+        continue;
+      }
+      // Top-level line
+      currentKey = null;
       const parts = line.split(':');
       if (parts.length >= 2) {
-        fm[parts[0].trim()] = parts.slice(1).join(':').trim();
+        const key = parts[0].trim();
+        const value = parts.slice(1).join(':').trim();
+        if (value === '') {
+          // Possible nested object starts on next lines
+          currentKey = key;
+          fm[key] = {};
+        } else {
+          fm[key] = value;
+        }
       }
     }
     return fm;
@@ -2573,7 +2696,7 @@ order: ${orderValue}
     return match ? match[0] : '';
   }
 
-  extractFrontmatterAndBody(content: string): { frontmatter: Record<string, string>; body: string } {
+  extractFrontmatterAndBody(content: string): { frontmatter: Record<string, string | Record<string, string>>; body: string } {
     const fm = this.parseFrontmatter(content);
     const body = this.stripFrontmatter(content);
     return { frontmatter: fm, body };
@@ -2863,6 +2986,20 @@ order: ${orderValue}
               if (match.overrides.role) displayRole = match.overrides.role;
               if (match.customProperties && Object.keys(match.customProperties).length > 0) {
                 displayCustomProps = { ...sheet.customProperties, ...match.customProperties };
+              }
+            }
+          }
+
+          // Compute age from birthdate when template uses date mode
+          {
+            const charTemplate = this.getCharacterTemplate(sheet.templateId);
+            if (charTemplate.ageMode === 'date' && displayAge && inChapter) {
+              const chapterDate = this.getDateForChapterScene(chapterId, currentScene);
+              if (chapterDate) {
+                const interval = computeInterval(displayAge, chapterDate, charTemplate.ageIntervalUnit ?? 'years');
+                if (interval !== null && interval >= 0) {
+                  displayAge = String(interval);
+                }
               }
             }
           }

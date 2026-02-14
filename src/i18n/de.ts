@@ -131,7 +131,12 @@ export default {
   'modal.description': 'Beschreibung',
 
   'modal.createChapter': 'Kapitel erstellen',
+  'modal.editChapter': 'Kapitel bearbeiten',
   'modal.order': 'Reihenfolge',
+  'modal.status': 'Status',
+  'modal.act': 'Akt',
+  'modal.date': 'Datum',
+  'modal.save': 'Speichern',
 
   'modal.defineInverse': 'Umkehrbeziehung definieren',
   'modal.inverseDesc': 'Sie haben {target} als „**{key}**" von {source} definiert.',
@@ -141,6 +146,7 @@ export default {
 
   // Scene modal
   'modal.createScene': 'Neue Szene erstellen',
+  'modal.editScene': 'Szene bearbeiten',
   'modal.sceneName': 'Szenenname',
 
   // Act modal
@@ -210,6 +216,8 @@ export default {
   'explorer.deleteAct': 'Akt löschen',
   'explorer.renameAct': 'Akt umbenennen',
   'explorer.noAct': 'Kein Akt',
+  'explorer.editChapter': 'Kapitel bearbeiten',
+  'explorer.editScene': 'Szene bearbeiten',
   'explorer.genderTooltip': 'Geschlecht: {gender}',
 
   // ── Character map view ─────────────────────────────────────────────
@@ -259,6 +267,9 @@ export default {
   'charSheet.propertyNamePlaceholder': 'Eigenschaftsname',
   'charSheet.valuePlaceholder': 'Wert',
   'charSheet.datePlaceholder': 'jjjj-mm-tt',
+  'charSheet.timespanYears': '{count} Jahre',
+  'charSheet.timespanMonths': '{count} Monate',
+  'charSheet.timespanDays': '{count} Tage',
   'charSheet.sectionTitlePlaceholder': 'Abschnittstitel',
   'charSheet.sectionContentPlaceholder': 'Inhalt hier schreiben',
   'charSheet.save': 'Speichern',
@@ -483,6 +494,13 @@ export default {
   'template.propType.bool': 'Wahrheitswert',
   'template.propType.date': 'Datum (ISO)',
   'template.propType.enum': 'Aufzählung',
+  'template.propType.timespan': 'Zeitspanne',
+  'template.intervalUnit': 'Intervalleinheit',
+  'template.intervalUnit.years': 'Jahre',
+  'template.intervalUnit.months': 'Monate',
+  'template.intervalUnit.days': 'Tage',
+  'template.ageMode.number': 'Zahl',
+  'template.ageMode.date': 'Datum (Geburtsdatum)',
   'template.enumOption': 'Optionsname',
   'template.addEnumOption': 'Option hinzufügen',
   'template.removeEnumOption': 'Option entfernen',

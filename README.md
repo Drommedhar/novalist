@@ -44,7 +44,7 @@ An always-visible toolbar is injected into every editor tab header. It provides 
 
 A specialized file explorer in the left panel with three tabs:
 
-- **Chapters** — Listed in order, grouped by act when acts are defined. Drag and drop to reorder (updates frontmatter automatically). Status icons indicate progress. Scenes within each chapter are listed as nested sub-items. Right-click a chapter to add a scene, assign to an act, or delete. An `Add act` button lets you create new acts, and act headers support right-click to rename or delete.
+- **Chapters** — Listed in order, grouped by act when acts are defined. Drag and drop to reorder (updates frontmatter automatically). Status icons indicate progress. Scenes within each chapter are listed as nested sub-items. Right-click a chapter to edit its metadata (name, order, status, act, date), add a scene, assign to an act, or delete. Right-click a scene to edit its name and date. An `Add act` button lets you create new acts, and act headers support right-click to rename or delete.
 - **Characters** — Grouped by role with collapsible sections. Drag characters between groups to reassign roles. Multi-select with Ctrl/Shift+click. Gender badges shown with configurable colors.
 - **Locations** — A simple navigable list. Click to open, right-click to delete.
 
@@ -54,11 +54,11 @@ Clicking any character or location opens it in its dedicated Sheet View.
 
 A structured form editor that replaces the raw Markdown view for character files. Fields include:
 
-- **Basic info** — Name, surname, gender, age, role
+- **Basic info** — Name, surname, gender, age, role. The age field can optionally act as a birthdate picker (configurable per template) that automatically computes the character's age relative to the current chapter or scene date.
 - **Physical attributes** — Eye color, hair color/length, height, build, skin tone, distinguishing features
 - **Images** — Named image slots with drag-and-drop upload, an image browser, and thumbnail previews. Duplicates are detected via SHA-256 hashing.
 - **Relationships** — Character links with role labels. An inline suggester helps you pick characters, and the plugin automatically prompts you to define the inverse relationship on the target character.
-- **Custom properties** — Typed key-value pairs you can add and remove freely. Each property has a selectable data type: `Text`, `Integer`, `Boolean`, `Date` (ISO format), or `Enum` (custom definable string options). Types are defined in the entity template and the sheet view renders the appropriate input control (text field, number spinner, toggle, date picker, or dropdown).
+- **Custom properties** — Typed key-value pairs you can add and remove freely. Each property has a selectable data type: `Text`, `Integer`, `Boolean`, `Date` (ISO format), `Enum` (custom definable string options), or `Timespan` (a reference date whose interval to the current chapter or scene date is computed automatically). Types are defined in the entity template and the sheet view renders the appropriate input control (text field, number spinner, toggle, date picker, dropdown, or date picker with computed interval label).
 - **Free-form sections** — User-defined Markdown sections (e.g. Backstory, Notes)
 - **Chapter overrides** — Select an act, chapter, and optionally a scene, then override any field for that point in the story. The override cascade is: scene > chapter > act > base data. Act-level overrides apply to all chapters within that act unless a more specific chapter or scene override exists.
 
@@ -72,7 +72,7 @@ A structured form editor for location files with fields for name, type, descript
 
 Templates control the structure of new character and location files. Each template defines which fields, sections, images, relationships, and custom properties are included when an entity is created. A built-in `Default` template ships with all standard fields enabled.
 
-- **Character templates** configure fields (gender, age, role, physical attributes, etc.), whether to include relationships, images, and chapter overrides, plus optional typed custom property definitions and free-form sections.
+- **Character templates** configure fields (gender, age, role, physical attributes, etc.), whether to include relationships, images, and chapter overrides, plus optional typed custom property definitions and free-form sections. The age field can be set to `Number` (plain text) or `Date (Birthdate)` mode with a configurable interval unit (years, months, or days). Timespan properties include an interval unit setting that controls how the elapsed time is displayed.
 - **Location templates** configure fields (type, description), images, typed custom properties, and sections.
 - Create, duplicate, edit, and delete templates from **Settings > Character templates / Location templates**. Built-in templates can be edited but not deleted.
 - Set an **active template** per entity type. The active template is pre-selected in the creation dialog. When multiple templates exist, a dropdown appears in the creation modal.
@@ -145,6 +145,8 @@ Acts are an optional grouping layer above chapters. Create an act from the explo
 ### Scenes
 
 Scenes are subsections within a chapter file, created as `## heading` (H2) Markdown headings. Use the command palette (`Add new scene`) or right-click a chapter in the explorer to add a new scene. Scene names appear in the explorer nested under their chapter, in the plot board as sub-rows, and in the statistics breakdown. Character sheet overrides can target a specific scene for fine-grained tracking of character changes. The full override cascade is: scene > chapter > act > base character data.
+
+Chapters and scenes can each carry a date (stored in chapter frontmatter). When a timespan custom property is displayed in the character sheet, the interval between the property's reference date and the selected chapter or scene date is computed and shown automatically. Edit chapter or scene metadata — including dates — by right-clicking in the explorer.
 
 ### Book Paragraph Spacing
 
