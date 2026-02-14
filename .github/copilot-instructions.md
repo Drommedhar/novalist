@@ -18,3 +18,16 @@ When adding, removing, or changing user-facing features, update `README.md` to r
 - **Internationalization** section is a single short paragraph.
 - **Support Development** section with the PayPal donate button stays at the bottom, followed by the tagline.
 - Tone is direct, factual, and concise. No marketing language, no exclamation marks, no filler.
+
+## Wiki Maintenance
+
+The project has a GitHub wiki at `https://github.com/Drommedhar/novalist/wiki`, stored as a separate git repo cloned at `J:\git\novalist-wiki`. When adding, removing, or changing user-facing features, update the relevant wiki page(s) to reflect the current state. Follow these rules:
+
+- The wiki uses GitHub-flavored Markdown with `[[Page Name]]` wikilinks for cross-page navigation.
+- `Home.md` is the landing page with a table of contents linking to all other pages. Keep it in sync when pages are added or removed.
+- Each feature has its own page. Page filenames use `Kebab-Case.md` (e.g., `Plot-Board.md`, `Inline-Annotations.md`).
+- Each page ends with a `---` separator and a "Next:" link to the following page in reading order (or "Back to: [[Home]]" for the last page).
+- `Settings-Reference.md` and `Commands-Reference.md` are exhaustive reference tables — add new settings or commands there when introduced.
+- `Tips-and-Workflows.md` covers practical usage advice — update it when new workflows become possible.
+- Tone matches the README: direct, factual, concise. No marketing language.
+- After editing wiki files, commit and push from `J:\git\novalist-wiki` with a descriptive commit message.
