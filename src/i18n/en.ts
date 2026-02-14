@@ -446,7 +446,7 @@ export default {
   'stats.locAbbr': 'loc',
   'stats.perChapter': '~{count}/ch',
 
-  // ── Toolbar ────────────────────────────────────────────────────────
+  // ── Toolbar / Ribbon ──────────────────────────────────────────────
   'toolbar.addCharacter': 'Add character',
   'toolbar.addLocation': 'Add location',
   'toolbar.addChapter': 'Add chapter',
@@ -456,6 +456,14 @@ export default {
   'toolbar.plotBoard': 'Plot board',
   'toolbar.export': 'Export',
   'toolbar.chapterStatus': 'Chapter status: {label}',
+  'toolbar.groupCreate': 'Create',
+  'toolbar.groupViews': 'Views',
+  'toolbar.groupStatus': 'Status',
+  'toolbar.character': 'Character',
+  'toolbar.location': 'Location',
+  'toolbar.chapter': 'Chapter',
+  'toolbar.collapseRibbon': 'Collapse ribbon',
+  'toolbar.expandRibbon': 'Expand ribbon',
 
   // ── Readability descriptions ───────────────────────────────────────
   'readability.veryEasy5th': 'Very easy (5th grade)',

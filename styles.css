@@ -2023,67 +2023,281 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 
 
 /* ================================
-   View Header Toolbar Styles
+   Ribbon Toolbar Styles (inside editor)
    ================================ */
 
-.novalist-view-toolbar {
-  position: absolute;
-  left: 80px; /* After nav arrows */
-  top: 50%;
-  transform: translateY(-50%);
+.novalist-ribbon {
+  display: flex;
+  flex-direction: column;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  overflow: visible;
+  container-type: inline-size;
+  container-name: novalist-ribbon;
+}
+
+/* ── Tab bar (always visible) ─────────────────────────────────── */
+
+.novalist-ribbon-tabs {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
   padding: 0 4px;
-  z-index: 1;
+  min-height: 28px;
+  background: var(--background-primary);
 }
 
-.novalist-view-toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  padding: 0 2px;
+.novalist-ribbon-tab {
+  padding: 4px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  white-space: nowrap;
+  line-height: 1.4;
 }
 
-.novalist-view-toolbar-group:not(:last-child) {
-  border-right: 1px solid var(--background-modifier-border);
-  margin-right: 2px;
-  padding-right: 4px;
+.novalist-ribbon-tab:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
 }
 
-.novalist-view-toolbar-btn {
+.novalist-ribbon-tab.is-active {
+  color: var(--text-accent);
+  border-bottom-color: var(--interactive-accent);
+}
+
+.novalist-ribbon-tabs-spacer {
+  flex: 1;
+}
+
+.novalist-ribbon-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border: 1px solid transparent;
+  border: none;
   border-radius: 4px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-faint);
   cursor: pointer;
-  transition: all 0.1s ease;
+  flex-shrink: 0;
+  margin-right: 4px;
+  transition: color 0.12s ease, background 0.12s ease;
 }
 
-.novalist-view-toolbar-btn:hover {
-  background: var(--background-modifier-hover);
+.novalist-ribbon-toggle:hover {
   color: var(--text-normal);
-  border-color: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
 }
 
-.novalist-view-toolbar-btn:active {
-  background: var(--background-modifier-active);
-}
-
-.novalist-view-toolbar-btn svg {
+.novalist-ribbon-toggle svg {
   width: 14px;
   height: 14px;
 }
 
-/* Ensure toolbar fits in view header */
-.view-header .novalist-view-toolbar {
-  max-width: none;
+/* ── Collapse state: only hide body ───────────────────────────── */
+
+.novalist-ribbon.is-collapsed .novalist-ribbon-body {
+  display: none;
+}
+
+.novalist-ribbon.is-collapsed {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+/* ── Ribbon body (panels) ─────────────────────────────────────── */
+
+.novalist-ribbon-body {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.novalist-ribbon-panel {
+  display: none;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px 0;
+  gap: 0;
+}
+
+.novalist-ribbon-panel.is-active {
+  display: flex;
+}
+
+/* ── Groups inside panels ─────────────────────────────────────── */
+
+.novalist-ribbon-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 6px;
+  min-width: 0;
+}
+
+.novalist-ribbon-group-items {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 1;
+  padding: 2px 0;
+}
+
+.novalist-ribbon-group-label {
+  font-size: 10px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 0 3px;
+  text-align: center;
+  width: 100%;
+  border-top: 1px solid var(--background-modifier-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.novalist-ribbon-divider {
+  width: 1px;
+  background: var(--background-modifier-border);
+  align-self: stretch;
+  margin: 4px 2px;
+  flex-shrink: 0;
+}
+
+/* ── Ribbon buttons ───────────────────────────────────────────── */
+
+.novalist-ribbon-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 6px 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-normal);
+  min-width: 0;
+}
+
+.novalist-ribbon-btn:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border);
+}
+
+.novalist-ribbon-btn:active {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+}
+
+.novalist-ribbon-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.novalist-ribbon-btn-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.novalist-ribbon-btn-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  max-width: 64px;
+  line-height: 1.3;
+}
+
+/* ── Ribbon: container-query responsive ────────────────────────── */
+
+/* Medium: hide button labels, keep group labels */
+@container novalist-ribbon (max-width: 520px) {
+  .novalist-ribbon-btn-label {
+    display: none;
+  }
+
+  .novalist-ribbon-btn {
+    padding: 4px 5px 2px;
+  }
+
+  .novalist-ribbon-group {
+    padding: 0 4px;
+  }
+
+  .novalist-ribbon-tab {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+}
+
+/* Small: hide group labels too, compact layout */
+@container novalist-ribbon (max-width: 360px) {
+  .novalist-ribbon-group-label {
+    display: none;
+  }
+
+  .novalist-ribbon-group {
+    padding: 0 2px;
+  }
+
+  .novalist-ribbon-btn {
+    padding: 3px 4px 3px;
+  }
+
+  .novalist-ribbon-btn-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .novalist-ribbon-panel {
+    padding: 2px 4px;
+  }
+
+  .novalist-ribbon-tab {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
+}
+
+/* Very small: hide dividers, extreme compact */
+@container novalist-ribbon (max-width: 260px) {
+  .novalist-ribbon-divider {
+    display: none;
+  }
+
+  .novalist-ribbon-group-items {
+    gap: 0;
+  }
+
+  .novalist-ribbon-btn {
+    padding: 2px 3px;
+  }
+
+  .novalist-ribbon-btn-icon svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* ── Legacy toolbar cleanup (hide if still in DOM) ─────────────── */
+.novalist-view-toolbar {
+  display: none !important;
 }
 
 /* Hidden tracker element */
@@ -2441,15 +2655,18 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   padding: 3px 12px;
   background: var(--background-secondary);
   border-top: 1px solid var(--background-modifier-border);
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-height: 24px;
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: novalist-stats;
 }
 
 .novalist-stats-panel-left,
@@ -2457,13 +2674,15 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-stats-panel-right {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .novalist-stats-panel-left {
   flex: 1 1 0;
   justify-content: flex-start;
+  overflow: hidden;
 }
 
 .novalist-stats-panel-mid {
@@ -2477,6 +2696,7 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-stats-panel-right {
   flex: 1 1 0;
   justify-content: flex-end;
+  overflow: hidden;
 }
 
 .novalist-stats-panel-item {
@@ -2484,10 +2704,57 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   align-items: center;
   gap: 3px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .novalist-stats-panel-dim {
   opacity: 0.6;
+}
+
+/* ── Stats panel: container-query responsive ───────────────────── */
+
+/* Medium: hide project mid section */
+@container novalist-stats (max-width: 700px) {
+  .novalist-stats-panel-mid {
+    display: none;
+  }
+
+  .novalist-stats-panel {
+    gap: 6px;
+  }
+}
+
+/* Small: hide dim items, keep essentials */
+@container novalist-stats (max-width: 480px) {
+  .novalist-stats-panel-dim {
+    display: none;
+  }
+
+  .novalist-stats-panel {
+    gap: 4px;
+    padding: 3px 8px;
+  }
+
+  .novalist-stats-panel-left,
+  .novalist-stats-panel-right {
+    gap: 6px;
+  }
+}
+
+/* Very small: hide goals labels, ultra compact */
+@container novalist-stats (max-width: 320px) {
+  .novalist-stats-panel-goal-label {
+    display: none;
+  }
+
+  .novalist-stats-panel-readability-badge {
+    display: none;
+  }
+
+  .novalist-stats-panel {
+    padding: 2px 6px;
+    font-size: 10px;
+  }
 }
 
 .novalist-stats-panel-icon {
@@ -3361,22 +3628,24 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
    ========================================== */
 
 .novalist-chapter-status-slot {
-  display: contents;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .novalist-chapter-status-dropdown {
   position: relative;
-  margin-left: 6px;
+  margin: 0;
 }
 
 .novalist-chapter-status-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
+  padding: 4px 10px;
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
-  background: var(--background-secondary);
+  background: var(--background-primary);
   cursor: pointer;
   font-size: 12px;
   line-height: 1.4;
@@ -3416,6 +3685,11 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   display: none;
 }
 
+.novalist-ribbon-group-status.is-hidden,
+.novalist-ribbon-divider.is-hidden {
+  display: none;
+}
+
 .novalist-chapter-status-option {
   display: flex;
   align-items: center;
@@ -3435,6 +3709,26 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-chapter-status-option.is-active {
   background: var(--background-modifier-active-hover, var(--background-modifier-hover));
   font-weight: 600;
+}
+
+/* ── Status dropdown in ribbon: responsive ─────────────────────── */
+.novalist-ribbon-group-status {
+  min-width: 0;
+}
+
+.novalist-ribbon-status-label {
+  /* hidden when status group itself is hidden */
+}
+
+/* On narrow ribbon, hide status label text */
+@container novalist-ribbon (max-width: 520px) {
+  .novalist-chapter-status-btn-label {
+    display: none;
+  }
+
+  .novalist-chapter-status-btn {
+    padding: 4px 6px;
+  }
 }
 
 /* ── Scene support ──────────────────────────────────────────────── */
@@ -4253,4 +4547,179 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   color: var(--text-muted);
   padding: 2px 8px;
   align-self: center;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Global Responsive / Size-Aware Styles
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Sidebar responsive (narrow panes) ────────────────────────── */
+.novalist-sidebar {
+  container-type: inline-size;
+  container-name: novalist-sidebar;
+}
+
+@container novalist-sidebar (max-width: 280px) {
+  .novalist-tabs {
+    gap: 3px;
+    padding: 4px;
+  }
+
+  .novalist-tab {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
+  .novalist-section {
+    padding: 8px;
+  }
+
+  .novalist-actions button {
+    min-width: 80px;
+    font-size: 12px;
+  }
+}
+
+/* ── Explorer responsive ──────────────────────────────────────── */
+.novalist-explorer {
+  container-type: inline-size;
+  container-name: novalist-explorer;
+}
+
+@container novalist-explorer (max-width: 250px) {
+  .novalist-explorer-tabs {
+    gap: 3px;
+    padding: 4px;
+  }
+
+  .novalist-explorer-tab {
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
+  .novalist-explorer-badge {
+    max-width: 40px;
+    font-size: 0.7em;
+  }
+}
+
+/* ── Annotation panel responsive (viewport-based fallback) ─────── */
+@media (max-width: 700px) {
+  .novalist-annotation-panel-wrapper {
+    width: 220px;
+  }
+
+  .novalist-has-annotations .cm-scroller {
+    padding-right: 228px !important;
+  }
+
+  .novalist-annotation-card {
+    width: 204px;
+  }
+}
+
+@media (max-width: 500px) {
+  .novalist-annotation-panel-wrapper {
+    width: 180px;
+  }
+
+  .novalist-has-annotations .cm-scroller {
+    padding-right: 188px !important;
+  }
+
+  .novalist-annotation-card {
+    width: 164px;
+    font-size: 11px;
+  }
+}
+
+/* ── Export view responsive ────────────────────────────────────── */
+.novalist-export {
+  container-type: inline-size;
+  container-name: novalist-export;
+}
+
+@container novalist-export (max-width: 500px) {
+  .novalist-export-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .novalist-export-row label {
+    min-width: unset;
+  }
+
+  .novalist-export-section {
+    padding: 10px;
+  }
+}
+
+/* ── Character sheet responsive ────────────────────────────────── */
+.character-sheet-view {
+  container-type: inline-size;
+  container-name: novalist-charsheet;
+}
+
+@container novalist-charsheet (max-width: 600px) {
+  .character-sheet-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .character-sheet-relationship-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+}
+
+/* ── Plot board responsive ─────────────────────────────────────── */
+.novalist-plot-board {
+  container-type: inline-size;
+  container-name: novalist-plotboard;
+}
+
+@container novalist-plotboard (max-width: 500px) {
+  .novalist-plot-board-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .novalist-pb-card {
+    width: 100%;
+  }
+
+  .novalist-pb-card-container {
+    flex-direction: column;
+  }
+}
+
+/* ── Peek card responsive (viewport) ──────────────────────────── */
+@media (max-width: 600px) {
+  .novalist-peek-card {
+    min-width: 180px;
+    max-width: 280px;
+    font-size: 11px;
+  }
+
+  .novalist-peek-body {
+    flex-direction: column;
+  }
+
+  .novalist-peek-image-area {
+    width: 100%;
+  }
+}
+
+/* ── Stats popup responsive (viewport) ────────────────────────── */
+@media (max-width: 600px) {
+  .novalist-stats-popup {
+    min-width: 240px;
+    max-width: 320px;
+    font-size: 11px;
+  }
+
+  .novalist-stats-popup-name {
+    max-width: 100px;
+  }
 }

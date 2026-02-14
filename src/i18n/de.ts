@@ -442,7 +442,7 @@ export default {
   'stats.locAbbr': 'Ort',
   'stats.perChapter': '~{count}/Kap',
 
-  // ── Toolbar ────────────────────────────────────────────────────────
+  // ── Toolbar / Ribbon ──────────────────────────────────────────────
   'toolbar.addCharacter': 'Charakter hinzufügen',
   'toolbar.addLocation': 'Ort hinzufügen',
   'toolbar.addChapter': 'Kapitel hinzufügen',
@@ -452,6 +452,14 @@ export default {
   'toolbar.plotBoard': 'Handlungstafel',
   'toolbar.export': 'Exportieren',
   'toolbar.chapterStatus': 'Kapitelstatus: {label}',
+  'toolbar.groupCreate': 'Erstellen',
+  'toolbar.groupViews': 'Ansichten',
+  'toolbar.groupStatus': 'Status',
+  'toolbar.character': 'Charakter',
+  'toolbar.location': 'Ort',
+  'toolbar.chapter': 'Kapitel',
+  'toolbar.collapseRibbon': 'Ribbon einklappen',
+  'toolbar.expandRibbon': 'Ribbon ausklappen',
 
   // ── Readability descriptions ───────────────────────────────────────
   'readability.veryEasy5th': 'Sehr leicht (5. Klasse)',
