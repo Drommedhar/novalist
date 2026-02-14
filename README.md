@@ -206,6 +206,8 @@ If you find Novalist helpful in your writing journey, consider supporting its de
 
 [<img src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" alt="Donate with PayPal" />](https://www.paypal.com/donate/?hosted_button_id=EQJG5JHAKYU4S)
 
+**Quick note**: I’m a professional developer, but for Novalist I leaned heavily on LLMs. That may or may not align with your philosophy — either way, I appreciate you taking a look. I prefer to be transparent about how it was built.
+
 ---
 
 *Write your story, better.*
