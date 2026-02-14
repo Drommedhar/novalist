@@ -157,6 +157,7 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 | Setting | Description | Default |
 |---|---|---|
 | Active project | Select which project to work on | First project |
+| Novalist root folder | Optional subfolder inside the vault where all projects and the World Bible are placed; leave empty to use the vault root | _(empty)_ |
 | World Bible folder | Root folder for shared entities across projects | `WorldBible` |
 | Project path | Root vault folder for the novel project | `NovelProject` |
 | Character folder | Subfolder name for characters | `Characters` |

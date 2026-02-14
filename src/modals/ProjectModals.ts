@@ -157,3 +157,61 @@ export class ProjectAddModal extends Modal {
     this.contentEl.empty();
   }
 }
+
+/**
+ * Modal asking the user whether existing content should be moved
+ * when the Novalist root folder changes.
+ */
+export class RootMoveConfirmModal extends Modal {
+  plugin: NovalistPlugin;
+  newRoot: string;
+  onDone: (() => void) | null;
+
+  constructor(app: App, plugin: NovalistPlugin, newRoot: string, onDone?: () => void) {
+    super(app);
+    this.plugin = plugin;
+    this.newRoot = newRoot;
+    this.onDone = onDone ?? null;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    contentEl.createEl('h2', { text: t('settings.rootChangeTitle') });
+    contentEl.createEl('p', { text: t('settings.rootChangeDesc') });
+
+    const oldDisplay = this.plugin.settings.novalistRoot || '/';
+    const newDisplay = this.newRoot || '/';
+    contentEl.createEl('p', {
+      text: t('settings.rootChangeFromTo', { from: oldDisplay, to: newDisplay }),
+    });
+
+    const buttonDiv = contentEl.createDiv('modal-button-container');
+
+    new ButtonComponent(buttonDiv)
+      .setButtonText(t('settings.rootChangeMove'))
+      .setCta()
+      .onClick(async () => {
+        await this.plugin.changeNovalistRoot(this.newRoot, true);
+        this.close();
+        if (this.onDone) this.onDone();
+      });
+
+    new ButtonComponent(buttonDiv)
+      .setButtonText(t('settings.rootChangeDontMove'))
+      .onClick(async () => {
+        await this.plugin.changeNovalistRoot(this.newRoot, false);
+        this.close();
+        if (this.onDone) this.onDone();
+      });
+
+    new ButtonComponent(buttonDiv)
+      .setButtonText(t('modal.cancel'))
+      .onClick(() => this.close());
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}

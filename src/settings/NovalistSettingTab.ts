@@ -17,7 +17,7 @@ import {
 import { LanguageKey } from '../types';
 import { t } from '../i18n';
 import { CharacterTemplateEditorModal, LocationTemplateEditorModal } from '../modals/TemplateEditorModal';
-import { ProjectAddModal, ProjectRenameModal } from '../modals/ProjectModals';
+import { ProjectAddModal, ProjectRenameModal, RootMoveConfirmModal } from '../modals/ProjectModals';
 
 export class NovalistSettingTab extends PluginSettingTab {
   plugin: NovalistPlugin;
@@ -102,6 +102,32 @@ export class NovalistSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName(t('settings.preferences'))
       .setHeading();
+
+    let pendingRoot = this.plugin.settings.novalistRoot;
+    const rootSetting = new Setting(containerEl)
+      .setName(t('settings.novalistRoot'))
+      .setDesc(t('settings.novalistRootDesc'))
+      .addText(text => text
+        .setPlaceholder(t('settings.novalistRootPlaceholder'))
+        .setValue(this.plugin.settings.novalistRoot)
+        .onChange((value) => {
+          pendingRoot = value.replace(/^\/+|\/+$/g, '');
+        }));
+    rootSetting.addButton(btn => btn
+      .setButtonText(t('settings.applyRoot'))
+      .onClick(async () => {
+        if (pendingRoot === this.plugin.settings.novalistRoot) return;
+        const hasContent = this.plugin.settings.projects.some(p => {
+          const resolved = this.plugin.resolvePath(p.path);
+          return !!this.app.vault.getAbstractFileByPath(resolved);
+        }) || (this.plugin.settings.worldBiblePath && !!this.app.vault.getAbstractFileByPath(this.plugin.resolvedWorldBiblePath()));
+        if (hasContent) {
+          new RootMoveConfirmModal(this.app, this.plugin, pendingRoot, () => this.display()).open();
+        } else {
+          await this.plugin.changeNovalistRoot(pendingRoot, false);
+          this.display();
+        }
+      }));
 
     new Setting(containerEl)
       .setName(t('settings.projectPath'))

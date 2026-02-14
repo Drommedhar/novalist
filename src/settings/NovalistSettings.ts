@@ -190,6 +190,7 @@ export function createDefaultProjectData(): ProjectData {
 }
 
 export const DEFAULT_SETTINGS: NovalistSettings = {
+  novalistRoot: '',
   projectPath: 'NovelProject',
   projects: [createDefaultProject()],
   activeProjectId: DEFAULT_PROJECT_ID,

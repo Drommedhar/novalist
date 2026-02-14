@@ -17,6 +17,8 @@ export interface ProjectData {
 }
 
 export interface NovalistSettings {
+  /** Optional subfolder inside the vault where all Novalist folders live. */
+  novalistRoot: string;
   projectPath: string;
   /** All registered projects inside this vault. */
   projects: NovalistProject[];

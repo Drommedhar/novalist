@@ -1,6 +1,7 @@
 import {
   Plugin,
   TFile,
+  TFolder,
   MarkdownView,
   MarkdownRenderer,
   Component,
@@ -82,7 +83,7 @@ export default class NovalistPlugin extends Plugin {
 
     await this.refreshEntityIndex();
     this.app.workspace.onLayoutReady(() => {
-      if (!this.settings.startupWizardShown || !this.app.vault.getAbstractFileByPath(this.settings.projectPath)) {
+      if (!this.settings.startupWizardShown || !this.app.vault.getAbstractFileByPath(this.resolvedProjectPath())) {
         new StartupWizardModal(this.app, this).open();
       }
     });
@@ -381,7 +382,7 @@ export default class NovalistPlugin extends Plugin {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) return;
 
-        const projectPath = this.settings.projectPath;
+        const projectPath = this.resolvedProjectPath();
         if (!activeFile.path.startsWith(projectPath)) return;
 
         // Determine destination
@@ -549,6 +550,27 @@ export default class NovalistPlugin extends Plugin {
     this.toolbarManager.update();
   }
 
+  // ─── Path resolution helpers ─────────────────────────────────────────
+
+  /** Prepend the optional novalistRoot to a vault-relative path. */
+  resolvePath(path: string): string {
+    const root = this.settings.novalistRoot;
+    if (!root) return path;
+    return `${root}/${path}`;
+  }
+
+  /** Resolved vault path for the active project folder. */
+  resolvedProjectPath(): string {
+    return this.resolvePath(this.settings.projectPath);
+  }
+
+  /** Resolved vault path for the World Bible folder. */
+  resolvedWorldBiblePath(): string {
+    return this.settings.worldBiblePath
+      ? this.resolvePath(this.settings.worldBiblePath)
+      : '';
+  }
+
   // ─── Multi-project helpers ─────────────────────────────────────────
 
   getActiveProject(): NovalistProject | undefined {
@@ -607,11 +629,15 @@ export default class NovalistPlugin extends Plugin {
     // If the name hasn't changed, nothing to do
     if (oldName === newName) return;
 
+    // Resolve vault-level paths (with optional root prefix)
+    const oldResolvedPath = this.resolvePath(oldPath);
+    const newResolvedPath = this.resolvePath(newPath);
+
     // Rename the vault folder if it exists
-    const folder = this.app.vault.getAbstractFileByPath(oldPath);
+    const folder = this.app.vault.getAbstractFileByPath(oldResolvedPath);
     if (folder) {
       try {
-        await this.app.fileManager.renameFile(folder, newPath);
+        await this.app.fileManager.renameFile(folder, newResolvedPath);
       } catch (e) {
         new Notice(String(e));
         return;
@@ -622,8 +648,8 @@ export default class NovalistPlugin extends Plugin {
     const pd = this.settings.projectData[projectId];
     if (pd) {
       for (const thread of pd.commentThreads) {
-        if (thread.filePath.startsWith(oldPath + '/') || thread.filePath === oldPath) {
-          thread.filePath = newPath + thread.filePath.substring(oldPath.length);
+        if (thread.filePath.startsWith(oldResolvedPath + '/') || thread.filePath === oldResolvedPath) {
+          thread.filePath = newResolvedPath + thread.filePath.substring(oldResolvedPath.length);
         }
       }
     }
@@ -637,8 +663,8 @@ export default class NovalistPlugin extends Plugin {
       this.settings.projectPath = newPath;
       // Also update commentThreads in the hydrated settings
       for (const thread of this.settings.commentThreads) {
-        if (thread.filePath.startsWith(oldPath + '/') || thread.filePath === oldPath) {
-          thread.filePath = newPath + thread.filePath.substring(oldPath.length);
+        if (thread.filePath.startsWith(oldResolvedPath + '/') || thread.filePath === oldResolvedPath) {
+          thread.filePath = newResolvedPath + thread.filePath.substring(oldResolvedPath.length);
         }
       }
     }
@@ -669,16 +695,108 @@ export default class NovalistPlugin extends Plugin {
     await this.saveSettings();
   }
 
+  /**
+   * Change the novalistRoot setting, optionally move existing content.
+   * After the change, refreshes all indexes and views.
+   */
+  async changeNovalistRoot(newRoot: string, moveContent: boolean): Promise<void> {
+    const oldRoot = this.settings.novalistRoot;
+    const cleaned = newRoot.replace(/^\/+|\/+$/g, '');
+    if (oldRoot === cleaned) return;
+
+    if (moveContent) {
+      // Ensure new root folder exists
+      if (cleaned && !this.app.vault.getAbstractFileByPath(cleaned)) {
+        await this.app.vault.createFolder(cleaned);
+      }
+
+      // Collect the vault-level folders to move (projects + world bible)
+      const foldersToMove: { oldResolved: string; newResolved: string }[] = [];
+
+      for (const project of this.settings.projects) {
+        const oldResolved = oldRoot ? `${oldRoot}/${project.path}` : project.path;
+        const newResolved = cleaned ? `${cleaned}/${project.path}` : project.path;
+        foldersToMove.push({ oldResolved, newResolved });
+      }
+
+      if (this.settings.worldBiblePath) {
+        const oldResolved = oldRoot ? `${oldRoot}/${this.settings.worldBiblePath}` : this.settings.worldBiblePath;
+        const newResolved = cleaned ? `${cleaned}/${this.settings.worldBiblePath}` : this.settings.worldBiblePath;
+        foldersToMove.push({ oldResolved, newResolved });
+      }
+
+      for (const { oldResolved, newResolved } of foldersToMove) {
+        const folder = this.app.vault.getAbstractFileByPath(oldResolved);
+        if (folder instanceof TFolder) {
+          // Update comment thread paths
+          for (const project of this.settings.projects) {
+            const pd = this.settings.projectData[project.id];
+            if (!pd) continue;
+            for (const thread of pd.commentThreads) {
+              if (thread.filePath.startsWith(oldResolved + '/') || thread.filePath === oldResolved) {
+                thread.filePath = newResolved + thread.filePath.substring(oldResolved.length);
+              }
+            }
+          }
+          // Also update hydrated comment threads
+          for (const thread of this.settings.commentThreads) {
+            if (thread.filePath.startsWith(oldResolved + '/') || thread.filePath === oldResolved) {
+              thread.filePath = newResolved + thread.filePath.substring(oldResolved.length);
+            }
+          }
+
+          try {
+            await this.app.fileManager.renameFile(folder, newResolved);
+          } catch (e) {
+            new Notice(String(e));
+          }
+        }
+      }
+
+      // Remove empty old root folder
+      if (oldRoot) {
+        const oldRootFolder = this.app.vault.getAbstractFileByPath(oldRoot);
+        if (oldRootFolder instanceof TFolder && oldRootFolder.children.length === 0) {
+          try {
+            await this.app.fileManager.trashFile(oldRootFolder);
+          } catch { /* ignore if it fails */ }
+        }
+      }
+    }
+
+    this.settings.novalistRoot = cleaned;
+    await this.saveSettings();
+
+    // Refresh everything
+    await this.refreshEntityIndex();
+    this.refreshProjectWordCount();
+
+    for (const leaf of this.app.workspace.getLeavesOfType(NOVELIST_EXPLORER_VIEW_TYPE)) {
+      void (leaf.view as NovalistExplorerView).render();
+    }
+    for (const leaf of this.app.workspace.getLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE)) {
+      void (leaf.view as NovalistSidebarView).render();
+    }
+
+    new Notice(t('notice.rootChanged'));
+  }
+
   /** Check whether a path belongs to the World Bible folder. */
   isWorldBiblePath(path: string): boolean {
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     return !!wb && (path.startsWith(wb + '/') || path === wb);
   }
 
   /** Initialize World Bible folder structure. */
   async initializeWorldBible(): Promise<void> {
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     if (!wb) return;
+
+    // Ensure novalistRoot folder exists when set
+    const novalistRoot = this.settings.novalistRoot;
+    if (novalistRoot && !this.app.vault.getAbstractFileByPath(novalistRoot)) {
+      await this.app.vault.createFolder(novalistRoot);
+    }
 
     const folders = [
       wb,
@@ -707,7 +825,7 @@ export default class NovalistPlugin extends Plugin {
 
   /** Move a character or location file into the World Bible folder. */
   async moveEntityToWorldBible(file: TFile): Promise<void> {
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     if (!wb) return;
 
     const subfolder = this.getEntitySubfolder(file);
@@ -937,10 +1055,16 @@ export default class NovalistPlugin extends Plugin {
   // ==========================================
 
   async initializeProjectStructure(): Promise<void> {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     if (!root) {
       new Notice(t('notice.setProjectPath'));
       return;
+    }
+
+    // Ensure novalistRoot folder exists when set
+    const novalistRoot = this.settings.novalistRoot;
+    if (novalistRoot && !this.app.vault.getAbstractFileByPath(novalistRoot)) {
+      await this.app.vault.createFolder(novalistRoot);
     }
 
     const folders = [
@@ -1072,7 +1196,7 @@ export default class NovalistPlugin extends Plugin {
   }
 
   async createCharacter(name: string, surname: string, templateId?: string, useWorldBible?: boolean): Promise<void> {
-    const root = useWorldBible && this.settings.worldBiblePath ? this.settings.worldBiblePath : this.settings.projectPath;
+    const root = useWorldBible && this.settings.worldBiblePath ? this.resolvedWorldBiblePath() : this.resolvedProjectPath();
     const folder = `${root}/${this.settings.characterFolder}`;
     const fileName = `${name} ${surname}`.trim();
     const path = `${folder}/${fileName}.md`;
@@ -1090,7 +1214,7 @@ export default class NovalistPlugin extends Plugin {
   }
 
   async createLocation(name: string, description: string, templateId?: string, useWorldBible?: boolean): Promise<void> {
-    const root = useWorldBible && this.settings.worldBiblePath ? this.settings.worldBiblePath : this.settings.projectPath;
+    const root = useWorldBible && this.settings.worldBiblePath ? this.resolvedWorldBiblePath() : this.resolvedProjectPath();
     const folder = `${root}/${this.settings.locationFolder}`;
     const path = `${folder}/${name}.md`;
 
@@ -1107,7 +1231,7 @@ export default class NovalistPlugin extends Plugin {
   }
 
   async createChapter(name: string, order: string): Promise<void> {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.chapterFolder}`;
     const path = `${folder}/${name}.md`;
 
@@ -1811,7 +1935,7 @@ order: ${orderValue}
   }
 
   async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }>> {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
@@ -1857,7 +1981,7 @@ order: ${orderValue}
   }
 
   getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }> {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
@@ -1912,7 +2036,7 @@ order: ${orderValue}
 
   /** Update multiple frontmatter fields on a chapter file found by name. */
   async updateChapterMetadata(chapterName: string, fields: Record<string, string>): Promise<void> {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.chapterFolder}`;
     const path = `${folder}/${chapterName}.md`;
     const file = this.app.vault.getAbstractFileByPath(path);
@@ -1999,9 +2123,9 @@ order: ${orderValue}
   }
 
   async getCharacterList(): Promise<CharacterListData[]> {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.characterFolder}/`;
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     const wbFolder = wb ? `${wb}/${this.settings.characterFolder}/` : '';
     const files = this.app.vault.getFiles().filter((f) =>
       (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
@@ -2148,9 +2272,9 @@ order: ${orderValue}
   }
 
   getLocationList(): LocationListData[] {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.locationFolder}/`;
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     const wbFolder = wb ? `${wb}/${this.settings.locationFolder}/` : '';
     const files = this.app.vault.getFiles().filter((f) =>
       (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
@@ -2292,14 +2416,14 @@ order: ${orderValue}
     }
 
     // Fallback for non-indexed files (e.g. newly created)
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.characterFolder}`;
     const path = `${folder}/${cleanName}.md`;
     const file = this.app.vault.getAbstractFileByPath(path);
     if (file instanceof TFile) return file;
 
     // Also check World Bible
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     if (wb) {
       const wbPath = `${wb}/${this.settings.characterFolder}/${cleanName}.md`;
       const wbFile = this.app.vault.getAbstractFileByPath(wbPath);
@@ -2320,14 +2444,14 @@ order: ${orderValue}
     }
 
     // Fallback
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.locationFolder}`;
     const path = `${folder}/${cleanName}.md`;
     const file = this.app.vault.getAbstractFileByPath(path);
     if (file instanceof TFile) return file;
 
     // Also check World Bible
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     if (wb) {
       const wbPath = `${wb}/${this.settings.locationFolder}/${cleanName}.md`;
       const wbFile = this.app.vault.getAbstractFileByPath(wbPath);
@@ -2473,14 +2597,14 @@ order: ${orderValue}
     this.entityIndex.clear();
     this.knownRelationshipKeys.clear();
 
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     if (!root) return;
 
     const charFolder = `${root}/${this.settings.characterFolder}`;
     const locFolder = `${root}/${this.settings.locationFolder}`;
 
     // Also scan World Bible folders
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     const wbCharFolder = wb ? `${wb}/${this.settings.characterFolder}` : '';
     const wbLocFolder = wb ? `${wb}/${this.settings.locationFolder}` : '';
 
@@ -2703,29 +2827,29 @@ order: ${orderValue}
   }
 
   isChapterFile(file: TFile): boolean {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.chapterFolder}/`;
     return file.path.startsWith(folder);
   }
 
   isChapterPath(path: string): boolean {
-      const root = this.settings.projectPath;
+      const root = this.resolvedProjectPath();
       if (!root) return false;
       const folder = `${root}/${this.settings.chapterFolder}/`;
       return path.startsWith(folder);
   }
 
   isTemplateFile(file: TFile): boolean {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/Templates/`;
     return file.path.startsWith(folder);
   }
 
   isCharacterFile(file: TFile): boolean {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.characterFolder}/`;
     if (file.path.startsWith(folder) && file.extension === 'md') return true;
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     if (wb) {
       const wbFolder = `${wb}/${this.settings.characterFolder}/`;
       if (file.path.startsWith(wbFolder) && file.extension === 'md') return true;
@@ -2734,10 +2858,10 @@ order: ${orderValue}
   }
 
   isLocationFile(file: TFile): boolean {
-    const root = this.settings.projectPath;
+    const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.locationFolder}/`;
     if (file.path.startsWith(folder) && file.extension === 'md') return true;
-    const wb = this.settings.worldBiblePath;
+    const wb = this.resolvedWorldBiblePath();
     if (wb) {
       const wbFolder = `${wb}/${this.settings.locationFolder}/`;
       if (file.path.startsWith(wbFolder) && file.extension === 'md') return true;
@@ -3153,8 +3277,8 @@ order: ${orderValue}
 
   private refreshProjectWordCount(): void {
     const chapters = this.getChapterDescriptionsSync();
-    const charFolder = `${this.settings.projectPath}/${this.settings.characterFolder}/`;
-    const wb = this.settings.worldBiblePath;
+    const charFolder = `${this.resolvedProjectPath()}/${this.settings.characterFolder}/`;
+    const wb = this.resolvedWorldBiblePath();
     const wbCharFolder = wb ? `${wb}/${this.settings.characterFolder}/` : '';
     const characterCount = this.app.vault.getFiles()
       .filter(f => (f.path.startsWith(charFolder) || (wbCharFolder && f.path.startsWith(wbCharFolder))) && f.extension === 'md')
