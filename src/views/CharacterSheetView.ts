@@ -757,7 +757,9 @@ export class CharacterSheetView extends TextFileView {
     preview.addEventListener('click', () => {
       new ImageSuggesterModal(this.app, this.plugin, (file) => {
         images[index].path = `![[${file.path}]]`;
-        images[index].name = file.basename;
+        if (!images[index].name || images[index].name === t('charSheet.newImage')) {
+          images[index].name = file.basename;
+        }
         this.setEffectiveImages(images);
         void this.render();
       }).open();

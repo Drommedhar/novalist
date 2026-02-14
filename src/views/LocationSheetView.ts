@@ -358,7 +358,9 @@ export class LocationSheetView extends TextFileView {
     preview.addEventListener('click', () => {
       new ImageSuggesterModal(this.app, this.plugin, (file) => {
         images[index].path = `![[${file.path}]]`;
-        images[index].name = file.basename;
+        if (!images[index].name || images[index].name === 'New image') {
+          images[index].name = file.basename;
+        }
         this.render();
       }).open();
     });
