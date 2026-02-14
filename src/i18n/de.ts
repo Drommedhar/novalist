@@ -568,5 +568,20 @@ export default {
   'project.initWorldBible': 'World-Bible-Ordner initialisieren',
   'project.addToWorldBible': 'Zur World Bible hinzufügen',
   'project.addToWorldBibleDesc': 'Diese Entität im gemeinsamen World-Bible-Ordner statt im aktuellen Projekt erstellen.',  'project.moveToWorldBible': 'In World Bible verschieben',
-  'project.moveToProject': 'Nach {project} verschieben',  'project.wbBadge': 'WB',
+  'project.moveToProject': 'Nach {project} verschieben',
+  'project.wbBadge': 'WB',
+
+  // ── Property filter (Explorer) ─────────────────────────────────────
+  'explorer.filterPlaceholder': 'Nach Eigenschaft filtern… (z. B. Augenfarbe: Blau)',
+  'explorer.clearFilter': 'Filter entfernen',
+  'explorer.filterNoResults': 'Keine Ergebnisse für diesen Filter.',
+
+  // ── Mention analysis (Sidebar) ─────────────────────────────────────
+  'sidebar.mentionFrequency': 'Erwähnungshäufigkeit',
+  'sidebar.mentionChapter': 'Kap. {index}',
+  'sidebar.mentionAbsent': '{count} Kapitel abwesend',
+  'sidebar.mentionPresent': 'erwähnt',
+  'sidebar.mentionLegendPresent': 'Anwesend',
+  'sidebar.mentionLegendAbsent': 'Abwesend',
+  'sidebar.mentionGapWarning': 'Zuletzt vor {count} Kapitel(n) gesehen',
 } as const;

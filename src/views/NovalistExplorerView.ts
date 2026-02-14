@@ -23,6 +23,13 @@ export class NovalistExplorerView extends ItemView {
   private dragChapterIndex: number | null = null;
   private selectedFiles: Set<string> = new Set();
   private lastSelectedPath: string | null = null;
+  private propertyFilter = '';
+  private filteredPaths: Set<string> | null = null;
+  private filterDebounceTimer: number | null = null;
+  private propertyIndex: Map<string, Set<string>> | null = null;
+  private filterBarEl: HTMLElement | null = null;
+  private filterInputEl: HTMLInputElement | null = null;
+  private suggestionsEl: HTMLElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
     super(leaf);
@@ -66,6 +73,11 @@ export class NovalistExplorerView extends ItemView {
     container.empty();
     container.addClass('novalist-explorer');
 
+    // Reset filter bar references since DOM was cleared
+    this.filterBarEl = null;
+    this.filterInputEl = null;
+    this.suggestionsEl = null;
+
     container.createEl('h3', { text: t('explorer.displayName'), cls: 'novalist-explorer-header' });
 
     const tabs = container.createDiv('novalist-explorer-tabs');
@@ -77,6 +89,9 @@ export class NovalistExplorerView extends ItemView {
 
     const setTab = (tab: 'chapters' | 'characters' | 'locations') => {
       this.activeTab = tab;
+      this.propertyFilter = '';
+      this.filteredPaths = null;
+      this.propertyIndex = null;
       void this.render();
     };
 
@@ -88,7 +103,26 @@ export class NovalistExplorerView extends ItemView {
       btn.addEventListener('click', () => setTab(tab.id));
     }
 
+    // Property filter bar for characters and locations tabs
+    if (this.activeTab === 'characters' || this.activeTab === 'locations') {
+      this.renderPropertyFilterBar(container);
+      // Preload the property index for suggestions
+      if (!this.propertyIndex) {
+        void this.loadPropertyIndex();
+      }
+    }
+
     const list = container.createDiv('novalist-explorer-list');
+    list.dataset.role = 'entity-list';
+
+    await this.renderListContent(list);
+
+    this.renderProjectSwitcher(container);
+  }
+
+  /** Render only the list content (characters / locations / chapters). */
+  private async renderListContent(list: HTMLElement): Promise<void> {
+    list.empty();
 
     if (this.activeTab === 'chapters') {
       const chapters = await this.plugin.getChapterDescriptions();
@@ -102,14 +136,38 @@ export class NovalistExplorerView extends ItemView {
       }));
       this.renderChapterList(list, chapterItems, t('explorer.noChapters'));
     } else if (this.activeTab === 'characters') {
-      const characters = await this.plugin.getCharacterList();
-      this.renderCharacterGroupedList(list, characters, t('explorer.noCharacters'));
+      let characters = await this.plugin.getCharacterList();
+      if (this.filteredPaths) {
+        const filtered = this.filteredPaths;
+        characters = characters.filter(c => filtered.has(c.file.path));
+      }
+      if (this.propertyFilter && characters.length === 0) {
+        list.createEl('p', { text: t('explorer.filterNoResults'), cls: 'novalist-empty' });
+      } else {
+        this.renderCharacterGroupedList(list, characters, t('explorer.noCharacters'));
+      }
     } else {
-      const locations = this.plugin.getLocationList();
-      this.renderList(list, locations, t('explorer.noLocations'));
+      let locations = this.plugin.getLocationList();
+      if (this.filteredPaths) {
+        const filtered = this.filteredPaths;
+        locations = locations.filter(l => filtered.has(l.file.path));
+      }
+      if (this.propertyFilter && locations.length === 0) {
+        list.createEl('p', { text: t('explorer.filterNoResults'), cls: 'novalist-empty' });
+      } else {
+        this.renderList(list, locations, t('explorer.noLocations'));
+      }
     }
+  }
 
-    this.renderProjectSwitcher(container);
+  /** Re-render only the entity list without touching the filter bar. */
+  private async refreshListOnly(): Promise<void> {
+    const list = this.containerEl.querySelector<HTMLElement>('[data-role="entity-list"]');
+    if (!list) {
+      void this.render();
+      return;
+    }
+    await this.renderListContent(list);
   }
 
   /** Render a sticky project switcher bar at the bottom of the explorer. */
@@ -129,6 +187,223 @@ export class NovalistExplorerView extends ItemView {
     select.addEventListener('change', () => {
       void this.plugin.switchProject(select.value);
     });
+  }
+
+  /** Render a property filter bar above the list. */
+  private renderPropertyFilterBar(container: HTMLElement): void {
+    const bar = container.createDiv('novalist-explorer-filter-bar');
+    this.filterBarEl = bar;
+
+    const wrapper = bar.createDiv('novalist-explorer-filter-wrapper');
+
+    const input = wrapper.createEl('input', {
+      type: 'text',
+      cls: 'novalist-explorer-filter-input',
+      placeholder: t('explorer.filterPlaceholder'),
+      value: this.propertyFilter,
+    });
+    this.filterInputEl = input;
+
+    // Suggestions dropdown (hidden by default)
+    const suggestions = wrapper.createDiv('novalist-explorer-filter-suggestions is-hidden');
+    this.suggestionsEl = suggestions;
+
+    if (this.propertyFilter) {
+      const clearBtn = bar.createEl('button', {
+        cls: 'novalist-explorer-filter-clear',
+        attr: { 'aria-label': t('explorer.clearFilter') },
+      });
+      clearBtn.createEl('span', { text: '✕' });
+      clearBtn.addEventListener('click', () => {
+        this.propertyFilter = '';
+        this.filteredPaths = null;
+        input.value = '';
+        this.hideSuggestions();
+        // Remove the clear button
+        clearBtn.remove();
+        void this.refreshListOnly();
+      });
+    }
+
+    input.addEventListener('input', () => {
+      if (this.filterDebounceTimer !== null) {
+        window.clearTimeout(this.filterDebounceTimer);
+      }
+      this.filterDebounceTimer = window.setTimeout(() => {
+        this.filterDebounceTimer = null;
+        this.propertyFilter = input.value;
+        void this.applyPropertyFilter();
+      }, 300);
+      // Update suggestions immediately as user types
+      this.updateSuggestions(input.value);
+    });
+
+    input.addEventListener('focus', () => {
+      this.updateSuggestions(input.value);
+    });
+
+    input.addEventListener('blur', () => {
+      // Delay hiding so click on suggestion can fire first
+      window.setTimeout(() => this.hideSuggestions(), 200);
+    });
+
+    // Keyboard navigation for suggestions
+    input.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (!this.suggestionsEl || this.suggestionsEl.hasClass('is-hidden')) return;
+      const items = this.suggestionsEl.querySelectorAll('.novalist-filter-suggestion-item');
+      if (items.length === 0) return;
+
+      const active = this.suggestionsEl.querySelector<HTMLElement>('.is-active');
+      let idx = active ? Array.from(items).indexOf(active) : -1;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (active) active.removeClass('is-active');
+        idx = (idx + 1) % items.length;
+        (items[idx] as HTMLElement).addClass('is-active');
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (active) active.removeClass('is-active');
+        idx = idx <= 0 ? items.length - 1 : idx - 1;
+        (items[idx] as HTMLElement).addClass('is-active');
+      } else if (e.key === 'Enter' && active) {
+        e.preventDefault();
+        const value = active.dataset.value;
+        if (value) this.selectSuggestion(value);
+      } else if (e.key === 'Escape') {
+        this.hideSuggestions();
+      }
+    });
+  }
+
+  /** Preload the property index for auto-suggestions. */
+  private async loadPropertyIndex(): Promise<void> {
+    if (this.activeTab === 'characters') {
+      this.propertyIndex = await this.plugin.collectCharacterPropertyIndex();
+    } else if (this.activeTab === 'locations') {
+      this.propertyIndex = await this.plugin.collectLocationPropertyIndex();
+    }
+  }
+
+  /** Update the suggestions dropdown based on current input. */
+  private updateSuggestions(raw: string): void {
+    if (!this.suggestionsEl || !this.propertyIndex) {
+      return;
+    }
+    this.suggestionsEl.empty();
+
+    const colonIdx = raw.indexOf(':');
+    const suggestions: Array<{ display: string; value: string }> = [];
+
+    if (colonIdx === -1) {
+      // User hasn't typed ":" yet — suggest matching property keys
+      const query = raw.toLowerCase().trim();
+      for (const key of this.propertyIndex.keys()) {
+        if (!query || key.toLowerCase().includes(query)) {
+          suggestions.push({ display: key, value: `${key}: ` });
+        }
+      }
+    } else {
+      // User has typed "key:" — suggest matching values for that key
+      const keyPart = raw.substring(0, colonIdx).trim();
+      const valuePart = raw.substring(colonIdx + 1).trim().toLowerCase();
+
+      // Find the matching key (case-insensitive)
+      let matchedKey: string | null = null;
+      for (const key of this.propertyIndex.keys()) {
+        if (key.toLowerCase() === keyPart.toLowerCase()) {
+          matchedKey = key;
+          break;
+        }
+      }
+      if (matchedKey) {
+        const values = this.propertyIndex.get(matchedKey);
+        if (values) {
+          for (const val of values) {
+            if (!valuePart || val.toLowerCase().includes(valuePart)) {
+              suggestions.push({ display: `${matchedKey}: ${val}`, value: `${matchedKey}: ${val}` });
+            }
+          }
+        }
+      }
+    }
+
+    if (suggestions.length === 0) {
+      this.hideSuggestions();
+      return;
+    }
+
+    // Cap suggestions at 12
+    const capped = suggestions.slice(0, 12);
+    for (const s of capped) {
+      const item = this.suggestionsEl.createDiv({
+        cls: 'novalist-filter-suggestion-item',
+        text: s.display,
+      });
+      item.dataset.value = s.value;
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // prevent blur
+        this.selectSuggestion(s.value);
+      });
+    }
+    this.suggestionsEl.removeClass('is-hidden');
+  }
+
+  /** Select a suggestion and apply the filter. */
+  private selectSuggestion(value: string): void {
+    this.propertyFilter = value;
+    if (this.filterInputEl) {
+      this.filterInputEl.value = value;
+      this.filterInputEl.focus();
+      this.filterInputEl.setSelectionRange(value.length, value.length);
+    }
+    this.hideSuggestions();
+
+    // If the suggestion ends with ": " the user picked a key — don't filter yet,
+    // wait for them to pick or type a value
+    if (value.trimEnd().endsWith(':')) {
+      // Show value suggestions
+      this.updateSuggestions(value);
+      return;
+    }
+
+    void this.applyPropertyFilter();
+  }
+
+  /** Hide the suggestions dropdown. */
+  private hideSuggestions(): void {
+    if (this.suggestionsEl) {
+      this.suggestionsEl.addClass('is-hidden');
+    }
+  }
+
+  /** Parse the filter string and apply it. */
+  private async applyPropertyFilter(): Promise<void> {
+    const raw = this.propertyFilter.trim();
+    if (!raw) {
+      this.filteredPaths = null;
+      void this.refreshListOnly();
+      return;
+    }
+
+    // Parse "key: value" format; also support "key" (any non-empty value)
+    const colonIdx = raw.indexOf(':');
+    let filterKey: string;
+    let filterValue: string;
+    if (colonIdx !== -1) {
+      filterKey = raw.substring(0, colonIdx).trim();
+      filterValue = raw.substring(colonIdx + 1).trim();
+    } else {
+      filterKey = raw;
+      filterValue = '';
+    }
+
+    if (this.activeTab === 'characters') {
+      this.filteredPaths = await this.plugin.filterCharactersByProperty(filterKey, filterValue);
+    } else if (this.activeTab === 'locations') {
+      this.filteredPaths = await this.plugin.filterLocationsByProperty(filterKey, filterValue);
+    }
+    void this.refreshListOnly();
   }
 
   private handleContextMenu(evt: MouseEvent, file: TFile) {

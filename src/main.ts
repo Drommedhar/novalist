@@ -3508,4 +3508,272 @@ order: ${orderValue}
     void this.saveSettings();
     this.syncAnnotationThreads();
   }
+
+  // ─── Property Filter (Explorer) ──────────────────────────────────
+
+  /**
+   * Search characters whose built-in or custom properties match a key:value filter.
+   * Returns the subset of CharacterListData items that match.
+   */
+  async filterCharactersByProperty(filterKey: string, filterValue: string): Promise<Set<string>> {
+    const matchingPaths = new Set<string>();
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.characterFolder}/`;
+    const wb = this.resolvedWorldBiblePath();
+    const wbFolder = wb ? `${wb}/${this.settings.characterFolder}/` : '';
+    const files = this.app.vault.getFiles().filter((f) =>
+      (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
+    );
+
+    const keyLower = filterKey.toLowerCase().trim();
+    const valueLower = filterValue.toLowerCase().trim();
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const sheetData = this.parseCharacterSheetForSidebar(content);
+      if (!sheetData) continue;
+
+      // Check built-in fields
+      const builtInMap: Record<string, string> = {
+        name: sheetData.name,
+        surname: sheetData.surname,
+        gender: sheetData.gender,
+        age: sheetData.age,
+        role: sheetData.role,
+      };
+
+      // Also check physical attributes from the full sheet
+      const fullSheet = parseCharacterSheet(content);
+      if (fullSheet) {
+        builtInMap['eyecolor'] = fullSheet.eyeColor;
+        builtInMap['eye color'] = fullSheet.eyeColor;
+        builtInMap['haircolor'] = fullSheet.hairColor;
+        builtInMap['hair color'] = fullSheet.hairColor;
+        builtInMap['hairlength'] = fullSheet.hairLength;
+        builtInMap['hair length'] = fullSheet.hairLength;
+        builtInMap['height'] = fullSheet.height;
+        builtInMap['build'] = fullSheet.build;
+        builtInMap['skintone'] = fullSheet.skinTone;
+        builtInMap['skin tone'] = fullSheet.skinTone;
+        builtInMap['distinguishingfeatures'] = fullSheet.distinguishingFeatures;
+        builtInMap['distinguishing features'] = fullSheet.distinguishingFeatures;
+
+        // Merge custom properties from full sheet
+        if (fullSheet.customProperties) {
+          for (const [k, v] of Object.entries(fullSheet.customProperties)) {
+            builtInMap[k.toLowerCase()] = v;
+          }
+        }
+      }
+
+      // Also merge custom properties from sidebar parsing
+      if (sheetData.customProperties) {
+        for (const [k, v] of Object.entries(sheetData.customProperties)) {
+          builtInMap[k.toLowerCase()] = v;
+        }
+      }
+
+      // Match: if value is empty, match any entity that has the key non-empty
+      // If value is provided, match case-insensitively
+      const fieldVal = builtInMap[keyLower];
+      if (fieldVal !== undefined) {
+        if (!valueLower || fieldVal.toLowerCase().includes(valueLower)) {
+          matchingPaths.add(file.path);
+        }
+      }
+    }
+
+    return matchingPaths;
+  }
+
+  /**
+   * Collect all known property keys and their distinct non-empty values for
+   * character files.  Used to power the Explorer filter auto-suggestions.
+   */
+  async collectCharacterPropertyIndex(): Promise<Map<string, Set<string>>> {
+    const index = new Map<string, Set<string>>();
+    const addEntry = (key: string, value: string) => {
+      if (!value) return;
+      const display = key; // preserve original casing for display
+      let set = index.get(display);
+      if (!set) { set = new Set(); index.set(display, set); }
+      set.add(value);
+    };
+
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.characterFolder}/`;
+    const wb = this.resolvedWorldBiblePath();
+    const wbFolder = wb ? `${wb}/${this.settings.characterFolder}/` : '';
+    const files = this.app.vault.getFiles().filter(f =>
+      (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
+    );
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const sheetData = this.parseCharacterSheetForSidebar(content);
+      if (!sheetData) continue;
+
+      addEntry('Name', sheetData.name);
+      addEntry('Surname', sheetData.surname);
+      addEntry('Gender', sheetData.gender);
+      addEntry('Age', sheetData.age);
+      addEntry('Role', sheetData.role);
+
+      const fullSheet = parseCharacterSheet(content);
+      if (fullSheet) {
+        addEntry('Eye Color', fullSheet.eyeColor);
+        addEntry('Hair Color', fullSheet.hairColor);
+        addEntry('Hair Length', fullSheet.hairLength);
+        addEntry('Height', fullSheet.height);
+        addEntry('Build', fullSheet.build);
+        addEntry('Skin Tone', fullSheet.skinTone);
+        addEntry('Distinguishing Features', fullSheet.distinguishingFeatures);
+        if (fullSheet.customProperties) {
+          for (const [k, v] of Object.entries(fullSheet.customProperties)) addEntry(k, v);
+        }
+      }
+      if (sheetData.customProperties) {
+        for (const [k, v] of Object.entries(sheetData.customProperties)) addEntry(k, v);
+      }
+    }
+    return index;
+  }
+
+  /**
+   * Collect all known property keys and their distinct non-empty values for
+   * location files.
+   */
+  async collectLocationPropertyIndex(): Promise<Map<string, Set<string>>> {
+    const index = new Map<string, Set<string>>();
+    const addEntry = (key: string, value: string) => {
+      if (!value) return;
+      let set = index.get(key);
+      if (!set) { set = new Set(); index.set(key, set); }
+      set.add(value);
+    };
+
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.locationFolder}/`;
+    const wb = this.resolvedWorldBiblePath();
+    const wbFolder = wb ? `${wb}/${this.settings.locationFolder}/` : '';
+    const files = this.app.vault.getFiles().filter(f =>
+      (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
+    );
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const sheetData = parseLocationSheet(content);
+      addEntry('Name', sheetData.name);
+      addEntry('Type', sheetData.type);
+      addEntry('Description', sheetData.description);
+      if (sheetData.customProperties) {
+        for (const [k, v] of Object.entries(sheetData.customProperties)) addEntry(k, v);
+      }
+    }
+    return index;
+  }
+
+  /**
+   * Search locations whose built-in or custom properties match a key:value filter.
+   */
+  async filterLocationsByProperty(filterKey: string, filterValue: string): Promise<Set<string>> {
+    const matchingPaths = new Set<string>();
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.locationFolder}/`;
+    const wb = this.resolvedWorldBiblePath();
+    const wbFolder = wb ? `${wb}/${this.settings.locationFolder}/` : '';
+    const files = this.app.vault.getFiles().filter((f) =>
+      (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
+    );
+
+    const keyLower = filterKey.toLowerCase().trim();
+    const valueLower = filterValue.toLowerCase().trim();
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const sheetData = parseLocationSheet(content);
+
+      const fieldMap: Record<string, string> = {
+        name: sheetData.name,
+        type: sheetData.type,
+        description: sheetData.description,
+      };
+
+      if (sheetData.customProperties) {
+        for (const [k, v] of Object.entries(sheetData.customProperties)) {
+          fieldMap[k.toLowerCase()] = v;
+        }
+      }
+
+      const fieldVal = fieldMap[keyLower];
+      if (fieldVal !== undefined) {
+        if (!valueLower || fieldVal.toLowerCase().includes(valueLower)) {
+          matchingPaths.add(file.path);
+        }
+      }
+    }
+
+    return matchingPaths;
+  }
+
+  // ─── Mention Frequency Analysis (Sidebar) ─────────────────────────
+
+  /**
+   * Analyse how frequently a set of characters are mentioned across all
+   * chapters.  Returns an ordered list of chapters with a boolean flag
+   * per tracked character.
+   */
+  async computeMentionFrequency(
+    trackedCharacters: string[]
+  ): Promise<{
+    chapters: Array<{ name: string; index: number }>;
+    /** characterName → array of booleans (one per chapter, true = mentioned) */
+    mentions: Record<string, boolean[]>;
+    /** characterName → number of consecutive chapters absent counting backwards from the latest chapter */
+    currentGap: Record<string, number>;
+  }> {
+    const descs = await this.getChapterDescriptions();
+    const sortedChapters = descs.sort((a, b) => a.order - b.order);
+
+    const chapterList: Array<{ name: string; index: number }> = [];
+    const mentions: Record<string, boolean[]> = {};
+    for (const charName of trackedCharacters) {
+      mentions[charName] = [];
+    }
+
+    for (let i = 0; i < sortedChapters.length; i++) {
+      const ch = sortedChapters[i];
+      chapterList.push({ name: ch.name, index: i + 1 });
+
+      const content = await this.app.vault.read(ch.file);
+      const body = this.stripFrontmatter(content);
+
+      for (const charName of trackedCharacters) {
+        const nameParts = charName.split(' ');
+        const variations = [charName];
+        if (nameParts.length > 1) variations.push(nameParts[0]);
+        let found = false;
+        for (const v of variations) {
+          if (v.length < 2) continue;
+          const regex = new RegExp(`\\b${this.escapeRegex(v)}\\b`, 'i');
+          if (regex.test(body)) { found = true; break; }
+        }
+        mentions[charName].push(found);
+      }
+    }
+
+    // Compute current gap (how many chapters since last mention, counting from the end)
+    const currentGap: Record<string, number> = {};
+    for (const charName of trackedCharacters) {
+      const arr = mentions[charName];
+      let gap = 0;
+      for (let i = arr.length - 1; i >= 0; i--) {
+        if (arr[i]) break;
+        gap++;
+      }
+      currentGap[charName] = gap;
+    }
+
+    return { chapters: chapterList, mentions, currentGap };
+  }
 }

@@ -241,6 +241,9 @@ export class NovalistSidebarView extends ItemView {
     // Plot Board Section
     this.renderPlotBoardSection(contextContent);
 
+    // Mention Frequency Section
+    await this.renderMentionFrequencySection(contextContent, chapterData.characters);
+
     // Locations Section
     if (chapterData.locations.length > 0) {
       const locationItems: Array<LocationData> = [];
@@ -299,6 +302,83 @@ export class NovalistSidebarView extends ItemView {
       const row = list.createDiv('novalist-overview-plot-item');
       row.createEl('span', { text: col.name, cls: 'novalist-overview-plot-label' });
       row.createEl('span', { text: cellData[col.id], cls: 'novalist-overview-plot-value' });
+    }
+  }
+
+  /** Render the Mention Frequency graph in the sidebar. */
+  private async renderMentionFrequencySection(parent: HTMLElement, trackedCharacters: string[]): Promise<void> {
+    if (trackedCharacters.length === 0) return;
+
+    const freq = await this.plugin.computeMentionFrequency(trackedCharacters);
+    if (freq.chapters.length === 0) return;
+
+    const section = parent.createDiv('novalist-overview-section');
+    section.createEl('div', {
+      text: t('sidebar.mentionFrequency'),
+      cls: 'novalist-overview-section-title',
+    });
+
+    const graphContainer = section.createDiv('novalist-mention-graph');
+
+    // Legend
+    const legend = graphContainer.createDiv('novalist-mention-legend');
+    const legendPresent = legend.createDiv('novalist-mention-legend-item');
+    legendPresent.createEl('span', { cls: 'novalist-mention-legend-swatch novalist-mention-present' });
+    legendPresent.createEl('span', { text: t('sidebar.mentionLegendPresent') });
+    const legendAbsent = legend.createDiv('novalist-mention-legend-item');
+    legendAbsent.createEl('span', { cls: 'novalist-mention-legend-swatch novalist-mention-absent' });
+    legendAbsent.createEl('span', { text: t('sidebar.mentionLegendAbsent') });
+
+    // Find the current chapter index for highlighting
+    const currentChapterId = this.currentChapterFile
+      ? this.plugin.getChapterIdForFileSync(this.currentChapterFile)
+      : '';
+    const currentChapterName = this.currentChapterFile
+      ? this.plugin.getChapterNameForFileSync(this.currentChapterFile)
+      : '';
+
+    // For each tracked character, render a row
+    for (const charName of trackedCharacters) {
+      const charMentions = freq.mentions[charName];
+      if (!charMentions) continue;
+
+      const row = graphContainer.createDiv('novalist-mention-row');
+
+      // Character name label
+      const nameLabel = row.createDiv('novalist-mention-name');
+      nameLabel.createEl('span', { text: charName });
+
+      // Gap warning badge
+      const gap = freq.currentGap[charName];
+      if (gap >= 3) {
+        nameLabel.createEl('span', {
+          text: t('sidebar.mentionGapWarning', { count: String(gap) }),
+          cls: 'novalist-mention-gap-warning',
+        });
+      }
+
+      // Heatmap cells
+      const cells = row.createDiv('novalist-mention-cells');
+      for (let i = 0; i < freq.chapters.length; i++) {
+        const ch = freq.chapters[i];
+        const mentioned = charMentions[i];
+        const cell = cells.createDiv(
+          `novalist-mention-cell ${mentioned ? 'novalist-mention-present' : 'novalist-mention-absent'}`
+        );
+        // Highlight current chapter
+        const descs = this.plugin.getChapterDescriptionsSync();
+        const chDesc = descs.find(d => d.name === ch.name);
+        if (chDesc && (chDesc.id === currentChapterId || chDesc.name === currentChapterName)) {
+          cell.addClass('novalist-mention-current');
+        }
+        cell.setAttribute('title',
+          `${ch.name}: ${mentioned ? t('sidebar.mentionPresent') : t('sidebar.mentionAbsent', { count: '0' })}`
+        );
+        cell.createEl('span', {
+          text: String(ch.index),
+          cls: 'novalist-mention-cell-label',
+        });
+      }
     }
   }
 

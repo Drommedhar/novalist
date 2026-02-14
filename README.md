@@ -45,8 +45,8 @@ An always-visible toolbar is injected into every editor tab header. It provides 
 A specialized file explorer in the left panel with three tabs:
 
 - **Chapters** — Listed in order, grouped by act when acts are defined. Drag and drop to reorder (updates frontmatter automatically). Status icons indicate progress. Scenes within each chapter are listed as nested sub-items. Right-click a chapter to edit its metadata (name, order, status, act, date), add a scene, assign to an act, or delete. Right-click a scene to edit its name and date. An `Add act` button lets you create new acts, and act headers support right-click to rename or delete.
-- **Characters** — Grouped by role with collapsible sections. Drag characters between groups to reassign roles. Multi-select with Ctrl/Shift+click. Gender badges shown with configurable colors.
-- **Locations** — A simple navigable list. Click to open, right-click to delete.
+- **Characters** — Grouped by role with collapsible sections. Drag characters between groups to reassign roles. Multi-select with Ctrl/Shift+click. Gender badges shown with configurable colors. A property filter bar lets you search by any built-in or custom property (e.g. `Eye Color: Blue`, `Role: Protagonist`). Results update as you type.
+- **Locations** — A simple navigable list. Click to open, right-click to delete. Supports the same property filter bar (e.g. `Type: Tavern`).
 
 Clicking any character or location opens it in its dedicated Sheet View.
 
@@ -80,7 +80,7 @@ Templates control the structure of new character and location files. Each templa
 
 ### Context Sidebar
 
-A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters and locations, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, and location descriptions. Character data reflects the full override cascade (scene > chapter > act > base). When you are inside a scene (an `## heading` section), the sidebar shows the current scene name and applies the most specific matching override. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. Accessible via the toolbar, ribbon icon, or command palette.
+A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters and locations, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, and location descriptions. Character data reflects the full override cascade (scene > chapter > act > base). When you are inside a scene (an `## heading` section), the sidebar shows the current scene name and applies the most specific matching override. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. A **Mention Frequency** graph shows a heatmap of which chapters each character appears in, with a warning badge when a character has been absent for three or more consecutive chapters. Accessible via the toolbar, ribbon icon, or command palette.
 
 ### Character Map
 

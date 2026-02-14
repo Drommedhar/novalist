@@ -30,4 +30,4 @@ The project has a GitHub wiki at `https://github.com/Drommedhar/novalist/wiki`, 
 - `Settings-Reference.md` and `Commands-Reference.md` are exhaustive reference tables — add new settings or commands there when introduced.
 - `Tips-and-Workflows.md` covers practical usage advice — update it when new workflows become possible.
 - Tone matches the README: direct, factual, concise. No marketing language.
-- After editing wiki files, commit and push from `J:\git\novalist-wiki` with a descriptive commit message.
+- After editing wiki files, commit from `J:\git\novalist-wiki` with a descriptive commit message. Do NOT push automatically — the user will push manually.

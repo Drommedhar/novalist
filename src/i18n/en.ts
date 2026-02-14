@@ -575,4 +575,18 @@ export default {
   'project.moveToWorldBible': 'Move to World Bible',
   'project.moveToProject': 'Move to {project}',
   'project.wbBadge': 'WB',
+
+  // ── Property filter (Explorer) ─────────────────────────────────────
+  'explorer.filterPlaceholder': 'Filter by property… (e.g. Eye Color: Blue)',
+  'explorer.clearFilter': 'Clear filter',
+  'explorer.filterNoResults': 'No results match the filter.',
+
+  // ── Mention analysis (Sidebar) ─────────────────────────────────────
+  'sidebar.mentionFrequency': 'Mention frequency',
+  'sidebar.mentionChapter': 'Ch. {index}',
+  'sidebar.mentionAbsent': 'absent {count} chapter(s)',
+  'sidebar.mentionPresent': 'mentioned',
+  'sidebar.mentionLegendPresent': 'Present',
+  'sidebar.mentionLegendAbsent': 'Absent',
+  'sidebar.mentionGapWarning': 'Last seen {count} chapter(s) ago',
 } as const;
