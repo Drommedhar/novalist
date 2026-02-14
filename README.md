@@ -114,7 +114,7 @@ A Google Docs-style commenting system. Select text in the editor, click the "+" 
 
 ### Focus Peek
 
-Hover your cursor over a character or location name in the editor and an inline card appears after a short delay showing the entity's details — portrait, attributes, relationships, and more. Pin the card to keep it visible while you write. Click character links inside a peek to navigate between entities with breadcrumb back-navigation. The card is resizable, and the size is remembered. The peek card applies character overrides with the full cascade: scene > chapter > act > base data.
+Hover your cursor over a character or location name in the editor and an inline card appears after a short delay showing the entity's details — portrait, attributes, relationships, and more. Pin the card to keep it visible while you write. Click character links inside a peek to navigate between entities with breadcrumb back-navigation. The card is resizable with a stable default size, remembers custom size, inherits the current editor font size, and keeps section content filling the available height as you resize. If needed, reset the saved card size from Settings. The peek card applies character overrides with the full cascade: scene > chapter > act > base data.
 
 ### Statistics Panel
 
@@ -160,6 +160,7 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 | Novalist root folder | Optional subfolder inside the vault where all projects and the World Bible are placed; leave empty to use the vault root | _(empty)_ |
 | World Bible folder | Root folder for shared entities across projects | `WorldBible` |
 | Project path | Root vault folder for the novel project | `NovelProject` |
+| Focus Peek size | Button that clears stored Focus Peek dimensions and restores default card size on next open | Default card size |
 | Character folder | Subfolder name for characters | `Characters` |
 | Location folder | Subfolder name for locations | `Locations` |
 | Chapter folder | Subfolder name for chapters | `Chapters` |

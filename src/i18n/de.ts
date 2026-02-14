@@ -55,6 +55,7 @@ export default {
   'notice.movedToProject': '{name} in Projekt {project} verschoben.',
   'notice.moveTargetExists': '{name} existiert bereits im Zielordner.',
   'notice.rootChanged': 'Novalist-Stammordner aktualisiert.',
+  'notice.peekSizeReset': 'Die Größe von Focus Peek wurde auf den Standard zurückgesetzt.',
 
   // ── Settings tab ───────────────────────────────────────────────────
   'settings.preferences': 'Einstellungen',
@@ -70,6 +71,9 @@ export default {
   'settings.projectPath': 'Projektpfad',
   'settings.projectPathDesc': 'Stammverzeichnis für Ihr Romanprojekt',
   'settings.projectPathPlaceholder': 'Romanprojekt',
+  'settings.peekSize': 'Focus-Peek-Größe',
+  'settings.peekSizeDesc': 'Setzt die gespeicherte Größe der Focus-Peek-Karte zurück, damit sie wieder mit den Standardmaßen geöffnet wird.',
+  'settings.resetPeekSize': 'Größe zurücksetzen',
   'settings.folderStructure': 'Ordnerstruktur',
   'settings.characterFolder': 'Charakterordner',
   'settings.characterFolderDesc': 'Ordner für Charakterdateien',

@@ -59,7 +59,12 @@ import {
   type AnnotationCallbacks
 } from './cm/annotationExtension';
 import { statisticsPanelExtension, type StatisticsPanelConfig, type ChapterOverviewStat, type SceneOverviewStat } from './cm/statisticsPanelExtension';
-import { focusPeekExtension, type FocusPeekCallbacks, type EntityPeekData } from './cm/focusPeekExtension';
+import {
+  focusPeekExtension,
+  FOCUS_PEEK_SIZE_STORAGE_KEY,
+  type FocusPeekCallbacks,
+  type EntityPeekData
+} from './cm/focusPeekExtension';
 import { countWords, getTodayDate, getOrCreateDailyGoal } from './utils/statisticsUtils';
 import { calculateReadability } from './utils/readabilityUtils';
 import type { CommentThread, CommentMessage, ProjectData } from './types';
@@ -542,6 +547,10 @@ export default class NovalistPlugin extends Plugin {
   async saveSettings(): Promise<void> {
     this.flushActiveProjectData();
     await this.saveData(this.settings);
+  }
+
+  resetFocusPeekSize(): void {
+    this.app.saveLocalStorage(FOCUS_PEEK_SIZE_STORAGE_KEY, '');
   }
 
   updateBookParagraphSpacing(): void {

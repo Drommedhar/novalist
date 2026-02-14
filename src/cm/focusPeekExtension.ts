@@ -95,25 +95,46 @@ export const focusPeekCallbacks = Facet.define<FocusPeekCallbacks, FocusPeekCall
   }
 });
 
+export const FOCUS_PEEK_SIZE_STORAGE_KEY = 'novalist-peek-card-size';
+
 // ─── ViewPlugin: hover detection + peek card rendering ──────────────
 
 class FocusPeekPlugin implements PluginValue {
-  private static readonly PEEK_SIZE_KEY = 'novalist-peek-card-size';
+  private static readonly PEEK_SIZE_KEY = FOCUS_PEEK_SIZE_STORAGE_KEY;
 
-  private static readonly BASE_WIDTH = 340;
+  private static readonly DEFAULT_WIDTH = 460;
+
+  private static readonly DEFAULT_HEIGHT = 360;
+
+  private static readonly MIN_WIDTH = 280;
+
+  private static readonly MIN_HEIGHT = 220;
 
   private static loadPersistedSize(cb: FocusPeekCallbacks): { width: number; height: number } | null {
     try {
       const raw = cb.loadLocalStorage(FocusPeekPlugin.PEEK_SIZE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as { width: number; height: number };
-      if (typeof parsed.width === 'number' && typeof parsed.height === 'number') return parsed;
+      if (
+        typeof parsed.width === 'number'
+        && typeof parsed.height === 'number'
+        && Number.isFinite(parsed.width)
+        && Number.isFinite(parsed.height)
+      ) {
+        return {
+          width: Math.max(FocusPeekPlugin.MIN_WIDTH, Math.round(parsed.width)),
+          height: Math.max(FocusPeekPlugin.MIN_HEIGHT, Math.round(parsed.height))
+        };
+      }
     } catch { /* ignore */ }
     return null;
   }
 
   private static savePersistedSize(cb: FocusPeekCallbacks, width: number, height: number): void {
-    cb.saveLocalStorage(FocusPeekPlugin.PEEK_SIZE_KEY, JSON.stringify({ width, height }));
+    cb.saveLocalStorage(FocusPeekPlugin.PEEK_SIZE_KEY, JSON.stringify({
+      width: Math.max(FocusPeekPlugin.MIN_WIDTH, Math.round(width)),
+      height: Math.max(FocusPeekPlugin.MIN_HEIGHT, Math.round(height))
+    }));
   }
 
   private view: EditorView;
@@ -249,6 +270,12 @@ class FocusPeekPlugin implements PluginValue {
     return cb.getEntityAtPosition(line.text, ch);
   }
 
+  private getEditorFontSize(): string {
+    const size = window.getComputedStyle(this.view.dom).fontSize;
+    if (size) return size;
+    return window.getComputedStyle(document.body).fontSize || '14px';
+  }
+
   // ── Card rendering ────────────────────────────────────────────────
 
   private showCard(data: EntityPeekData, pos: number): void {
@@ -279,27 +306,25 @@ class FocusPeekPlugin implements PluginValue {
     const top = coords.bottom + 6;
     let left = coords.left;
 
+    const savedSize = FocusPeekPlugin.loadPersistedSize(this.view.state.facet(focusPeekCallbacks));
+    const cardWidth = savedSize?.width ?? FocusPeekPlugin.DEFAULT_WIDTH;
+    const cardHeight = savedSize?.height ?? FocusPeekPlugin.DEFAULT_HEIGHT;
+
     // Ensure card doesn't overflow the right edge of the editor
-    const defaultWidth = 420;
-    if (left + defaultWidth > editorRect.right) {
-      left = editorRect.right - defaultWidth - 8;
+    if (left + cardWidth > editorRect.right) {
+      left = editorRect.right - cardWidth - 8;
     }
     if (left < editorRect.left) {
       left = editorRect.left + 8;
     }
 
-    // Apply persisted size if available, including scaling font-size
-    const savedSize = FocusPeekPlugin.loadPersistedSize(this.view.state.facet(focusPeekCallbacks));
     const styles: Partial<CSSStyleDeclaration> = {
       top: `${top}px`,
-      left: `${left}px`
+      left: `${left}px`,
+      width: `${cardWidth}px`,
+      height: `${cardHeight}px`,
+      fontSize: this.getEditorFontSize()
     };
-    if (savedSize) {
-      styles.width = `${savedSize.width}px`;
-      styles.height = `${savedSize.height}px`;
-      const scale = savedSize.width / FocusPeekPlugin.BASE_WIDTH;
-      styles.fontSize = `${Math.max(10, Math.min(24, 12 * scale)).toFixed(1)}px`;
-    }
     card.setCssStyles(styles);
 
     document.body.appendChild(card);
@@ -311,10 +336,6 @@ class FocusPeekPlugin implements PluginValue {
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
           FocusPeekPlugin.savePersistedSize(this.view.state.facet(focusPeekCallbacks), Math.round(width), Math.round(height));
-          // Scale font-size proportionally to width (all children use em)
-          const scale = width / FocusPeekPlugin.BASE_WIDTH;
-          const fontSize = Math.max(10, Math.min(24, 12 * scale));
-          (entry.target as HTMLElement).style.fontSize = `${fontSize.toFixed(1)}px`;
         }
       }
     });
@@ -420,8 +441,10 @@ class FocusPeekPlugin implements PluginValue {
       this.removeCard();
     });
 
+    const main = card.createDiv('novalist-peek-main');
+
     // ── Body: image on left, details on right (side-by-side if image present)
-    const body = card.createDiv('novalist-peek-body');
+    const body = main.createDiv('novalist-peek-body');
 
     // Image column (portrait-friendly)
     this.renderImageArea(body, data);
@@ -554,7 +577,7 @@ class FocusPeekPlugin implements PluginValue {
 
     // ── Free-form sections (dropdown selector)
     if (data.sections.length > 0) {
-      this.renderSections(card, data.sections, data);
+      this.renderSections(main, data.sections, data);
     }
 
     // ── Intercept wiki-link clicks inside the card for in-peek navigation

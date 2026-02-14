@@ -2,7 +2,8 @@
   PluginSettingTab,
   App,
   Setting,
-  ButtonComponent
+  ButtonComponent,
+  Notice
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import {
@@ -143,6 +144,16 @@ export class NovalistSettingTab extends PluginSettingTab {
             active.path = value;
           }
           await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t('settings.peekSize'))
+      .setDesc(t('settings.peekSizeDesc'))
+      .addButton(btn => btn
+        .setButtonText(t('settings.resetPeekSize'))
+        .onClick(() => {
+          this.plugin.resetFocusPeekSize();
+          new Notice(t('notice.peekSizeReset'));
         }));
 
 

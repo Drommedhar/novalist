@@ -2939,14 +2939,17 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   border: 1px solid var(--background-modifier-border);
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
-  padding: 0.833em 1em;
-  min-width: 220px;
-  font-size: 12px;
+  padding: 0.833em 1em 0.917em;
+  min-width: 280px;
+  min-height: 220px;
+  font-size: var(--font-text-size);
   line-height: 1.45;
   animation: novalist-peek-in 0.12s ease;
   pointer-events: auto;
   resize: both;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes novalist-peek-in {
@@ -2960,6 +2963,9 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   align-items: center;
   gap: 0.5em;
   margin-bottom: 0.5em;
+  padding-bottom: 0.417em;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex: 0 0 auto;
 }
 
 .novalist-peek-type-icon {
@@ -3037,10 +3043,22 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 }
 
 /* ── Card body: side-by-side image + details ── */
+.novalist-peek-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .novalist-peek-body {
   display: flex;
   gap: 0.833em;
   align-items: flex-start;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 0.167em;
+  flex: 0 1 auto;
 }
 
 /* When no image present, details fill the full width */
@@ -3275,8 +3293,12 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 
 /* ── Peek sections ── */
 .novalist-peek-sections {
-  padding: 0.333em 0.667em 0.5em;
+  padding: 0.5em 0.667em 0.5em;
   border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .novalist-peek-sections-header {
@@ -3316,12 +3338,16 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 }
 
 .novalist-peek-sections-content {
-  max-height: 10em;
   overflow-y: auto;
-  padding-right: 0.167em;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0.5em 0.583em;
   font-size: 0.917em;
   line-height: 1.45;
   color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
 }
 
 .novalist-peek-sections-content p {

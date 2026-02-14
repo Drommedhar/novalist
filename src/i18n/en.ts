@@ -55,6 +55,7 @@ export default {
   'notice.movedToProject': '{name} moved to project {project}.',
   'notice.moveTargetExists': '{name} already exists in the target folder.',
   'notice.rootChanged': 'Novalist root folder updated.',
+  'notice.peekSizeReset': 'Focus Peek size was reset to default.',
 
   // ── Settings tab ───────────────────────────────────────────────────
   'settings.preferences': 'Preferences',
@@ -70,6 +71,9 @@ export default {
   'settings.projectPath': 'Project path',
   'settings.projectPathDesc': 'Root folder for your novel project',
   'settings.projectPathPlaceholder': 'Novel project',
+  'settings.peekSize': 'Focus Peek size',
+  'settings.peekSizeDesc': 'Reset the stored Focus Peek card size so it opens with the default dimensions again.',
+  'settings.resetPeekSize': 'Reset size',
   'settings.folderStructure': 'Folder structure',
   'settings.characterFolder': 'Character folder',
   'settings.characterFolderDesc': 'Folder for character files',
