@@ -33,6 +33,7 @@ export interface AnnotationCallbacks {
   onDeleteThread: (threadId: string) => void;
   onDeleteMessage: (threadId: string, messageId: string) => void;
   getActiveFilePath: () => string | null;
+  isProjectFile: () => boolean;
 }
 
 export const annotationCallbacks = Facet.define<AnnotationCallbacks, AnnotationCallbacks>({
@@ -42,7 +43,8 @@ export const annotationCallbacks = Facet.define<AnnotationCallbacks, AnnotationC
     onResolveThread: () => {/* no-op */},
     onDeleteThread: () => {/* no-op */},
     onDeleteMessage: () => {/* no-op */},
-    getActiveFilePath: () => null
+    getActiveFilePath: () => null,
+    isProjectFile: () => false
   }
 });
 
@@ -151,6 +153,11 @@ function removeAnnotationTooltip(): void {
 function showAnnotationTooltip(view: EditorView): void {
   const sel = view.state.selection.main;
   if (sel.empty) { removeAnnotationTooltip(); return; }
+
+  // Only show the tooltip for files inside a Novalist project
+  const cb = view.state.facet(annotationCallbacks);
+  if (!cb.isProjectFile()) { removeAnnotationTooltip(); return; }
+
   try {
     const coords = view.coordsAtPos(sel.to);
     if (!coords) { removeAnnotationTooltip(); return; }
@@ -229,6 +236,12 @@ class AnnotationPanelPlugin implements PluginValue {
 
     this.wrapper = document.createElement('div');
     this.wrapper.className = 'novalist-annotation-panel-wrapper';
+
+    // Hide annotation panel for non-project files
+    const cb = view.state.facet(annotationCallbacks);
+    if (!cb.isProjectFile()) {
+      this.wrapper.addClass('novalist-hidden');
+    }
 
     this.container = document.createElement('div');
     this.container.className = 'novalist-annotation-panel';

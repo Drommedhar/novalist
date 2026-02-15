@@ -235,31 +235,6 @@ export function serializeLocationSheet(data: LocationSheetData): string {
     }
   }
 
-
-  
-  result += '\n';
-  
-  // Human readable preview (optional, matches CharacterSheet behavior)
-  result += `\n**Type**: ${data.type}\n`;
-  if (data.description) result += `**Description**: ${data.description}\n`;
-  
-  // Custom props
-  if (data.customProperties && Object.keys(data.customProperties).length > 0) {
-    for (const [key, val] of Object.entries(data.customProperties)) {
-        if (key !== 'Type') { // Skip standard fields if accidentally in custom
-            result += `**${key}**: ${val}\n`;
-        }
-    }
-  }
-
-  result += '\n';
-
-  // Sections
-  for (const section of data.sections) {
-    result += `### ${section.title}\n\n`;
-    result += `${section.content}\n\n`;
-  }
-
   return result;
 }
 

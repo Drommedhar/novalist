@@ -40,9 +40,13 @@ export class NovalistSidebarView extends ItemView {
     // Listen for active file changes
     this.registerEvent(
       this.app.workspace.on('file-open', (file) => {
-        if (file && file.extension === 'md') {
+        if (file && file.extension === 'md' && this.plugin.isFileInProject(file)) {
           this.currentChapterFile = file;
           this.updateCurrentScene();
+          void this.render();
+        } else if (file && !this.plugin.isFileInProject(file)) {
+          this.currentChapterFile = null;
+          this.currentScene = null;
           void this.render();
         }
       })

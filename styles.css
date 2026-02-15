@@ -2301,9 +2301,9 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   display: none !important;
 }
 
-/* Hidden tracker element */
-.novalist-toolbar-tracker.novalist-hidden {
-  display: none;
+/* Hide any Novalist element */
+.novalist-hidden {
+  display: none !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

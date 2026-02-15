@@ -87,6 +87,8 @@ export default {
   'settings.peekSize': 'Focus Peek size',
   'settings.peekSizeDesc': 'Reset the stored Focus Peek card size so it opens with the default dimensions again.',
   'settings.resetPeekSize': 'Reset size',
+  'settings.explorerAutoReveal': 'Auto-reveal Novalist Explorer',
+  'settings.explorerAutoRevealDesc': 'Automatically switch the left sidebar to the Novalist Explorer when opening a project file. Disable this if you prefer to keep another sidebar panel active.',
   'settings.folderStructure': 'Folder structure',
   'settings.characterFolder': 'Character folder',
   'settings.characterFolderDesc': 'Folder for character files',

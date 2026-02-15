@@ -86,6 +86,8 @@ export interface FocusPeekCallbacks {
   loadLocalStorage: (key: string) => string | null;
   /** Save a value to vault-scoped local storage. */
   saveLocalStorage: (key: string, value: string) => void;
+  /** Whether the active file belongs to a Novalist project. */
+  isProjectFile: () => boolean;
 }
 
 export const focusPeekCallbacks = Facet.define<FocusPeekCallbacks, FocusPeekCallbacks>({
@@ -96,7 +98,8 @@ export const focusPeekCallbacks = Facet.define<FocusPeekCallbacks, FocusPeekCall
     onOpenFile: () => {/* no-op */},
     renderMarkdown: () => Promise.resolve(),
     loadLocalStorage: () => null,
-    saveLocalStorage: () => {/* no-op */}
+    saveLocalStorage: () => {/* no-op */},
+    isProjectFile: () => false
   }
 });
 
@@ -231,6 +234,13 @@ class FocusPeekPlugin implements PluginValue {
     if (this.destroyed) return;
 
     const cb = this.view.state.facet(focusPeekCallbacks);
+
+    // Skip peek for non-project files
+    if (!cb.isProjectFile()) {
+      this.hideIfNotPinned();
+      return;
+    }
+
     const entity = this.getEntityAtPos(pos);
 
     if (!entity) {

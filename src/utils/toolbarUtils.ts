@@ -136,7 +136,19 @@ export class NovalistToolbarManager {
   }
 
   private injectRibbon(leafContent: HTMLElement): void {
-    if (leafContent.querySelector('.novalist-ribbon')) return;
+    // Find the file for this leaf and decide whether to show the ribbon
+    const file = this.getFileForLeafContent(leafContent);
+    const inProject = file ? this.plugin.isFileInProject(file) : false;
+
+    const existingRibbon = leafContent.querySelector('.novalist-ribbon');
+    if (existingRibbon instanceof HTMLElement) {
+      // Toggle visibility based on project membership
+      existingRibbon.toggleClass('novalist-hidden', !inProject);
+      return;
+    }
+
+    // Only inject if the file is in a project
+    if (!inProject) return;
 
     const viewContent = leafContent.querySelector('.view-content');
     if (!viewContent) return;
@@ -149,6 +161,18 @@ export class NovalistToolbarManager {
     viewContent.insertBefore(ribbon, viewContent.firstChild);
 
     this.updateChapterDropdown(ribbon);
+  }
+
+  /** Resolve the TFile currently displayed in a leaf-content element. */
+  private getFileForLeafContent(leafContent: HTMLElement): TFile | null {
+    const leaves = this.plugin.app.workspace.getLeavesOfType('markdown');
+    for (const leaf of leaves) {
+      if (leaf.view.containerEl?.closest('.workspace-leaf-content') === leafContent) {
+        const file = (leaf.view as MarkdownView).file;
+        if (file) return file;
+      }
+    }
+    return null;
   }
 
   private renderRibbon(container: HTMLElement): void {

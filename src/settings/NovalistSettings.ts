@@ -264,6 +264,7 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   },
   enableBookParagraphSpacing: false,
   enableToolbar: true,
+  enableExplorerAutoReveal: true,
   enableAnnotations: true,
   commentThreads: [],
   plotBoard: { columns: [], cells: {}, labels: [], cardColors: {}, cardLabels: {}, viewMode: 'board', collapsedActs: [] },

@@ -170,24 +170,6 @@ export function serializeItemSheet(data: ItemSheetData): string {
     }
   }
 
-  result += '\n';
-  result += `\n**Type**: ${data.type}\n`;
-  if (data.origin) result += `**Origin**: ${data.origin}\n`;
-  if (data.description) result += `**Description**: ${data.description}\n`;
-
-  if (data.customProperties && Object.keys(data.customProperties).length > 0) {
-    for (const [key, val] of Object.entries(data.customProperties)) {
-      result += `**${key}**: ${val}\n`;
-    }
-  }
-
-  result += '\n';
-
-  for (const section of data.sections) {
-    result += `### ${section.title}\n\n`;
-    result += `${section.content}\n\n`;
-  }
-
   return result;
 }
 

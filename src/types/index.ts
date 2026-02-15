@@ -49,6 +49,8 @@ export interface NovalistSettings {
   enableBookParagraphSpacing: boolean;
   // Toolbar
   enableToolbar: boolean;
+  // Explorer auto-reveal
+  enableExplorerAutoReveal: boolean;
   // Annotations / Comments
   enableAnnotations: boolean;
   commentThreads: CommentThread[];

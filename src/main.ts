@@ -409,8 +409,11 @@ export default class NovalistPlugin extends Plugin {
       this.linkifyElement(el);
     });
 
-    // Layout changes
+    // Layout changes – only auto-reveal explorer for project files
     this.registerEvent(this.app.workspace.on('layout-change', () => {
+      if (!this.settings.enableExplorerAutoReveal) return;
+      const active = this.app.workspace.getActiveFile();
+      if (active && !this.isFileInProject(active)) return;
       void this.activateExplorerView();
     }));
 
@@ -435,19 +438,36 @@ export default class NovalistPlugin extends Plugin {
       const activeLeaf = activeView.leaf;
       
       processedFiles.add(file.path);
-      setTimeout(() => {
-        if (isChar) {
-            void this.openCharacterSheet(file, activeLeaf);
-        } else if (isLoc) {
-            void this.openLocationSheet(file, activeLeaf);
-        } else if (isItem) {
-            void this.openItemSheet(file, activeLeaf);
-        } else {
-            void this.openLoreSheet(file, activeLeaf);
+
+      // Read the file first to verify it actually contains the expected sheet heading.
+      // Files copied/moved into a project folder that are plain notes should not be
+      // auto-replaced with an empty sheet view.
+      void this.app.vault.read(file).then((content) => {
+        const hasSheet =
+          (isChar && /^##\s+CharacterSheet\b/m.test(content)) ||
+          (isLoc && /^##\s+LocationSheet\b/m.test(content)) ||
+          (isItem && /^##\s+ItemSheet\b/m.test(content)) ||
+          (isLore && /^##\s+LoreSheet\b/m.test(content));
+
+        if (!hasSheet) {
+          processedFiles.delete(file.path);
+          return;
         }
-        // Remove from processed after a delay
-        setTimeout(() => processedFiles.delete(file.path), 500);
-      }, 50);
+
+        setTimeout(() => {
+          if (isChar) {
+              void this.openCharacterSheet(file, activeLeaf);
+          } else if (isLoc) {
+              void this.openLocationSheet(file, activeLeaf);
+          } else if (isItem) {
+              void this.openItemSheet(file, activeLeaf);
+          } else {
+              void this.openLoreSheet(file, activeLeaf);
+          }
+          // Remove from processed after a delay
+          setTimeout(() => processedFiles.delete(file.path), 500);
+        }, 50);
+      });
     }));
 
     // Index update triggers
@@ -3246,6 +3266,16 @@ order: ${orderValue}
     return { frontmatter: fm, body };
   }
 
+  /** Check whether a file (or path) belongs to the active project or world bible. */
+  isFileInProject(fileOrPath: TFile | string): boolean {
+    const path = typeof fileOrPath === 'string' ? fileOrPath : fileOrPath.path;
+    const root = this.resolvedProjectPath();
+    if (root && path.startsWith(root + '/')) return true;
+    const wb = this.resolvedWorldBiblePath();
+    if (wb && path.startsWith(wb + '/')) return true;
+    return false;
+  }
+
   isChapterFile(file: TFile): boolean {
     const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.chapterFolder}/`;
@@ -3472,6 +3502,10 @@ order: ${orderValue}
       getActiveFilePath: () => {
         const file = this.app.workspace.getActiveFile();
         return file ? file.path : null;
+      },
+      isProjectFile: () => {
+        const file = this.app.workspace.getActiveFile();
+        return file ? this.isFileInProject(file) : false;
       }
     };
 
@@ -3498,7 +3532,11 @@ order: ${orderValue}
     const config: StatisticsPanelConfig = {
       language: this.settings.language,
       getGoals: () => this.settings.wordCountGoals,
-      getProjectOverview: () => this.cachedProjectOverview
+      getProjectOverview: () => this.cachedProjectOverview,
+      isProjectFile: () => {
+        const f = this.app.workspace.getActiveFile();
+        return f ? this.isFileInProject(f) : false;
+      }
     };
     this.registerEditorExtension(statisticsPanelExtension(config));
 
@@ -3772,6 +3810,10 @@ order: ${orderValue}
       },
       saveLocalStorage: (key: string, value: string): void => {
         this.app.saveLocalStorage(key, value);
+      },
+      isProjectFile: () => {
+        const f = this.app.workspace.getActiveFile();
+        return f ? this.isFileInProject(f) : false;
       }
     };
 

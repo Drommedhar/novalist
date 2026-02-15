@@ -87,6 +87,8 @@ export default {
   'settings.peekSize': 'Focus-Peek-Größe',
   'settings.peekSizeDesc': 'Setzt die gespeicherte Größe der Focus-Peek-Karte zurück, damit sie wieder mit den Standardmaßen geöffnet wird.',
   'settings.resetPeekSize': 'Größe zurücksetzen',
+  'settings.explorerAutoReveal': 'Novalist Explorer automatisch anzeigen',
+  'settings.explorerAutoRevealDesc': 'Wechselt die linke Seitenleiste automatisch zum Novalist Explorer, wenn eine Projektdatei geöffnet wird. Deaktivieren Sie dies, wenn Sie ein anderes Seitenleistenpanel bevorzugen.',
   'settings.folderStructure': 'Ordnerstruktur',
   'settings.characterFolder': 'Charakterordner',
   'settings.characterFolderDesc': 'Ordner für Charakterdateien',

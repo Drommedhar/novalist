@@ -160,6 +160,16 @@ export class NovalistSettingTab extends PluginSettingTab {
           new Notice(t('notice.peekSizeReset'));
         }));
 
+    new Setting(containerEl)
+      .setName(t('settings.explorerAutoReveal'))
+      .setDesc(t('settings.explorerAutoRevealDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.enableExplorerAutoReveal)
+        .onChange(async (value) => {
+          this.plugin.settings.enableExplorerAutoReveal = value;
+          await this.plugin.saveSettings();
+        }));
+
 
     new Setting(containerEl)
       .setName(t('settings.folderStructure'))

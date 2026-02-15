@@ -33,13 +33,15 @@ export interface StatisticsPanelConfig {
   language: LanguageKey;
   getGoals: () => WordCountGoals;
   getProjectOverview: () => ProjectOverview;
+  isProjectFile: () => boolean;
 }
 
 export const statisticsPanelConfig = Facet.define<StatisticsPanelConfig, StatisticsPanelConfig>({
   combine: (values) => values[0] ?? {
     language: 'en' as LanguageKey,
     getGoals: () => ({ dailyGoal: 1000, projectGoal: 50000, dailyHistory: [] }),
-    getProjectOverview: () => ({ totalWords: 0, totalChapters: 0, totalCharacters: 0, totalLocations: 0, readingTime: 0, avgChapter: 0, chapters: [] })
+    getProjectOverview: () => ({ totalWords: 0, totalChapters: 0, totalCharacters: 0, totalLocations: 0, readingTime: 0, avgChapter: 0, chapters: [] }),
+    isProjectFile: () => false
   }
 });
 
@@ -160,13 +162,21 @@ function showChapterPopup(overview: ProjectOverview, anchor: HTMLElement): void 
   activePopupCleanup = () => document.removeEventListener('click', onDocClick, true);
 }
 
-function buildStatsPanel(view: EditorView): Panel {
+function buildStatsPanel(view: EditorView): Panel | null {
   const dom = document.createElement('div');
   dom.className = 'novalist-stats-panel';
 
   function render(state: typeof view.state): void {
-    const text = state.doc.toString();
     const cfg = state.facet(statisticsPanelConfig);
+
+    // Hide panel for non-project files
+    if (!cfg.isProjectFile()) {
+      dom.addClass('novalist-hidden');
+      return;
+    }
+    dom.removeClass('novalist-hidden');
+
+    const text = state.doc.toString();
 
     // Current-file statistics
     const words = countWords(text);

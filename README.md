@@ -197,6 +197,7 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 | World Bible folder | Root folder for shared entities across projects | `WorldBible` |
 | Project path | Root vault folder for the novel project | `NovelProject` |
 | Focus Peek size | Button that clears stored Focus Peek dimensions and restores default card size on next open | Default card size |
+| Auto-reveal Novalist Explorer | Automatically switch the left sidebar to the Novalist Explorer when opening a project file | On |
 | Character folder | Subfolder name for characters | `Characters` |
 | Location folder | Subfolder name for locations | `Locations` |
 | Item folder | Subfolder name for items/artifacts | `Items` |
