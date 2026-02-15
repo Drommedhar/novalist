@@ -23,6 +23,8 @@ export default {
   'cmd.addAct': 'Neuen Akt anlegen',
   'cmd.switchProject': 'Projekt wechseln',
   'cmd.renameProject': 'Aktives Projekt umbenennen',
+  'cmd.snapshotChapter': 'Kapitel-Snapshot erstellen',
+  'cmd.viewSnapshots': 'Kapitel-Snapshots anzeigen',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Bitte zuerst einen Projektpfad in den Einstellungen festlegen.',
@@ -690,4 +692,28 @@ export default {
   'sidebar.mentionLegendPresent': 'Anwesend',
   'sidebar.mentionLegendAbsent': 'Abwesend',
   'sidebar.mentionGapWarning': 'Zuletzt vor {count} Kapitel(n) gesehen',
+
+  // ── Chapter Snapshots ───────────────────────────────────────────────
+  'snapshot.createTitle': 'Snapshot erstellen',
+  'snapshot.name': 'Snapshot-Name',
+  'snapshot.nameDesc': 'Ein beschreibender Name f\u00fcr diesen Snapshot (z. B. \u201eVor der Umstrukturierung\u201c).',
+  'snapshot.namePlaceholder': 'z. B. Vor gro\u00dfem Umbau',
+  'snapshot.nameRequired': 'Bitte einen Snapshot-Namen eingeben.',
+  'snapshot.created': 'Snapshot \u201e{name}\u201c erstellt.',
+  'snapshot.listTitle': 'Snapshots \u2013 {chapter}',
+  'snapshot.noSnapshots': 'Keine Snapshots f\u00fcr dieses Kapitel gefunden.',
+  'snapshot.compare': 'Vergleichen',
+  'snapshot.restore': 'Wiederherstellen',
+  'snapshot.createNew': 'Neuer Snapshot',
+  'snapshot.compareTitle': 'Vergleich \u2013 {name}',
+  'snapshot.snapshotVersion': 'Snapshot: {name}',
+  'snapshot.currentVersion': 'Aktuelle Version',
+  'snapshot.diffStats': '+{added} hinzugef\u00fcgt, \u2212{removed} entfernt, {unchanged} unver\u00e4ndert',
+  'snapshot.restored': 'Kapitel aus Snapshot \u201e{name}\u201c wiederhergestellt.',
+  'snapshot.deleted': 'Snapshot \u201e{name}\u201c gel\u00f6scht.',
+  'snapshot.notAChapter': 'Aktive Datei ist kein Kapitel.',
+  'snapshot.lineRestoreTooltip': 'Klicken, um diese Änderung zu übernehmen',
+  'snapshot.lineRestored': 'Zeilenänderung übernommen.',
+  'explorer.snapshot': 'Snapshot',
+  'explorer.viewSnapshots': 'Snapshots anzeigen',
 } as const;

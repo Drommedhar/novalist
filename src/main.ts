@@ -55,6 +55,8 @@ import { ChapterDescriptionModal, ChapterEditData } from './modals/ChapterDescri
 import { SceneNameModal } from './modals/SceneNameModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { ProjectSwitcherModal, ProjectRenameModal } from './modals/ProjectModals';
+import { SnapshotNameModal, SnapshotListModal } from './modals/SnapshotModal';
+import { updateSnapshotChapterName } from './utils/snapshotUtils';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole, computeInterval } from './utils/characterUtils';
 import { parseCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
@@ -393,6 +395,34 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
+    // Snapshot current chapter
+    this.addCommand({
+      id: 'snapshot-chapter',
+      name: t('cmd.snapshotChapter'),
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isChapterFile(file);
+        if (checking) return canRun;
+        if (canRun && file) {
+          new SnapshotNameModal(this.app, this, file).open();
+        }
+      }
+    });
+
+    // View snapshots for current chapter
+    this.addCommand({
+      id: 'view-snapshots',
+      name: t('cmd.viewSnapshots'),
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isChapterFile(file);
+        if (checking) return canRun;
+        if (canRun && file) {
+          new SnapshotListModal(this.app, this, file).open();
+        }
+      }
+    });
+
     // Register settings tab
     this.addSettingTab(new NovalistSettingTab(this.app, this));
 
@@ -475,6 +505,17 @@ export default class NovalistPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', () => { void this.refreshEntityIndex(); }));
     this.registerEvent(this.app.vault.on('rename', () => { void this.refreshEntityIndex(); }));
     this.registerEvent(this.app.vault.on('modify', () => { void this.refreshEntityIndex(); }));
+
+    // Update snapshot chapter names when a chapter file is renamed
+    this.registerEvent(this.app.vault.on('rename', (file) => {
+      if (file instanceof TFile && this.isChapterFile(file)) {
+        const guid = this.getChapterIdForFileSync(file);
+        if (guid) {
+          const root = this.resolvedProjectPath();
+          void updateSnapshotChapterName(this.app.vault, root, guid, file.basename);
+        }
+      }
+    }));
 
     // Refresh explorer on creation
     this.registerEvent(this.app.vault.on('create', (file) => {

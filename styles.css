@@ -5169,3 +5169,179 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   gap: 4px;
   flex-shrink: 0;
 }
+
+/* ============================================
+   SNAPSHOT MODAL STYLES
+   ============================================ */
+
+.novalist-snapshot-modal .modal-content {
+  min-width: 420px;
+}
+
+.novalist-snapshot-modal-wide.modal {
+  width: calc(100vw - 48px);
+  max-width: none;
+  height: calc(100vh - 48px);
+  max-height: none;
+}
+
+.novalist-snapshot-modal-wide .modal-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Snapshot list ──────────────────────────────────────────────── */
+
+.novalist-snapshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0;
+}
+
+.novalist-snapshot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--background-secondary);
+}
+
+.novalist-snapshot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.novalist-snapshot-date {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.novalist-snapshot-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Diff view ──────────────────────────────────────────────────── */
+
+.novalist-diff-stats {
+  margin: 8px 0;
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.novalist-diff-container {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 8px 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.novalist-diff-header-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.novalist-diff-header {
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 0.9em;
+  background: var(--background-secondary);
+}
+
+.novalist-diff-header-right {
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.novalist-diff-scroll {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.novalist-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-monospace);
+  font-size: 0.82em;
+  line-height: 1.5;
+  table-layout: fixed;
+}
+
+.novalist-diff-table td {
+  padding: 1px 8px;
+  vertical-align: top;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.novalist-diff-linenum {
+  width: 3em;
+  text-align: right;
+  color: var(--text-faint);
+  user-select: none;
+  padding-right: 6px !important;
+  border-right: 1px solid var(--background-modifier-border);
+}
+
+.novalist-diff-content {
+  /* second and fourth columns fill remaining space equally */
+  user-select: text;
+  cursor: text;
+}
+
+/* Left / right halves separated */
+.novalist-diff-table td:nth-child(3) {
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+/* Row colours */
+.novalist-diff-removed td:nth-child(1),
+.novalist-diff-removed td:nth-child(2) {
+  background: rgba(255, 80, 80, 0.12);
+}
+
+.novalist-diff-added td:nth-child(3),
+.novalist-diff-added td:nth-child(4) {
+  background: rgba(80, 200, 80, 0.12);
+}
+
+.novalist-diff-unchanged td {
+  background: transparent;
+}
+
+/* Clickable diff rows (added / removed) */
+.novalist-diff-clickable {
+  cursor: pointer;
+}
+
+.novalist-diff-clickable:hover td:nth-child(1),
+.novalist-diff-clickable:hover td:nth-child(2) {
+  background: rgba(255, 80, 80, 0.25);
+}
+
+.novalist-diff-clickable:hover td:nth-child(3),
+.novalist-diff-clickable:hover td:nth-child(4) {
+  background: rgba(80, 200, 80, 0.25);
+}
+
+.novalist-diff-clickable.novalist-diff-added:hover td:nth-child(1),
+.novalist-diff-clickable.novalist-diff-added:hover td:nth-child(2) {
+  background: transparent;
+}
+
+.novalist-diff-clickable.novalist-diff-removed:hover td:nth-child(3),
+.novalist-diff-clickable.novalist-diff-removed:hover td:nth-child(4) {
+  background: transparent;
+}

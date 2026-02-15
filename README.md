@@ -188,6 +188,16 @@ Chapters and scenes can each carry a date (stored in chapter frontmatter). When 
 
 A toggle in settings that adds printed-book-style spacing between paragraphs in edit mode.
 
+### Chapter Snapshots
+
+Snapshot a chapter before a major rewrite and compare versions side-by-side.
+
+- **Create a snapshot** from the command palette (`Snapshot chapter`) or by right-clicking a chapter in the explorer and selecting `Snapshot`. Enter a descriptive name (e.g. "Before restructuring") and the current chapter content is saved to the project's `Snapshots/` folder.
+- **View snapshots** from the command palette (`View chapter snapshots`) or the explorer context menu (`View Snapshots`). The modal lists all snapshots for the chapter sorted by date, newest first.
+- **Compare** a snapshot against the current chapter text in a side-by-side diff view with added, removed, and unchanged lines highlighted. A summary bar shows line counts.
+- **Restore** a snapshot to replace the chapter body while preserving frontmatter.
+- **Delete** snapshots you no longer need.
+
 ## Settings
 
 | Setting | Description | Default |
@@ -244,6 +254,8 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 | Add new scene | Add a scene heading to the current chapter |
 | Switch project | Switch the active project |
 | Rename active project | Rename the active project and its vault folder |
+| Snapshot chapter | Save a named snapshot of the current chapter |
+| View chapter snapshots | List, compare, restore, or delete snapshots for the current chapter |
 
 ## Internationalization
 

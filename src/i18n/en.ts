@@ -23,6 +23,8 @@ export default {
   'cmd.addAct': 'Add new act',
   'cmd.switchProject': 'Switch project',
   'cmd.renameProject': 'Rename active project',
+  'cmd.snapshotChapter': 'Snapshot chapter',
+  'cmd.viewSnapshots': 'View chapter snapshots',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Please set a project path in settings first.',
@@ -695,4 +697,28 @@ export default {
   'sidebar.mentionLegendPresent': 'Present',
   'sidebar.mentionLegendAbsent': 'Absent',
   'sidebar.mentionGapWarning': 'Last seen {count} chapter(s) ago',
+
+  // ── Chapter Snapshots ───────────────────────────────────────────────
+  'snapshot.createTitle': 'Create Snapshot',
+  'snapshot.name': 'Snapshot name',
+  'snapshot.nameDesc': 'A descriptive name for this snapshot (e.g. "Before restructuring").',
+  'snapshot.namePlaceholder': 'e.g. Before major rewrite',
+  'snapshot.nameRequired': 'Please enter a snapshot name.',
+  'snapshot.created': 'Snapshot "{name}" created.',
+  'snapshot.listTitle': 'Snapshots \u2013 {chapter}',
+  'snapshot.noSnapshots': 'No snapshots found for this chapter.',
+  'snapshot.compare': 'Compare',
+  'snapshot.restore': 'Restore',
+  'snapshot.createNew': 'New Snapshot',
+  'snapshot.compareTitle': 'Compare \u2013 {name}',
+  'snapshot.snapshotVersion': 'Snapshot: {name}',
+  'snapshot.currentVersion': 'Current Version',
+  'snapshot.diffStats': '+{added} added, \u2212{removed} removed, {unchanged} unchanged',
+  'snapshot.restored': 'Chapter restored from snapshot "{name}".',
+  'snapshot.deleted': 'Snapshot "{name}" deleted.',
+  'snapshot.notAChapter': 'Active file is not a chapter.',
+  'snapshot.lineRestoreTooltip': 'Click to apply this change',
+  'snapshot.lineRestored': 'Line change applied.',
+  'explorer.snapshot': 'Snapshot',
+  'explorer.viewSnapshots': 'View Snapshots',
 } as const;
