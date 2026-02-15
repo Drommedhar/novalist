@@ -24,8 +24,11 @@ import { t } from '../i18n';
 import { CharacterTemplateEditorModal, LocationTemplateEditorModal, ItemTemplateEditorModal, LoreTemplateEditorModal } from '../modals/TemplateEditorModal';
 import { ProjectAddModal, ProjectRenameModal, RootMoveConfirmModal } from '../modals/ProjectModals';
 
+type TemplateCategory = 'character' | 'location' | 'item' | 'lore';
+
 export class NovalistSettingTab extends PluginSettingTab {
   plugin: NovalistPlugin;
+  private selectedTemplateCategory: TemplateCategory = 'character';
 
   constructor(app: App, plugin: NovalistPlugin) {
     super(app, plugin);
@@ -236,17 +239,35 @@ export class NovalistSettingTab extends PluginSettingTab {
             }));
 
     // ── Templates ──────────────────────────────────────────────────
-    const charTplSection = containerEl.createDiv('novalist-char-templates');
-    this.renderCharacterTemplates(charTplSection);
+    new Setting(containerEl)
+      .setName(t('template.templates'))
+      .setHeading();
 
-    const locTplSection = containerEl.createDiv('novalist-loc-templates');
-    this.renderLocationTemplates(locTplSection);
+    const tplCategoryOptions: Record<TemplateCategory, string> = {
+      character: t('template.characterTemplates'),
+      location: t('template.locationTemplates'),
+      item: t('template.itemTemplates'),
+      lore: t('template.loreTemplates'),
+    };
 
-    const itemTplSection = containerEl.createDiv('novalist-item-templates');
-    this.renderItemTemplates(itemTplSection);
+    const tplGroupEl = containerEl.createDiv('novalist-template-group');
 
-    const loreTplSection = containerEl.createDiv('novalist-lore-templates');
-    this.renderLoreTemplates(loreTplSection);
+    new Setting(tplGroupEl)
+      .setName(t('template.entityType'))
+      .setDesc(t('template.entityTypeDesc'))
+      .addDropdown(dropdown => {
+        for (const [key, label] of Object.entries(tplCategoryOptions)) {
+          dropdown.addOption(key, label);
+        }
+        dropdown.setValue(this.selectedTemplateCategory);
+        dropdown.onChange((value) => {
+          this.selectedTemplateCategory = value as TemplateCategory;
+          this.renderTemplatesForCategory(tplContentEl);
+        });
+      });
+
+    const tplContentEl = tplGroupEl.createDiv('novalist-template-content');
+    this.renderTemplatesForCategory(tplContentEl);
 
     const roleSection = containerEl.createDiv('novalist-role-colors');
     void this.renderRoleColorSettings(roleSection);
@@ -403,12 +424,18 @@ export class NovalistSettingTab extends PluginSettingTab {
         }));
   }
 
+  private renderTemplatesForCategory(containerEl: HTMLElement): void {
+    switch (this.selectedTemplateCategory) {
+      case 'character': this.renderCharacterTemplates(containerEl); break;
+      case 'location': this.renderLocationTemplates(containerEl); break;
+      case 'item': this.renderItemTemplates(containerEl); break;
+      case 'lore': this.renderLoreTemplates(containerEl); break;
+    }
+  }
+
   private renderCharacterTemplates(containerEl: HTMLElement): void {
     containerEl.empty();
 
-    new Setting(containerEl)
-      .setName(t('template.characterTemplates'))
-      .setHeading();
     containerEl.createEl('p', { text: t('template.characterTemplatesDesc') });
 
     for (const tpl of this.plugin.settings.characterTemplates) {
@@ -488,9 +515,6 @@ export class NovalistSettingTab extends PluginSettingTab {
   private renderLocationTemplates(containerEl: HTMLElement): void {
     containerEl.empty();
 
-    new Setting(containerEl)
-      .setName(t('template.locationTemplates'))
-      .setHeading();
     containerEl.createEl('p', { text: t('template.locationTemplatesDesc') });
 
     for (const tpl of this.plugin.settings.locationTemplates) {
@@ -570,9 +594,6 @@ export class NovalistSettingTab extends PluginSettingTab {
   private renderItemTemplates(containerEl: HTMLElement): void {
     containerEl.empty();
 
-    new Setting(containerEl)
-      .setName(t('template.itemTemplates'))
-      .setHeading();
     containerEl.createEl('p', { text: t('template.itemTemplatesDesc') });
 
     for (const tpl of this.plugin.settings.itemTemplates) {
@@ -652,9 +673,6 @@ export class NovalistSettingTab extends PluginSettingTab {
   private renderLoreTemplates(containerEl: HTMLElement): void {
     containerEl.empty();
 
-    new Setting(containerEl)
-      .setName(t('template.loreTemplates'))
-      .setHeading();
     containerEl.createEl('p', { text: t('template.loreTemplatesDesc') });
 
     for (const tpl of this.plugin.settings.loreTemplates) {

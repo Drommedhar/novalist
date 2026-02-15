@@ -586,6 +586,9 @@ export default {
   'general.unassigned': 'Nicht zugewiesen',
 
   // ── Entity templates ───────────────────────────────────────────────
+  'template.templates': 'Vorlagen',
+  'template.entityType': 'Entitätstyp',
+  'template.entityTypeDesc': 'Wähle, für welchen Entitätstyp Vorlagen konfiguriert werden sollen.',
   'template.characterTemplates': 'Charaktervorlagen',
   'template.characterTemplatesDesc': 'Vorlagen definieren, die die Struktur neuer Charakterdateien steuern.',
   'template.locationTemplates': 'Ortsvorlagen',

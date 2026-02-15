@@ -590,6 +590,9 @@ export default {
   'general.unassigned': 'Unassigned',
 
   // ── Entity templates ───────────────────────────────────────────────
+  'template.templates': 'Templates',
+  'template.entityType': 'Entity type',
+  'template.entityTypeDesc': 'Select which entity type to configure templates for.',
   'template.characterTemplates': 'Character templates',
   'template.characterTemplatesDesc': 'Define templates that control the structure of new character files.',
   'template.locationTemplates': 'Location templates',

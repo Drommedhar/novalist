@@ -300,6 +300,29 @@
   margin-top: 0;
 }
 
+.novalist-template-group {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.novalist-template-group > .setting-item {
+  border-top: none;
+  padding-top: 8px;
+}
+
+.novalist-template-group > .setting-item:first-child {
+  padding-top: 0;
+}
+
+.novalist-template-content {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
 .novalist-replacements {
   display: flex;
   flex-direction: column;
