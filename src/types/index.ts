@@ -67,6 +67,8 @@ export interface NovalistSettings {
   activeLoreTemplateId: string;
   /** Per-project data, keyed by project ID. */
   projectData: Record<string, ProjectData>;
+  /** Ollama / AI assistant configuration. */
+  ollama: OllamaSettings;
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────
@@ -522,4 +524,22 @@ export interface WordCountGoals {
   /** Persisted baseline for daily tracking (survives restarts). */
   dailyBaselineWords?: number;
   dailyBaselineDate?: string;
+}
+
+// ─── Ollama / AI Assistant ──────────────────────────────────────────
+export interface OllamaSettings {
+  /** Whether the AI assistant feature is enabled. */
+  enabled: boolean;
+  /** Base URL of the Ollama API server. */
+  baseUrl: string;
+  /** Model name to use (e.g. "llama3.2:latest"). */
+  model: string;
+  /** Auto-load model when needed and unload on plugin close. */
+  autoManageModel: boolean;
+  /** Enable reference detection in AI analysis. */
+  checkReferences: boolean;
+  /** Enable inconsistency checking in AI analysis. */
+  checkInconsistencies: boolean;
+  /** Enable entity suggestion detection in AI analysis. */
+  checkSuggestions: boolean;
 }

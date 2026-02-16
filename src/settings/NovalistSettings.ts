@@ -277,4 +277,13 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   activeItemTemplateId: 'default',
   activeLoreTemplateId: 'default',
   projectData: {},
+  ollama: {
+    enabled: false,
+    baseUrl: 'http://127.0.0.1:11434',
+    model: '',
+    autoManageModel: true,
+    checkReferences: true,
+    checkInconsistencies: true,
+    checkSuggestions: true,
+  },
 };
