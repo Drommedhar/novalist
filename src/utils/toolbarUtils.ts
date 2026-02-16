@@ -191,6 +191,16 @@ export class NovalistToolbarManager {
       attr: { 'data-tab': 'views' }
     });
 
+    // AI tab (only if Ollama is enabled)
+    let aiTab: HTMLElement | null = null;
+    if (this.plugin.settings.ollama.enabled) {
+      aiTab = tabBar.createEl('button', {
+        cls: 'novalist-ribbon-tab',
+        text: t('toolbar.groupAi'),
+        attr: { 'data-tab': 'ai' }
+      });
+    }
+
     // Spacer pushes toggle to the right
     tabBar.createDiv('novalist-ribbon-tabs-spacer');
 
@@ -261,9 +271,32 @@ export class NovalistToolbarManager {
     });
     viewsGroup.createEl('span', { text: t('toolbar.groupViews'), cls: 'novalist-ribbon-group-label' });
 
+    // ── AI panel (only if Ollama enabled) ──
+    let aiPanel: HTMLElement | null = null;
+    if (this.plugin.settings.ollama.enabled) {
+      aiPanel = body.createDiv({
+        cls: 'novalist-ribbon-panel',
+        attr: { 'data-tab': 'ai' }
+      });
+      const aiGroup = aiPanel.createDiv('novalist-ribbon-group');
+      const aiItems = aiGroup.createDiv('novalist-ribbon-group-items');
+      this.createRibbonButton(aiItems, 'sparkles', t('toolbar.aiAnalyse'), t('toolbar.aiAnalyse'), () => {
+        const file = this.getFileForToolbar(container);
+        if (file && this.plugin.isChapterFile(file)) {
+          this.plugin.analyseChapterWithAi(file);
+        }
+      });
+      this.createRibbonButton(aiItems, 'book-open-check', t('toolbar.aiFullStory'), t('toolbar.aiFullStory'), () => {
+        this.plugin.analyseFullStoryWithAi();
+      });
+      aiGroup.createEl('span', { text: t('toolbar.groupAi'), cls: 'novalist-ribbon-group-label' });
+    }
+
     // ── Tab switching logic ──
     const tabs = [createTab, viewsTab];
-    const panels = [createPanel, viewsPanel];
+    const panels: HTMLElement[] = [createPanel, viewsPanel];
+    if (aiTab) tabs.push(aiTab);
+    if (aiPanel) panels.push(aiPanel);
 
     const switchTab = (tab: HTMLElement) => {
       const targetTab = tab.getAttribute('data-tab');
@@ -292,6 +325,7 @@ export class NovalistToolbarManager {
 
     createTab.addEventListener('click', () => switchTab(createTab));
     viewsTab.addEventListener('click', () => switchTab(viewsTab));
+    if (aiTab) aiTab.addEventListener('click', () => switchTab(aiTab));
 
     // ── Collapse/expand logic ──
     toggleBtn.addEventListener('click', () => {
@@ -439,7 +473,9 @@ export class NovalistToolbarManager {
       'chevron-down': '<polyline points="6 9 12 15 18 9"/>',
       'package': '<path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/>',
       'scroll-text': '<path d="M15 3h-1a2 2 0 0 0-2 2v6a2 2 0 0 1-2 2H3"/><path d="M18 3a2 2 0 0 1 2 2v12a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V5a2 2 0 0 1 2-2z"/><path d="M7 7h4"/><path d="M7 11h2"/>',
-      'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'
+      'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+      'sparkles': '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>',
+      'book-open-check': '<path d="M8 3H2v15h7c1.7 0 3 1.3 3 3V7c0-2.2-1.8-4-4-4Z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14c0-1.7 1.3-3 3-3h7V3Z"/><path d="m16 12 2 2 4-4"/>'
     };
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

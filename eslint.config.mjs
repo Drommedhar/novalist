@@ -55,12 +55,30 @@ export default defineConfig([
         setTimeout: "readonly",
         clearTimeout: "readonly",
         activeWindow: "readonly",
+        console: "readonly",
       },
     },
 
     // You can add your own configuration to override or add rules
     rules: {
       "@typescript-eslint/require-await": "error",
+    },
+  },
+  {
+    // ollamaService.ts needs the native fetch API for streaming responses
+    // — requestUrl does not support ReadableStream / NDJSON streaming.
+    files: ["src/utils/ollamaService.ts"],
+    languageOptions: {
+      globals: {
+        fetch: "readonly",
+        Response: "readonly",
+        ReadableStreamDefaultReader: "readonly",
+        RequestInit: "readonly",
+        TextDecoder: "readonly",
+      },
+    },
+    rules: {
+      "no-restricted-globals": "off",
     },
   },
 ]);

@@ -56,6 +56,7 @@ import { SceneNameModal } from './modals/SceneNameModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { ProjectSwitcherModal, ProjectRenameModal } from './modals/ProjectModals';
 import { SnapshotNameModal, SnapshotListModal } from './modals/SnapshotModal';
+import { AiAnalysisModal } from './modals/AiAnalysisModal';
 import { updateSnapshotChapterName } from './utils/snapshotUtils';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole, computeInterval } from './utils/characterUtils';
@@ -80,6 +81,16 @@ import {
 } from './cm/focusPeekExtension';
 import { countWords, getTodayDate, getOrCreateDailyGoal } from './utils/statisticsUtils';
 import { calculateReadability } from './utils/readabilityUtils';
+import { OllamaService } from './utils/ollamaService';
+import type { EntitySummary } from './utils/ollamaService';
+import { FullStoryAnalysisModal } from './modals/FullStoryAnalysisModal';
+import {
+  aiHighlightExtension,
+  setAiHighlightsEffect,
+  clearAiHighlightsEffect,
+  type AiHighlight,
+  type AiHighlightCallbacks,
+} from './cm/aiHighlightExtension';
 import type { CommentThread, CommentMessage, ProjectData } from './types';
 
 export default class NovalistPlugin extends Plugin {
@@ -88,6 +99,7 @@ export default class NovalistPlugin extends Plugin {
   private entityRegex: RegExp | null = null;
   public knownRelationshipKeys: Set<string> = new Set();
   toolbarManager: NovalistToolbarManager;
+  ollamaService: OllamaService | null = null;
   private annotationExtension: import('@codemirror/state').Extension | null = null;
   private cachedProjectOverview = { totalWords: 0, totalChapters: 0, totalCharacters: 0, totalLocations: 0, readingTime: 0, avgChapter: 0, chapters: [] as ChapterOverviewStat[] };
   private projectWordsCacheTimer: number | null = null;
@@ -179,6 +191,9 @@ export default class NovalistPlugin extends Plugin {
 
     // Register focus peek CM6 extension (inline entity cards)
     this.setupFocusPeek();
+
+    // Register AI highlight CM6 extension
+    this.setupAiHighlightExtension();
 
     // Command to open current character file in sheet view
     this.addCommand({
@@ -423,8 +438,38 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
+    // Analyse chapter with AI (Ollama)
+    this.addCommand({
+      id: 'analyse-chapter-ai',
+      name: t('cmd.analyseChapter'),
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isChapterFile(file) && this.settings.ollama.enabled;
+        if (checking) return canRun;
+        if (canRun && file) {
+          this.analyseChapterWithAi(file);
+        }
+      }
+    });
+
+    // Analyse full story with AI (Ollama)
+    this.addCommand({
+      id: 'analyse-full-story-ai',
+      name: t('cmd.analyseFullStory'),
+      checkCallback: (checking: boolean) => {
+        const canRun = this.settings.ollama.enabled && !!this.settings.ollama.model;
+        if (checking) return canRun;
+        if (canRun) {
+          this.analyseFullStoryWithAi();
+        }
+      }
+    });
+
     // Register settings tab
     this.addSettingTab(new NovalistSettingTab(this.app, this));
+
+    // Initialize Ollama service if enabled
+    this.initOllamaService();
 
     // Handle auto-replacement on keyup
     this.registerEvent(
@@ -578,6 +623,10 @@ export default class NovalistPlugin extends Plugin {
   onunload(): void {
     // Clean up paragraph spacing class
     document.body.classList.remove('novalist-book-paragraph-spacing');
+    // Unload Ollama model if auto-managed
+    if (this.ollamaService && this.settings.ollama.autoManageModel) {
+      void this.ollamaService.unloadModel();
+    }
   }
 
   async loadSettings(): Promise<void> {
@@ -627,6 +676,12 @@ export default class NovalistPlugin extends Plugin {
     if (!pb.cardLabels) pb.cardLabels = {};
     if (!pb.viewMode) pb.viewMode = 'board';
     if (!pb.collapsedActs) pb.collapsedActs = [];
+
+    // Migrate ollama: ensure new per-check fields exist for older saved data
+    const ol = this.settings.ollama;
+    if (ol.checkReferences === undefined) ol.checkReferences = true;
+    if (ol.checkInconsistencies === undefined) ol.checkInconsistencies = true;
+    if (ol.checkSuggestions === undefined) ol.checkSuggestions = true;
 
     // Migrate templates: ensure templates exist for older saved data
     if (!this.settings.characterTemplates || this.settings.characterTemplates.length === 0) {
@@ -1697,20 +1752,28 @@ order: ${orderValue}
     }
   }
 
-  openCharacterModal(): void {
-    new CharacterModal(this.app, this).open();
+  openCharacterModal(prefillName?: string): void {
+    const modal = new CharacterModal(this.app, this);
+    if (prefillName) modal.name = prefillName;
+    modal.open();
   }
 
-  openLocationModal(): void {
-    new LocationModal(this.app, this).open();
+  openLocationModal(prefillName?: string): void {
+    const modal = new LocationModal(this.app, this);
+    if (prefillName) modal.name = prefillName;
+    modal.open();
   }
 
-  openItemModal(): void {
-    new ItemModal(this.app, this).open();
+  openItemModal(prefillName?: string): void {
+    const modal = new ItemModal(this.app, this);
+    if (prefillName) modal.name = prefillName;
+    modal.open();
   }
 
-  openLoreModal(): void {
-    new LoreModal(this.app, this).open();
+  openLoreModal(prefillName?: string): void {
+    const modal = new LoreModal(this.app, this);
+    if (prefillName) modal.name = prefillName;
+    modal.open();
   }
 
   openChapterDescriptionModal(existing?: ChapterEditData, onSave?: (data: ChapterEditData) => void): void {
@@ -1726,6 +1789,136 @@ order: ${orderValue}
       });
     });
     modal.open();
+  }
+
+  // ─── AI / Ollama ─────────────────────────────────────────────────
+
+  initOllamaService(): void {
+    if (this.settings.ollama.enabled && this.settings.ollama.model) {
+      this.ollamaService = new OllamaService(
+        this.settings.ollama.baseUrl,
+        this.settings.ollama.model,
+      );
+    } else {
+      this.ollamaService = new OllamaService(
+        this.settings.ollama.baseUrl || 'http://127.0.0.1:11434',
+        this.settings.ollama.model || '',
+      );
+    }
+  }
+
+  analyseChapterWithAi(file: TFile): void {
+    if (!this.settings.ollama.enabled || !this.settings.ollama.model) {
+      new Notice(t('ollama.notConfigured'));
+      return;
+    }
+    if (!this.ollamaService) {
+      this.initOllamaService();
+    }
+    new AiAnalysisModal(this.app, this, file).open();
+  }
+
+  analyseFullStoryWithAi(): void {
+    if (!this.settings.ollama.enabled || !this.settings.ollama.model) {
+      new Notice(t('ollama.notConfigured'));
+      return;
+    }
+    if (!this.ollamaService) {
+      this.initOllamaService();
+    }
+    new FullStoryAnalysisModal(this.app, this).open();
+  }
+
+  /** Collect summaries of all known entities for LLM context.
+   *  When chapterName / sceneName / actName are provided, character data is
+   *  merged with the matching chapter override so the LLM sees the effective
+   *  state for this point in the story.
+   */
+  async collectEntitySummaries(chapterName?: string, sceneName?: string, actName?: string): Promise<EntitySummary[]> {
+    const summaries: EntitySummary[] = [];
+
+    // Characters
+    const chars = await this.getCharacterList();
+    for (const ch of chars) {
+      try {
+        const content = await this.app.vault.read(ch.file);
+        let sheet = parseCharacterSheet(content);
+        // Apply override cascade if chapter context is available
+        if (chapterName) {
+          const chapterId = this.getChapterDescriptionsSync().find(d => d.name === chapterName)?.id;
+          sheet = applyChapterOverride(sheet, chapterName, sceneName, chapterId, actName);
+        }
+        const details: string[] = [];
+        if (sheet.gender) details.push(`Gender: ${sheet.gender}`);
+        if (sheet.age) details.push(`Age: ${sheet.age}`);
+        if (sheet.role) details.push(`Role: ${sheet.role}`);
+        if (sheet.hairColor) details.push(`Hair: ${sheet.hairColor}`);
+        if (sheet.eyeColor) details.push(`Eyes: ${sheet.eyeColor}`);
+        if (sheet.height) details.push(`Height: ${sheet.height}`);
+        if (sheet.build) details.push(`Build: ${sheet.build}`);
+        if (sheet.skinTone) details.push(`Skin: ${sheet.skinTone}`);
+        if (sheet.distinguishingFeatures) details.push(`Features: ${sheet.distinguishingFeatures}`);
+        // Include relationships so the LLM can resolve references like "his wife"
+        if (sheet.relationships && sheet.relationships.length > 0) {
+          const rels = sheet.relationships.map(r => {
+            const target = r.character.replace(/\[\[|\]\]/g, '');
+            return `${r.role}: ${target}`;
+          }).join('; ');
+          details.push(`Relationships: ${rels}`);
+        }
+        summaries.push({ name: ch.name, type: 'character', details: details.join(', ') || 'No details' });
+      } catch {
+        summaries.push({ name: ch.name, type: 'character', details: `Role: ${ch.role}` });
+      }
+    }
+
+    // Locations
+    const locs = this.getLocationList();
+    for (const loc of locs) {
+      try {
+        const content = await this.app.vault.read(loc.file);
+        const sheet = parseLocationSheet(content);
+        const details: string[] = [];
+        if (sheet.type) details.push(`Type: ${sheet.type}`);
+        if (sheet.description) details.push(sheet.description.substring(0, 100));
+        summaries.push({ name: loc.name, type: 'location', details: details.join(', ') || 'No details' });
+      } catch {
+        summaries.push({ name: loc.name, type: 'location', details: '' });
+      }
+    }
+
+    // Items
+    const items = this.getItemList();
+    for (const item of items) {
+      try {
+        const content = await this.app.vault.read(item.file);
+        const sheet = parseItemSheet(content);
+        const details: string[] = [];
+        if (sheet.type) details.push(`Type: ${sheet.type}`);
+        if (sheet.description) details.push(sheet.description.substring(0, 100));
+        if (sheet.origin) details.push(`Origin: ${sheet.origin}`);
+        summaries.push({ name: item.name, type: 'item', details: details.join(', ') || 'No details' });
+      } catch {
+        summaries.push({ name: item.name, type: 'item', details: `Type: ${item.type}` });
+      }
+    }
+
+    // Lore entries
+    const loreEntries = this.getLoreList();
+    for (const lore of loreEntries) {
+      try {
+        const content = await this.app.vault.read(lore.file);
+        const sheet = parseLoreSheet(content);
+        const details: string[] = [];
+        if (sheet.category) details.push(`Category: ${sheet.category}`);
+        if (sheet.description) details.push(sheet.description.substring(0, 100));
+        summaries.push({ name: lore.name, type: 'lore', details: details.join(', ') || 'No details' });
+      } catch {
+        summaries.push({ name: lore.name, type: 'lore', details: `Category: ${lore.category}` });
+      }
+    }
+
+    return summaries;
   }
 
   // ─── Act management ──────────────────────────────────────────────
@@ -3859,6 +4052,45 @@ order: ${orderValue}
     };
 
     this.registerEditorExtension(focusPeekExtension(callbacks));
+  }
+
+  // ─── AI highlight extension ──────────────────────────────────────
+
+  private setupAiHighlightExtension(): void {
+    const callbacks: AiHighlightCallbacks = {
+      isProjectFile: () => {
+        const f = this.app.workspace.getActiveFile();
+        return f ? this.isFileInProject(f) : false;
+      },
+    };
+    this.registerEditorExtension(aiHighlightExtension(callbacks));
+  }
+
+  /** Push AI findings as inline highlights into the active editor. */
+  pushAiHighlightsToEditor(highlights: AiHighlight[]): void {
+    this.app.workspace.iterateAllLeaves(leaf => {
+      if (leaf.view instanceof MarkdownView) {
+        const editor = leaf.view.editor;
+        // Access the CM6 EditorView via the Obsidian editor
+        const cmEditor = (editor as unknown as { cm?: { dispatch: (spec: { effects: unknown }) => void } }).cm;
+        if (cmEditor) {
+          cmEditor.dispatch({ effects: setAiHighlightsEffect.of(highlights) });
+        }
+      }
+    });
+  }
+
+  /** Clear all AI highlights from all editors. */
+  clearAiHighlightsFromEditor(): void {
+    this.app.workspace.iterateAllLeaves(leaf => {
+      if (leaf.view instanceof MarkdownView) {
+        const editor = leaf.view.editor;
+        const cmEditor = (editor as unknown as { cm?: { dispatch: (spec: { effects: unknown }) => void } }).cm;
+        if (cmEditor) {
+          cmEditor.dispatch({ effects: clearAiHighlightsEffect.of(undefined) });
+        }
+      }
+    });
   }
 
   private parseLocationTypeFromContent(content: string): string {

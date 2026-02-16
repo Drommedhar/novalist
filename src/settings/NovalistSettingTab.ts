@@ -422,6 +422,160 @@ export class NovalistSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }
         }));
+
+    // ── AI Assistant (Ollama) ──────────────────────────────────────
+    new Setting(containerEl)
+      .setName(t('ollama.settings'))
+      .setHeading();
+
+    new Setting(containerEl)
+      .setName(t('ollama.enable'))
+      .setDesc(t('ollama.enableDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.enabled)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.enabled = value;
+          await this.plugin.saveSettings();
+          this.display();
+        }));
+
+    if (this.plugin.settings.ollama.enabled) {
+      const ollamaSection = containerEl.createDiv('novalist-ollama-settings');
+      this.renderOllamaSettings(ollamaSection);
+    }
+  }
+
+  private renderOllamaSettings(containerEl: HTMLElement): void {
+    new Setting(containerEl)
+      .setName(t('ollama.baseUrl'))
+      .setDesc(t('ollama.baseUrlDesc'))
+      .addText(text => text
+        .setPlaceholder(t('ollama.baseUrlPlaceholder'))
+        .setValue(this.plugin.settings.ollama.baseUrl)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.baseUrl = value;
+          await this.plugin.saveSettings();
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setBaseUrl(value);
+          }
+        }));
+
+    // Server status indicator
+    const statusSetting = new Setting(containerEl)
+      .setName(t('ollama.serverStatus'));
+    const statusDesc = statusSetting.descEl;
+    statusDesc.setText(t('ollama.serverOffline'));
+    statusDesc.addClass('novalist-ollama-status');
+
+    // Model selector + refresh
+    const modelSetting = new Setting(containerEl)
+      .setName(t('ollama.model'))
+      .setDesc(t('ollama.modelDesc'));
+
+    const modelDropdown = modelSetting.controlEl.createEl('select', { cls: 'dropdown' });
+    const refreshBtn = modelSetting.controlEl.createEl('button', { text: t('ollama.refreshModels'), cls: 'mod-cta' });
+    refreshBtn.setCssProps({ 'margin-left': '8px' });
+
+    const populateModels = async (): Promise<void> => {
+      modelDropdown.empty();
+      if (!this.plugin.ollamaService) return;
+      const online = await this.plugin.ollamaService.isServerRunning();
+      statusDesc.setText(online ? t('ollama.serverOnline') : t('ollama.serverOffline'));
+      statusDesc.toggleClass('mod-success', online);
+      statusDesc.toggleClass('mod-warning', !online);
+      if (!online) {
+        const opt = modelDropdown.createEl('option', { text: t('ollama.noModels'), value: '' });
+        opt.selected = true;
+        return;
+      }
+      const models = await this.plugin.ollamaService.listModels();
+      if (models.length === 0) {
+        const opt = modelDropdown.createEl('option', { text: t('ollama.noModels'), value: '' });
+        opt.selected = true;
+        return;
+      }
+      for (const m of models) {
+        const opt = modelDropdown.createEl('option', { text: m.name, value: m.name });
+        if (m.name === this.plugin.settings.ollama.model) opt.selected = true;
+      }
+      // If current model not in list, select first
+      if (!models.some(m => m.name === this.plugin.settings.ollama.model) && models.length > 0) {
+        this.plugin.settings.ollama.model = models[0].name;
+        if (this.plugin.ollamaService) this.plugin.ollamaService.setModel(models[0].name);
+        await this.plugin.saveSettings();
+      }
+    };
+
+    modelDropdown.addEventListener('change', () => {
+      this.plugin.settings.ollama.model = modelDropdown.value;
+      if (this.plugin.ollamaService) this.plugin.ollamaService.setModel(modelDropdown.value);
+      void this.plugin.saveSettings();
+    });
+
+    refreshBtn.addEventListener('click', () => { void populateModels(); });
+
+    new Setting(containerEl)
+      .setName(t('ollama.autoManage'))
+      .setDesc(t('ollama.autoManageDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.autoManageModel)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.autoManageModel = value;
+          await this.plugin.saveSettings();
+        }));
+
+    // Per-check toggles
+    new Setting(containerEl)
+      .setName(t('ollama.checkReferences'))
+      .setDesc(t('ollama.checkReferencesDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.checkReferences)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.checkReferences = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t('ollama.checkInconsistencies'))
+      .setDesc(t('ollama.checkInconsistenciesDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.checkInconsistencies)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.checkInconsistencies = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t('ollama.checkSuggestions'))
+      .setDesc(t('ollama.checkSuggestionsDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.checkSuggestions)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.checkSuggestions = value;
+          await this.plugin.saveSettings();
+        }));
+
+    // Load / Unload buttons
+    const modelMgmt = new Setting(containerEl);
+    modelMgmt.addButton(btn => btn
+      .setButtonText(t('ollama.loadModel'))
+      .setCta()
+      .onClick(async () => {
+        if (!this.plugin.ollamaService || !this.plugin.settings.ollama.model) return;
+        new Notice(t('ollama.loadingModel'));
+        const ok = await this.plugin.ollamaService.loadModel();
+        new Notice(ok ? t('ollama.modelLoadSuccess') : t('ollama.modelLoadFail'));
+      }));
+    modelMgmt.addButton(btn => btn
+      .setButtonText(t('ollama.unloadModel'))
+      .onClick(async () => {
+        if (!this.plugin.ollamaService) return;
+        const ok = await this.plugin.ollamaService.unloadModel();
+        new Notice(ok ? t('ollama.modelUnloaded') : t('ollama.modelUnloadFail'));
+      }));
+
+    // Run initial population
+    void populateModels();
   }
 
   private renderTemplatesForCategory(containerEl: HTMLElement): void {
