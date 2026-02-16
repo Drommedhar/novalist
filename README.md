@@ -138,7 +138,10 @@ Both views share a header toolbar for toggling the view, managing labels, and ad
 
 ### Export
 
-Export selected chapters to **EPUB**, **DOCX**, or **Markdown**. Configure a title, author, and whether to include a title page. Select individual chapters or use Select All / Select None. Exported chapters have frontmatter stripped, wikilinks converted to plain text, and are sorted by order. Scene headings (`## heading`) within chapters are preserved and rendered as sub-headings in the output.
+Export selected chapters to **EPUB**, **DOCX**, **PDF**, or **Markdown**. Configure a title, author, and whether to include a title page. Select individual chapters or use Select All / Select None. Exported chapters have frontmatter stripped, wikilinks converted to plain text, and are sorted by order. Scene headings (`## heading`) within chapters are converted to scene-break separators in the output.
+
+- **Standard Manuscript Format (SMF)** — available for DOCX and PDF. Enable the `Standard Manuscript Format` toggle to apply industry-standard submission formatting: 12 pt Courier / Courier New, double-spaced lines, 1-inch margins, and a running page header with surname / title / page number. The SMF title page places the author name top-left and a centered title block.
+- **PDF export** — generates a self-contained PDF via pdf-lib with proper pagination, chapter headings, scene breaks, and inline bold/italic formatting. With SMF enabled, the output matches the conventions expected by literary agents and publishers.
 
 ### Smart Quotes & Auto-Replacement
 

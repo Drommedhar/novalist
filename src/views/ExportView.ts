@@ -4,6 +4,7 @@ import { t } from '../i18n';
 import { 
   exportToEPUB, 
   exportToDOCX, 
+  exportToPDF,
   exportToMarkdown,
   downloadBlob 
 } from '../utils/exportUtils';
@@ -16,6 +17,7 @@ export class ExportView extends ItemView {
   private title: string = '';
   private author: string = '';
   private includeTitlePage: boolean = true;
+  private smfPreset: boolean = false;
   private format: 'epub' | 'pdf' | 'docx' | 'md' = 'epub';
 
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
@@ -92,11 +94,31 @@ export class ExportView extends ItemView {
     const formatSelect = formatRow.createEl('select', { cls: 'novalist-export-select' });
     formatSelect.createEl('option', { value: 'epub', text: t('export.formatEpub') });
     formatSelect.createEl('option', { value: 'docx', text: t('export.formatDocx') });
+    formatSelect.createEl('option', { value: 'pdf', text: t('export.formatPdf') });
     formatSelect.createEl('option', { value: 'md', text: t('export.formatMarkdown') });
     formatSelect.value = this.format;
     formatSelect.addEventListener('change', () => {
       this.format = formatSelect.value as typeof this.format;
+      void this.render();
     });
+
+    // SMF preset toggle (only for DOCX and PDF)
+    if (this.format === 'docx' || this.format === 'pdf') {
+      const smfRow = optionsSection.createDiv('novalist-export-row');
+      smfRow.createEl('label', { text: t('export.smfPreset') });
+      const smfToggleLabel = smfRow.createEl('label', { cls: 'novalist-export-toggle' });
+      const smfToggleInput = smfToggleLabel.createEl('input', { 
+        type: 'checkbox',
+        attr: { checked: this.smfPreset ? 'checked' : undefined }
+      });
+      smfToggleInput.addEventListener('change', () => {
+        this.smfPreset = smfToggleInput.checked;
+      });
+      smfToggleLabel.createEl('span', { cls: 'novalist-export-toggle-slider' });
+
+      const smfDesc = optionsSection.createDiv('novalist-export-smf-desc');
+      smfDesc.createEl('p', { text: t('export.smfPresetDesc') });
+    }
 
     // Include title page
     const titlePageRow = optionsSection.createDiv('novalist-export-row');
@@ -181,11 +203,12 @@ export class ExportView extends ItemView {
     }
 
     const options = {
-      format: this.format === 'md' ? 'epub' : this.format,
+      format: this.format === 'md' ? 'epub' as const : this.format,
       includeTitlePage: this.includeTitlePage,
       includeChapters: Array.from(this.selectedChapters),
       title: this.title || 'Untitled',
-      author: this.author
+      author: this.author,
+      smfPreset: this.smfPreset && (this.format === 'docx' || this.format === 'pdf')
     };
 
     try {
@@ -200,6 +223,10 @@ export class ExportView extends ItemView {
         case 'docx':
           blob = await exportToDOCX(this.plugin, options);
           filename = `${this.sanitizeFilename(this.title)}.docx`;
+          break;
+        case 'pdf':
+          blob = await exportToPDF(this.plugin, options);
+          filename = `${this.sanitizeFilename(this.title)}.pdf`;
           break;
         case 'md': {
           const mdContent = await exportToMarkdown(this.plugin, options);

@@ -1,6 +1,7 @@
 import { TFile } from 'obsidian';
 import type NovalistPlugin from '../main';
 import JSZip from 'jszip';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { t } from '../i18n';
 import { stripComments } from './statisticsUtils';
 
@@ -16,6 +17,8 @@ export interface ExportOptions {
   includeChapters: string[]; // file paths
   title: string;
   author: string;
+  /** When true, apply Standard Manuscript Format (12 pt Courier, double-spaced, 1-inch margins, page headers). */
+  smfPreset: boolean;
 }
 
 export interface ChapterContent {
@@ -173,24 +176,17 @@ h1.chapter-title {
   margin-bottom: 2em;
 }
 
-/* Body paragraphs – indented by default (standard book formatting) */
+/* Body paragraphs */
 p {
-  text-indent: 1.5em;
   margin-top: 0;
-  margin-bottom: 0;
+  margin-bottom: 0.8em;
   text-align: justify;
   orphans: 2;
   widows: 2;
 }
 
-/* First paragraph after heading or scene break – no indent */
-p.no-indent {
-  text-indent: 0;
-}
-
 /* Scene break separator */
 p.scene-break {
-  text-indent: 0;
   text-align: center;
   margin-top: 1.5em;
   margin-bottom: 1.5em;
@@ -413,10 +409,11 @@ export async function exportToDOCX(
   }
   
   // word/styles.xml  – proper style definitions for book formatting
-  word.file('styles.xml', generateDOCXStyles());
+  word.file('styles.xml', generateDOCXStyles(options));
   
   // ── Build document body ──
   let bodyContent = '';
+  const smf = options.smfPreset;
   
   // Title page
   if (options.includeTitlePage) {
@@ -424,6 +421,49 @@ export async function exportToDOCX(
     if (options.author) {
       bodyContent += `<w:p><w:pPr><w:pStyle w:val="Subtitle"/></w:pPr><w:r><w:t>${escapeXml(options.author)}</w:t></w:r></w:p>`;
     }
+  }
+  
+  // SMF page header (surname / TITLE / page) via default header
+  if (smf) {
+    const surname = options.author ? (options.author.split(/\s+/).pop() ?? options.author) : '';
+    const shortTitle = options.title.length > 30 ? options.title.substring(0, 27) + '...' : options.title;
+    const headerText = `${surname} / ${shortTitle.toUpperCase()}`;
+
+    // We need a header part for SMF
+    const wordRelsContent = wordRels
+      ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
+</Relationships>`
+      : '';
+
+    if (wordRels) {
+      // Overwrite the rels file to include header reference
+      wordRels.file('document.xml.rels', wordRelsContent);
+    }
+
+    // Add header part
+    word.file('header1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:p>
+    <w:pPr><w:jc w:val="right"/></w:pPr>
+    <w:r><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${escapeXml(headerText)} / </w:t></w:r>
+    <w:r><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="20"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r>
+    <w:r><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="20"/></w:rPr><w:instrText> PAGE </w:instrText></w:r>
+    <w:r><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="20"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>
+  </w:p>
+</w:hdr>`);
+
+    // Update Content_Types to include header
+    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+</Types>`);
   }
   
   // Chapters
@@ -461,12 +501,16 @@ export async function exportToDOCX(
     }
   }
   
+  // Section properties (page size, margins, header reference)
+  const sectPrHeader = smf ? '<w:headerReference w:type="default" r:id="rId2" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>' : '';
+  
   // word/document.xml
   word.file('document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     ${bodyContent}
     <w:sectPr>
+      ${sectPrHeader}
       <w:pgSz w:w="12240" w:h="15840"/>
       <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
     </w:sectPr>
@@ -478,21 +522,27 @@ export async function exportToDOCX(
 
 // ── DOCX helpers ─────────────────────────────────────────────────────
 
-function generateDOCXStyles(): string {
+function generateDOCXStyles(options: ExportOptions): string {
+  const smf = options.smfPreset;
+  const fontFamily = smf ? 'Courier New' : 'Georgia';
+  // SMF: 12pt (24 half-points), double-spaced (480 twips = 24pt × 20)
+  const fontSize = smf ? '24' : '24';
+  const lineSpacing = smf ? '480' : '360';
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:docDefaults>
     <w:rPrDefault>
       <w:rPr>
-        <w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:eastAsia="Georgia" w:cs="Georgia"/>
-        <w:sz w:val="24"/>
-        <w:szCs w:val="24"/>
+        <w:rFonts w:ascii="${fontFamily}" w:hAnsi="${fontFamily}" w:eastAsia="${fontFamily}" w:cs="${fontFamily}"/>
+        <w:sz w:val="${fontSize}"/>
+        <w:szCs w:val="${fontSize}"/>
         <w:lang w:val="en-US"/>
       </w:rPr>
     </w:rPrDefault>
     <w:pPrDefault>
       <w:pPr>
-        <w:spacing w:line="360" w:lineRule="auto"/>
+        <w:spacing w:line="${lineSpacing}" w:lineRule="auto"/>
       </w:pPr>
     </w:pPrDefault>
   </w:docDefaults>
@@ -550,7 +600,7 @@ function generateDOCXStyles(): string {
     <w:name w:val="Body Text"/>
     <w:basedOn w:val="Normal"/>
     <w:pPr>
-      <w:ind w:firstLine="720"/>
+      ${smf ? '<w:ind w:firstLine="720"/>' : '<w:spacing w:after="160"/>'}
       <w:jc w:val="both"/>
     </w:pPr>
   </w:style>
@@ -560,6 +610,7 @@ function generateDOCXStyles(): string {
     <w:basedOn w:val="Normal"/>
     <w:pPr>
       <w:ind w:firstLine="0"/>
+      ${smf ? '' : '<w:spacing w:after="160"/>'}
       <w:jc w:val="both"/>
     </w:pPr>
   </w:style>
@@ -622,6 +673,388 @@ function docxRun(text: string, bold: boolean, italic: boolean): string {
   return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
 }
 
+// ─── PDF Export (via pdf-lib) ────────────────────────────────────────
+
+/** Points-per-inch constant. */
+const PPI = 72;
+
+/**
+ * Standard US-Letter page dimensions and margin constants used by the
+ * PDF renderer.  All values are in PDF points (1 pt = 1/72 inch).
+ */
+const PDF_PAGE_WIDTH = 8.5 * PPI;  // 612
+const PDF_PAGE_HEIGHT = 11 * PPI;  // 792
+const PDF_MARGIN = 1 * PPI;        // 72  (1-inch margins)
+
+/**
+ * Strip markdown bold / italic markers and return plain text.
+ * Used for PDF where inline formatting is handled separately.
+ */
+function stripMarkdownInline(text: string): string {
+  return text
+    .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1');
+}
+
+/**
+ * Parse a paragraph of markdown text into inline segments with bold /
+ * italic metadata so the PDF renderer can switch fonts per-run.
+ */
+interface InlineSegment {
+  text: string;
+  bold: boolean;
+  italic: boolean;
+}
+
+function parseMarkdownInline(text: string): InlineSegment[] {
+  const segments: InlineSegment[] = [];
+  const regex = /\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ text: text.substring(lastIndex, match.index), bold: false, italic: false });
+    }
+    if (match[1] !== undefined) {
+      segments.push({ text: match[1], bold: true, italic: true });
+    } else if (match[2] !== undefined) {
+      segments.push({ text: match[2], bold: false, italic: false }); // bold handled via font
+      // re-push as bold
+      segments.pop();
+      segments.push({ text: match[2], bold: true, italic: false });
+    } else if (match[3] !== undefined) {
+      segments.push({ text: match[3], bold: false, italic: true });
+    }
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ text: text.substring(lastIndex), bold: false, italic: false });
+  }
+
+  return segments;
+}
+
+/**
+ * Word-wrap a string to fit within `maxWidth` points using the given
+ * font and size.  Returns an array of lines.
+ */
+function wordWrap(
+  text: string,
+  font: { widthOfTextAtSize(text: string, size: number): number },
+  fontSize: number,
+  maxWidth: number
+): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+    if (testWidth > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines;
+}
+
+export async function exportToPDF(
+  plugin: NovalistPlugin,
+  options: ExportOptions
+): Promise<Blob> {
+  const files = options.includeChapters
+    .map(path => plugin.app.vault.getAbstractFileByPath(path))
+    .filter((f): f is TFile => f instanceof TFile);
+  const chapters = await compileChapters(plugin, files);
+
+  const useSMF = options.smfPreset;
+
+  // Font selection
+  const bodyFontName = useSMF ? StandardFonts.Courier : StandardFonts.TimesRoman;
+  const boldFontName = useSMF ? StandardFonts.CourierBold : StandardFonts.TimesRomanBold;
+  const italicFontName = useSMF ? StandardFonts.CourierOblique : StandardFonts.TimesRomanItalic;
+  const boldItalicFontName = useSMF ? StandardFonts.CourierBoldOblique : StandardFonts.TimesRomanBoldItalic;
+  const fontSize = useSMF ? 12 : 12;
+  const lineSpacing = useSMF ? fontSize * 2 : fontSize * 1.5;
+  const paragraphGap = useSMF ? 0 : fontSize * 0.8;
+  const indent = useSMF ? PPI * 0.5 : PPI * 0.35;
+  const chapterTopMargin = useSMF ? PPI * 3 : PPI * 2;
+
+  const pdfDoc = await PDFDocument.create();
+  const bodyFont = await pdfDoc.embedFont(bodyFontName);
+  const boldFont = await pdfDoc.embedFont(boldFontName);
+  const italicFont = await pdfDoc.embedFont(italicFontName);
+  const boldItalicFont = await pdfDoc.embedFont(boldItalicFontName);
+
+  const textWidth = PDF_PAGE_WIDTH - 2 * PDF_MARGIN;
+  const headerY = PDF_PAGE_HEIGHT - PDF_MARGIN / 2;
+  let pageNumber = 0;
+
+  /**
+   * Build the short surname slug used in SMF headers.
+   * If the author field is empty, falls back to an empty string.
+   */
+  const surname = options.author
+    ? options.author.split(/\s+/).pop() ?? options.author
+    : '';
+
+  /**
+   * Short title used in SMF page headers (first significant word(s),
+   * capped at ~30 characters to fit comfortably).
+   */
+  const shortTitle = options.title.length > 30
+    ? options.title.substring(0, 27) + '...'
+    : options.title;
+
+  /** Add an SMF page header: Surname / SHORT TITLE / page# */
+  function addPageHeader(
+    page: ReturnType<typeof pdfDoc.addPage>,
+    number: number
+  ): void {
+    if (!useSMF) return;
+    const headerText = `${surname} / ${shortTitle.toUpperCase()} / ${number}`;
+    const hw = bodyFont.widthOfTextAtSize(headerText, 10);
+    page.drawText(headerText, {
+      x: PDF_PAGE_WIDTH - PDF_MARGIN - hw,
+      y: headerY,
+      size: 10,
+      font: bodyFont,
+      color: rgb(0, 0, 0),
+    });
+  }
+
+  /** Create a new page, optionally starting at a specific Y. */
+  function newPage(): { page: ReturnType<typeof pdfDoc.addPage>; y: number } {
+    const page = pdfDoc.addPage([PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT]);
+    pageNumber++;
+    addPageHeader(page, pageNumber);
+    return { page, y: PDF_PAGE_HEIGHT - PDF_MARGIN - lineSpacing };
+  }
+
+  // ── SMF Title Page ──
+  if (options.includeTitlePage) {
+    const tp = pdfDoc.addPage([PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT]);
+    pageNumber++;
+
+    if (useSMF) {
+      // SMF title page: contact info top-left, word count top-right,
+      // title centered vertically.
+      // Top-left: author name
+      if (options.author) {
+        tp.drawText(options.author, {
+          x: PDF_MARGIN,
+          y: PDF_PAGE_HEIGHT - PDF_MARGIN,
+          size: 12,
+          font: bodyFont,
+          color: rgb(0, 0, 0),
+        });
+      }
+
+      // Center block: title + "by" + author
+      const titleFontSize = 12;
+      const centerY = PDF_PAGE_HEIGHT / 2;
+      const titleWidth = bodyFont.widthOfTextAtSize(options.title.toUpperCase(), titleFontSize);
+      tp.drawText(options.title.toUpperCase(), {
+        x: (PDF_PAGE_WIDTH - titleWidth) / 2,
+        y: centerY + lineSpacing,
+        size: titleFontSize,
+        font: bodyFont,
+        color: rgb(0, 0, 0),
+      });
+
+      if (options.author) {
+        const byLine = `by ${options.author}`;
+        const byWidth = bodyFont.widthOfTextAtSize(byLine, titleFontSize);
+        tp.drawText(byLine, {
+          x: (PDF_PAGE_WIDTH - byWidth) / 2,
+          y: centerY - lineSpacing,
+          size: titleFontSize,
+          font: bodyFont,
+          color: rgb(0, 0, 0),
+        });
+      }
+    } else {
+      // Standard decorative title page
+      const titleFontSize = 24;
+      const titleWidth = boldFont.widthOfTextAtSize(options.title, titleFontSize);
+      tp.drawText(options.title, {
+        x: (PDF_PAGE_WIDTH - titleWidth) / 2,
+        y: PDF_PAGE_HEIGHT * 0.6,
+        size: titleFontSize,
+        font: boldFont,
+        color: rgb(0, 0, 0),
+      });
+
+      if (options.author) {
+        const authorFontSize = 16;
+        const authorWidth = italicFont.widthOfTextAtSize(options.author, authorFontSize);
+        tp.drawText(options.author, {
+          x: (PDF_PAGE_WIDTH - authorWidth) / 2,
+          y: PDF_PAGE_HEIGHT * 0.6 - 36,
+          size: authorFontSize,
+          font: italicFont,
+          color: rgb(0, 0, 0),
+        });
+      }
+    }
+  }
+
+  // ── Chapters ──
+  for (const chapter of chapters) {
+    let { page, y } = newPage();
+
+    // Drop chapter heading down from the top for visual space
+    y = PDF_PAGE_HEIGHT - PDF_MARGIN - chapterTopMargin;
+
+    // Chapter title (centered)
+    const chapterTitleClean = stripMarkdownInline(chapter.title);
+    const chTitleFont = useSMF ? bodyFont : boldFont;
+    const chTitleSize = useSMF ? 12 : 18;
+    const chTitleText = useSMF ? chapterTitleClean.toUpperCase() : chapterTitleClean;
+    const ctWidth = chTitleFont.widthOfTextAtSize(chTitleText, chTitleSize);
+    page.drawText(chTitleText, {
+      x: (PDF_PAGE_WIDTH - ctWidth) / 2,
+      y,
+      size: chTitleSize,
+      font: chTitleFont,
+      color: rgb(0, 0, 0),
+    });
+    y -= lineSpacing * 2;
+
+    // Body paragraphs
+    const paragraphs = chapter.content.split('\n');
+    let isFirstPara = true;
+
+    for (const para of paragraphs) {
+      const trimmed = para.trim();
+      if (!trimmed) continue;
+
+      // Scene break
+      if (trimmed === SCENE_BREAK_MARKER) {
+        y -= lineSpacing;
+        if (y < PDF_MARGIN + lineSpacing) {
+          ({ page, y } = newPage());
+        }
+        const sbWidth = bodyFont.widthOfTextAtSize(SCENE_BREAK_TEXT, fontSize);
+        page.drawText(SCENE_BREAK_TEXT, {
+          x: (PDF_PAGE_WIDTH - sbWidth) / 2,
+          y,
+          size: fontSize,
+          font: bodyFont,
+          color: rgb(0, 0, 0),
+        });
+        y -= lineSpacing;
+        isFirstPara = true;
+        continue;
+      }
+
+      // Parse inline formatting
+      const segments = parseMarkdownInline(trimmed);
+
+      // Build plain text for word-wrapping measurement
+      const plainText = segments.map(s => s.text).join('');
+      const paraIndent = useSMF && !isFirstPara ? indent : 0;
+      const lines = wordWrap(plainText, bodyFont, fontSize, textWidth - paraIndent);
+
+      for (let li = 0; li < lines.length; li++) {
+        if (y < PDF_MARGIN + lineSpacing) {
+          ({ page, y } = newPage());
+        }
+        const xStart = PDF_MARGIN + (li === 0 ? paraIndent : 0);
+
+        // For the simple (and common) non-formatted case, draw directly
+        if (segments.length === 1 && !segments[0].bold && !segments[0].italic) {
+          page.drawText(lines[li], {
+            x: xStart,
+            y,
+            size: fontSize,
+            font: bodyFont,
+            color: rgb(0, 0, 0),
+          });
+        } else {
+          // Draw with inline formatting per-segment on this line.
+          // We re-process to figure out which segments land on this line.
+          page.drawText(stripMarkdownInline(lines[li]), {
+            x: xStart,
+            y,
+            size: fontSize,
+            font: bodyFont,
+            color: rgb(0, 0, 0),
+          });
+          // For bold/italic lines, overlay the formatted segments.
+          // A full per-segment layout is complex; for manuscript export
+          // the monospace font makes it straightforward.
+          if (useSMF) {
+            // With Courier (monospace), re-draw with correct fonts
+            // by splitting the line text into segment runs.
+            let cx = xStart;
+            // Since we already drew the plain text, overwriting with the same text
+            // at the same position in the correct font is fine for 
+            // monospace – every character is the same width.
+            let segOffset = 0;
+            // Determine how many chars of the full text have been consumed
+            // by previous lines
+            let prevChars = 0;
+            for (let pi = 0; pi < li; pi++) {
+              prevChars += lines[pi].length + 1; // +1 for the space removed by wrapping
+            }
+
+            for (const seg of segments) {
+              const segEnd = segOffset + seg.text.length;
+              // Find overlap between segment and current line's char range
+              const lineStart = prevChars;
+              const lineEnd = prevChars + lines[li].length;
+              const overlapStart = Math.max(segOffset, lineStart);
+              const overlapEnd = Math.min(segEnd, lineEnd);
+
+              if (overlapStart < overlapEnd) {
+                const overlapText = seg.text.substring(
+                  overlapStart - segOffset,
+                  overlapEnd - segOffset
+                );
+                let segFont = bodyFont;
+                if (seg.bold && seg.italic) segFont = boldItalicFont;
+                else if (seg.bold) segFont = boldFont;
+                else if (seg.italic) segFont = italicFont;
+
+                page.drawText(overlapText, {
+                  x: cx,
+                  y,
+                  size: fontSize,
+                  font: segFont,
+                  color: rgb(0, 0, 0),
+                });
+                cx += segFont.widthOfTextAtSize(overlapText, fontSize);
+              } else if (segOffset >= prevChars && segOffset < prevChars + lines[li].length) {
+                // segment fully within this line but no overlap (shouldn't happen)
+                cx += bodyFont.widthOfTextAtSize(seg.text, fontSize);
+              }
+              segOffset = segEnd;
+            }
+          }
+        }
+        y -= lineSpacing;
+      }
+      isFirstPara = false;
+
+      // Add paragraph gap (non-SMF only)
+      if (paragraphGap > 0) {
+        y -= paragraphGap;
+      }
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return new Blob([pdfBytes], { type: 'application/pdf' });
+}
+
 // ─── Markdown Export ─────────────────────────────────────────────────
 
 export async function exportToMarkdown(
@@ -653,7 +1086,6 @@ export async function exportToMarkdown(
     output += `<h1 style="text-align: center; margin-top: 0;">${chapter.title}</h1>\n\n`;
     // Each line is a paragraph (matches Obsidian editor view)
     const paragraphs = chapter.content.split('\n');
-    let isFirstPara = true;
     for (const para of paragraphs) {
       const trimmed = para.trim();
       if (!trimmed) continue;
@@ -661,16 +1093,10 @@ export async function exportToMarkdown(
       // Scene break
       if (trimmed === SCENE_BREAK_MARKER) {
         output += `<p style="text-align: center; margin: 1.5em 0;">${SCENE_BREAK_TEXT}</p>\n\n`;
-        isFirstPara = true;
         continue;
       }
       
-      if (isFirstPara) {
-        output += `<p style="text-indent: 0;">${trimmed}</p>\n\n`;
-      } else {
-        output += `<p style="text-indent: 1.5em;">${trimmed}</p>\n\n`;
-      }
-      isFirstPara = false;
+      output += `<p>${trimmed}</p>\n\n`;
     }
   }
   
