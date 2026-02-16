@@ -108,18 +108,59 @@ class CopilotAcpClient {
   private promptText = '';
   /** Absolute path used as cwd for sessions. */
   vaultPath = '';
+  /** Optional callback invoked on each streamed thinking/reasoning chunk. */
+  onThinkingChunk: ((text: string) => void) | null = null;
   /** Desired model id (empty = use Copilot default). */
   modelId = '';
   /** Config option id for the model selector (discovered at session start). */
   private modelConfigId: string | null = null;
   /** Cached available models from last session/new response. */
   private cachedModels: CopilotModelInfo[] = [];
+  /** Cached environment with full PATH from login shell (macOS/Linux fix). */
+  private resolvedEnv: typeof process.env | null = null;
 
   constructor(private execPath: string) {}
 
   /** Whether the process is alive. */
   get isAlive(): boolean {
     return this.proc !== null && this.proc.exitCode === null;
+  }
+
+  /**
+   * Resolve the user's login-shell PATH on macOS / Linux.
+   *
+   * GUI apps (Electron / Obsidian) inherit a minimal PATH that usually
+   * does not contain directories like /usr/local/bin or ~/.local/bin
+   * where CLI tools are installed.  Spawning the user's login shell
+   * with `-lc` gives us the full interactive PATH.
+   */
+  private async getEnv(): Promise<typeof process.env> {
+    if (this.resolvedEnv) return this.resolvedEnv;
+
+    if (process.platform === 'win32') {
+      this.resolvedEnv = process.env;
+      return this.resolvedEnv;
+    }
+
+    const userShell = process.env['SHELL'] ?? '/bin/sh';
+    const fullPath = await new Promise<string | null>((resolve) => {
+      try {
+        const p = spawn(userShell, ['-lc', 'printf "%s" "$PATH"'], {
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        let out = '';
+        p.stdout?.on('data', (c: Buffer) => { out += c.toString(); });
+        p.on('error', () => resolve(null));
+        p.on('exit', () => resolve(out.trim() || null));
+        setTimeout(() => { p.kill(); resolve(null); }, 3000);
+      } catch {
+        resolve(null);
+      }
+    });
+
+    console.debug('[Novalist ACP] Resolved login-shell PATH:', fullPath ? 'ok' : 'fallback');
+    this.resolvedEnv = fullPath ? { ...process.env, PATH: fullPath } : process.env;
+    return this.resolvedEnv;
   }
 
   /** Start the ACP process, initialize, and create a session. */
@@ -129,9 +170,11 @@ class CopilotAcpClient {
     await this.stop();
     this.sessionId = null;
 
+    const env = await this.getEnv();
     console.debug('[Novalist ACP] Spawning:', this.execPath, '--acp --stdio');
     this.proc = spawn(this.execPath, ['--acp', '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      env,
     });
 
     this.buffer = '';
@@ -211,6 +254,21 @@ class CopilotAcpClient {
     });
   }
 
+  /** Destroy the current session and create a fresh one so
+   *  server-side conversation history is discarded. */
+  async resetSession(): Promise<void> {
+    if (!this.isAlive || !this.sessionId) return;
+    const sessionResult = await this.rpcRequest('session/new', {
+      cwd: this.vaultPath || process.cwd(),
+      mcpServers: [],
+    }) as { sessionId: string; models?: AcpModelsBlock; configOptions?: AcpConfigOption[] };
+    this.sessionId = sessionResult.sessionId;
+    this.parseModels(sessionResult);
+    if (this.modelId) {
+      await this.selectModel(this.modelId);
+    }
+  }
+
   /** Send a cancel notification to abort the current prompt. */
   cancelPrompt(): void {
     if (this.sessionId && this.proc?.stdin?.writable) {
@@ -221,6 +279,9 @@ class CopilotAcpClient {
       });
     }
   }
+
+  /** Optional callback invoked on each streamed text chunk. */
+  onChunk: ((text: string) => void) | null = null;
 
   /** Send a text prompt and return the full response text. */
   async generate(prompt: string): Promise<string> {
@@ -249,9 +310,10 @@ class CopilotAcpClient {
 
   /** Check whether the Copilot CLI is reachable by spawning a short-lived process. */
   async isAvailable(): Promise<boolean> {
+    const env = await this.getEnv();
     return new Promise<boolean>((resolve) => {
       try {
-        const p = spawn(this.execPath, ['--help'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        const p = spawn(this.execPath, ['--help'], { stdio: ['ignore', 'pipe', 'pipe'], env });
         let done = false;
         const finish = (ok: boolean): void => {
           if (done) return;
@@ -354,11 +416,12 @@ class CopilotAcpClient {
       if (!trimmed) continue;
       try {
         const msg = JSON.parse(trimmed) as Record<string, unknown>;
-        // Log everything except verbose agent_message_chunk notifications
+        // Log everything except verbose chunk notifications
         const update = (msg['params'] as Record<string, unknown> | undefined)?.['update'] as Record<string, unknown> | undefined;
-        if (update?.['sessionUpdate'] === 'agent_message_chunk') {
+        const sessionUpdate = update?.['sessionUpdate'] as string | undefined;
+        if (sessionUpdate === 'agent_message_chunk' || sessionUpdate === 'agent_thought_chunk') {
           const c = update['content'] as { text?: string } | undefined;
-          console.debug('[Novalist ACP] <<< agent_message_chunk:', (c?.text ?? '').slice(0, 120));
+          console.debug(`[Novalist ACP] <<< ${sessionUpdate}:`, (c?.text ?? '').slice(0, 120));
         } else {
           console.debug('[Novalist ACP] <<<', trimmed.length > 500 ? trimmed.slice(0, 500) + '…' : trimmed);
         }
@@ -427,6 +490,14 @@ class CopilotAcpClient {
       const content = update['content'] as { type?: string; text?: string } | undefined;
       if (content?.type === 'text' && content.text) {
         this.promptText += content.text;
+        this.onChunk?.(content.text);
+      }
+    }
+
+    if (update['sessionUpdate'] === 'agent_thought_chunk') {
+      const content = update['content'] as { type?: string; text?: string } | undefined;
+      if (content?.type === 'text' && content.text) {
+        this.onThinkingChunk?.(content.text);
       }
     }
   }
@@ -489,6 +560,14 @@ export class OllamaService {
     // If the session is already running, apply the model switch immediately
     if (this.copilotClient.isAlive) {
       await this.copilotClient.applyModel(modelId);
+    }
+  }
+
+  /** Reset the Copilot ACP session so server-side conversation history
+   *  is cleared. No-op when using Ollama (stateless HTTP). */
+  async resetChatSession(): Promise<void> {
+    if (this.provider === 'copilot') {
+      await this.copilotClient.resetSession();
     }
   }
 
@@ -639,6 +718,139 @@ export class OllamaService {
     this.abortController = null;
     const data = res.json as OllamaGenerateResponse;
     return data.response ?? '';
+  }
+
+  // ── Streaming chat generation ──────────────────────────────────
+
+  /**
+   * Generate a chat completion with streaming, invoking `onChunk` for each
+   * token as it arrives.  Returns the full response text once complete.
+   *
+   * The `messages` array uses OpenAI-style roles: system, user, assistant.
+   *
+   * `onThinkingChunk` is called for thinking/reasoning tokens emitted by
+   * models that support chain-of-thought (e.g. DeepSeek-R1, Qwen3).
+   */
+  async generateChat(
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    onChunk: (token: string) => void,
+    temperature = 0.7,
+    maxTokens = 8192,
+    onThinkingChunk?: (token: string) => void,
+  ): Promise<{ response: string; thinking: string }> {
+    if (this.provider === 'copilot') {
+      return this.generateChatCopilot(messages, onChunk, onThinkingChunk);
+    }
+    return this.generateChatOllama(messages, onChunk, temperature, maxTokens, onThinkingChunk);
+  }
+
+  private async generateChatOllama(
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    onChunk: (token: string) => void,
+    temperature: number,
+    maxTokens: number,
+    onThinkingChunk?: (token: string) => void,
+  ): Promise<{ response: string; thinking: string }> {
+    this.abortController = new AbortController();
+    const body = {
+      model: this.model,
+      messages,
+      stream: true,
+      options: { temperature, num_predict: maxTokens },
+    };
+
+    const response = await fetch(`${this.baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: this.abortController.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      this.abortController = null;
+      throw new Error(`Ollama chat request failed: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let thinkingText = '';
+    let buffer = '';
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const json = JSON.parse(trimmed) as { message?: { content?: string; thinking?: string }; done?: boolean };
+            const thinking = json.message?.thinking ?? '';
+            if (thinking) {
+              thinkingText += thinking;
+              onThinkingChunk?.(thinking);
+            }
+            const token = json.message?.content ?? '';
+            if (token) {
+              fullText += token;
+              onChunk(token);
+            }
+          } catch { /* skip malformed lines */ }
+        }
+      }
+    } finally {
+      this.abortController = null;
+    }
+
+    return { response: fullText, thinking: thinkingText };
+  }
+
+  private async generateChatCopilot(
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    onChunk: (token: string) => void,
+    onThinkingChunk?: (token: string) => void,
+  ): Promise<{ response: string; thinking: string }> {
+    // Copilot ACP doesn't have a native chat-messages API, so we
+    // flatten the messages into a single prompt and stream via the
+    // existing `generate` method with the onChunk callback.
+    this.copilotClient.onChunk = onChunk;
+    this.copilotClient.onThinkingChunk = onThinkingChunk ?? null;
+    let thinkingText = '';
+    const origThinkCb = onThinkingChunk;
+    if (origThinkCb) {
+      // Capture thinking tokens streamed via ACP notifications.
+      this.copilotClient.onThinkingChunk = (t: string) => {
+        thinkingText += t;
+        origThinkCb(t);
+      };
+    }
+    const prompt = messages.map(m => {
+      if (m.role === 'system') return `[System]\n${m.content}`;
+      if (m.role === 'assistant') return `[Assistant]\n${m.content}`;
+      return `[User]\n${m.content}`;
+    }).join('\n\n');
+    try {
+      const raw = await this.copilotClient.generate(prompt);
+      // Some models also emit thinking wrapped in <think>…</think>
+      // tags inline.  Extract it so we can display it separately.
+      const thinkParts: string[] = [];
+      const cleaned = raw.replace(/<think>([\s\S]*?)<\/think>/g, (_, inner: string) => {
+        thinkParts.push(inner.trim());
+        origThinkCb?.(inner.trim());
+        return '';
+      });
+      if (thinkParts.length > 0) {
+        thinkingText = (thinkingText + '\n\n' + thinkParts.join('\n\n')).trim();
+      }
+      return { response: cleaned.trim(), thinking: thinkingText };
+    } finally {
+      this.copilotClient.onChunk = null;
+      this.copilotClient.onThinkingChunk = null;
+    }
   }
 
   // ── Analysis methods ───────────────────────────────────────────

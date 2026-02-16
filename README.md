@@ -194,7 +194,18 @@ Findings are shown in two places: the **AI Assistant section** at the bottom of 
 
 An `Auto` toggle enables iterative re-analysis — the chapter is automatically re-analysed 5 seconds after each edit. A manual re-analyse button is always available. Unchanged paragraphs are skipped automatically (paragraph mode only), making re-analysis faster after small edits.
 
-The toolbar gains an `AI` tab with a one-click analyse button and a `Full Story` button. The **Full Story Analysis** modal iterates over every chapter in the project with a progress bar and estimated time remaining. A cancel button lets you stop at any time. Results are grouped by chapter. Findings can also be viewed in a standalone modal via the command palette.
+The toolbar gains an `AI` tab with a one-click analyse button, a `Full Story` button, and a `Chat` button that opens the AI Chat sidebar.
+
+### AI Chat
+
+An interactive chat sidebar where you can converse with the LLM about your novel. The AI receives a system prompt containing all known project entities (characters, locations, items, lore) and the full text of the chapter you are currently editing, giving it complete context to answer questions, suggest plot developments, brainstorm dialogue, or help refine prose.
+
+- The status bar shows which chapter the AI is using as context. Switch to a different editor tab to change the chapter context.
+- Conversation history is maintained within the session. Use `Clear chat` to start fresh.
+- The AI can edit the active chapter file directly. It proposes edits using a structured search-and-replace format; edits are applied automatically and a notice confirms how many changes were made.
+- The AI cannot modify any other project files (characters, locations, items, lore). It can only read them for context.
+- Supports both Ollama and GitHub Copilot providers. Responses are streamed token-by-token for immediate feedback.
+- Open the chat from the toolbar `AI > Chat` button, or from the command palette (`Open AI chat`).
 
 ### Acts
 
@@ -291,6 +302,7 @@ Snapshot a chapter before a major rewrite and compare versions side-by-side.
 | View chapter snapshots | List, compare, restore, or delete snapshots for the current chapter |
 | Analyse chapter with AI | Run Ollama-powered reference, consistency, and suggestion analysis on the active chapter |
 | Analyse full story with AI | Analyse every chapter in the project with a progress bar, ETA, and grouped results |
+| Open AI chat | Open the AI chat sidebar for interactive conversation about your novel |
 
 ## Internationalization
 

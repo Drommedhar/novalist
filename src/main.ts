@@ -42,6 +42,7 @@ import { PlotBoardView, PLOT_BOARD_VIEW_TYPE } from './views/PlotBoardView';
 import { ItemSheetView, ITEM_SHEET_VIEW_TYPE } from './views/ItemSheetView';
 import { LoreSheetView, LORE_SHEET_VIEW_TYPE } from './views/LoreSheetView';
 import { ImageGalleryView, IMAGE_GALLERY_VIEW_TYPE } from './views/ImageGalleryView';
+import { AiChatView, AI_CHAT_VIEW_TYPE } from './views/AiChatView';
 import { NovalistToolbarManager } from './utils/toolbarUtils';
 
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
@@ -181,6 +182,12 @@ export default class NovalistPlugin extends Plugin {
     this.registerView(
       IMAGE_GALLERY_VIEW_TYPE,
       (leaf) => new ImageGalleryView(leaf, this)
+    );
+
+    // Register AI chat view
+    this.registerView(
+      AI_CHAT_VIEW_TYPE,
+      (leaf) => new AiChatView(leaf, this)
     );
 
     // Register annotation CM6 extension
@@ -463,6 +470,20 @@ export default class NovalistPlugin extends Plugin {
         if (checking) return canRun;
         if (canRun) {
           this.analyseFullStoryWithAi();
+        }
+      }
+    });
+
+    // Open AI Chat sidebar
+    this.addCommand({
+      id: 'open-ai-chat',
+      name: t('cmd.openAiChat'),
+      checkCallback: (checking: boolean) => {
+        const isCopilot = this.settings.ollama.provider === 'copilot';
+        const canRun = this.settings.ollama.enabled && (isCopilot || !!this.settings.ollama.model);
+        if (checking) return canRun;
+        if (canRun) {
+          void this.activateAiChatView();
         }
       }
     });
@@ -1247,6 +1268,23 @@ export default class NovalistPlugin extends Plugin {
     }
   }
 
+  async activateAiChatView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(AI_CHAT_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    const rightLeaf = this.app.workspace.getRightLeaf(false);
+    if (rightLeaf) {
+      await rightLeaf.setViewState({
+        type: AI_CHAT_VIEW_TYPE,
+        active: true,
+      });
+      void this.app.workspace.revealLeaf(rightLeaf);
+    }
+  }
+
   async activateExplorerView(replaceFileExplorer = false): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(NOVELIST_EXPLORER_VIEW_TYPE);
     if (existing.length > 0) {
@@ -1888,6 +1926,20 @@ order: ${orderValue}
           }).join('; ');
           details.push(`Relationships: ${rels}`);
         }
+        // Include custom properties
+        if (sheet.customProperties) {
+          for (const [key, val] of Object.entries(sheet.customProperties)) {
+            if (val) details.push(`${key}: ${val}`);
+          }
+        }
+        // Include narrative sections (Personality, backstory, etc.)
+        if (sheet.sections && sheet.sections.length > 0) {
+          for (const sec of sheet.sections) {
+            if (sec.content && sec.content.trim()) {
+              details.push(`[${sec.title}]: ${sec.content.trim()}`);
+            }
+          }
+        }
         summaries.push({ name: ch.name, type: 'character', details: details.join(', ') || 'No details' });
       } catch {
         summaries.push({ name: ch.name, type: 'character', details: `Role: ${ch.role}` });
@@ -1902,7 +1954,19 @@ order: ${orderValue}
         const sheet = parseLocationSheet(content);
         const details: string[] = [];
         if (sheet.type) details.push(`Type: ${sheet.type}`);
-        if (sheet.description) details.push(sheet.description.substring(0, 100));
+        if (sheet.description) details.push(sheet.description);
+        if (sheet.customProperties) {
+          for (const [key, val] of Object.entries(sheet.customProperties)) {
+            if (val) details.push(`${key}: ${val}`);
+          }
+        }
+        if (sheet.sections && sheet.sections.length > 0) {
+          for (const sec of sheet.sections) {
+            if (sec.content && sec.content.trim()) {
+              details.push(`[${sec.title}]: ${sec.content.trim()}`);
+            }
+          }
+        }
         summaries.push({ name: loc.name, type: 'location', details: details.join(', ') || 'No details' });
       } catch {
         summaries.push({ name: loc.name, type: 'location', details: '' });
@@ -1917,8 +1981,20 @@ order: ${orderValue}
         const sheet = parseItemSheet(content);
         const details: string[] = [];
         if (sheet.type) details.push(`Type: ${sheet.type}`);
-        if (sheet.description) details.push(sheet.description.substring(0, 100));
+        if (sheet.description) details.push(sheet.description);
         if (sheet.origin) details.push(`Origin: ${sheet.origin}`);
+        if (sheet.customProperties) {
+          for (const [key, val] of Object.entries(sheet.customProperties)) {
+            if (val) details.push(`${key}: ${val}`);
+          }
+        }
+        if (sheet.sections && sheet.sections.length > 0) {
+          for (const sec of sheet.sections) {
+            if (sec.content && sec.content.trim()) {
+              details.push(`[${sec.title}]: ${sec.content.trim()}`);
+            }
+          }
+        }
         summaries.push({ name: item.name, type: 'item', details: details.join(', ') || 'No details' });
       } catch {
         summaries.push({ name: item.name, type: 'item', details: `Type: ${item.type}` });
@@ -1933,7 +2009,19 @@ order: ${orderValue}
         const sheet = parseLoreSheet(content);
         const details: string[] = [];
         if (sheet.category) details.push(`Category: ${sheet.category}`);
-        if (sheet.description) details.push(sheet.description.substring(0, 100));
+        if (sheet.description) details.push(sheet.description);
+        if (sheet.customProperties) {
+          for (const [key, val] of Object.entries(sheet.customProperties)) {
+            if (val) details.push(`${key}: ${val}`);
+          }
+        }
+        if (sheet.sections && sheet.sections.length > 0) {
+          for (const sec of sheet.sections) {
+            if (sec.content && sec.content.trim()) {
+              details.push(`[${sec.title}]: ${sec.content.trim()}`);
+            }
+          }
+        }
         summaries.push({ name: lore.name, type: 'lore', details: details.join(', ') || 'No details' });
       } catch {
         summaries.push({ name: lore.name, type: 'lore', details: `Category: ${lore.category}` });
