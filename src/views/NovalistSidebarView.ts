@@ -1,7 +1,6 @@
 ﻿import {
   ItemView,
   MarkdownView,
-  Notice,
   TFile,
   WorkspaceLeaf
 } from 'obsidian';
@@ -9,10 +8,6 @@ import type NovalistPlugin from '../main';
 import { CharacterData, CharacterChapterInfo, LocationData, PlotBoardColumn } from '../types';
 import { normalizeCharacterRole, computeInterval } from '../utils/characterUtils';
 import { t } from '../i18n';
-import type { AiFinding, AiFindingType } from '../utils/ollamaService';
-import type { AiHighlight } from '../cm/aiHighlightExtension';
-
-type AiFilterTab = 'all' | 'inconsistency' | 'suggestion';
 
 export const NOVELIST_SIDEBAR_VIEW_TYPE = 'novalist-sidebar';
 
@@ -20,21 +15,6 @@ export class NovalistSidebarView extends ItemView {
   plugin: NovalistPlugin;
   currentChapterFile: TFile | null = null;
   currentScene: string | null = null;
-
-  // AI Assistant state
-  private aiFindings: AiFinding[] = [];
-  private aiActiveTab: AiFilterTab = 'all';
-  private aiIsAnalysing = false;
-  private aiAutoAnalyse = false;
-  private aiAnalysisTimer: number | null = null;
-  private aiLastAnalysedHash = '';
-  private aiSectionEl: HTMLElement | null = null;
-  /** Per-paragraph hashes for incremental re-analysis. */
-  private aiParagraphHashes: Map<number, string> = new Map();
-  /** Per-paragraph cached findings for incremental re-analysis. */
-  private aiParagraphFindings: Map<number, AiFinding[]> = new Map();
-  /** Entity names discovered by AI reference detection (not found by regex). */
-  private aiExtraEntities: { characters: string[]; locations: string[]; items: string[]; lore: string[] } = { characters: [], locations: [], items: [], lore: [] };
 
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
     super(leaf);
@@ -63,18 +43,11 @@ export class NovalistSidebarView extends ItemView {
         if (file && file.extension === 'md' && this.plugin.isFileInProject(file)) {
           this.currentChapterFile = file;
           this.updateCurrentScene();
-          this.aiFindings = [];
-          this.aiLastAnalysedHash = '';
           void this.render();
-          this.plugin.clearAiHighlightsFromEditor();
-          this.scheduleAiAnalysis();
         } else if (file && !this.plugin.isFileInProject(file)) {
           this.currentChapterFile = null;
           this.currentScene = null;
-          this.aiFindings = [];
-          this.aiLastAnalysedHash = '';
           void this.render();
-          this.plugin.clearAiHighlightsFromEditor();
         }
       })
     );
@@ -91,13 +64,9 @@ export class NovalistSidebarView extends ItemView {
     );
     
     // Listen for vault modifications (e.g. role changes)
-    this.registerEvent(this.app.vault.on('modify', (file) => {
+    this.registerEvent(this.app.vault.on('modify', () => {
       this.updateCurrentScene();
       void this.render();
-      // Schedule AI re-analysis when the current chapter is modified
-      if (this.aiAutoAnalyse && this.currentChapterFile && file instanceof TFile && file.path === this.currentChapterFile.path) {
-        this.scheduleAiAnalysis();
-      }
     }));
 
     // Poll cursor position to detect scene changes on caret movement
@@ -144,21 +113,6 @@ export class NovalistSidebarView extends ItemView {
 
     const contextContent = container.createDiv('novalist-context-content');
     const chapterData = await this.plugin.parseChapterFile(this.currentChapterFile);
-
-    // Merge AI-discovered entity references into the chapter data so they appear
-    // in the normal sidebar entity sections (characters, locations, items, lore).
-    for (const name of this.aiExtraEntities.characters) {
-      if (!chapterData.characters.includes(name)) chapterData.characters.push(name);
-    }
-    for (const name of this.aiExtraEntities.locations) {
-      if (!chapterData.locations.includes(name)) chapterData.locations.push(name);
-    }
-    for (const name of this.aiExtraEntities.items) {
-      if (!chapterData.items.includes(name)) chapterData.items.push(name);
-    }
-    for (const name of this.aiExtraEntities.lore) {
-      if (!chapterData.lore.includes(name)) chapterData.lore.push(name);
-    }
 
     // Show current scene context if inside a scene
     if (this.currentScene) {
@@ -386,381 +340,11 @@ export class NovalistSidebarView extends ItemView {
         }
       }
     }
-
-    // AI Assistant Section
-    this.renderAiSection(contextContent);
   }
 
   onClose(): Promise<void> {
-    if (this.aiAnalysisTimer !== null) {
-      window.clearTimeout(this.aiAnalysisTimer);
-      this.aiAnalysisTimer = null;
-    }
-    if (this.plugin.ollamaService) {
-      this.plugin.ollamaService.cancel();
-    }
-    this.plugin.clearAiHighlightsFromEditor();
+    // Cleanup
     return Promise.resolve();
-  }
-
-  // ─── AI Assistant ──────────────────────────────────────────────
-
-  /** Simple hash of chapter text to detect meaningful changes. */
-  private hashText(text: string): string {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
-    }
-    return String(hash);
-  }
-
-  /** Schedule a debounced AI analysis (5 s after the last call). */
-  private scheduleAiAnalysis(): void {
-    if (!this.plugin.settings.ollama.enabled || !this.plugin.settings.ollama.model) return;
-    if (this.aiAnalysisTimer !== null) {
-      window.clearTimeout(this.aiAnalysisTimer);
-    }
-    this.aiAnalysisTimer = window.setTimeout(() => {
-      this.aiAnalysisTimer = null;
-      void this.runAiAnalysis();
-    }, 5000);
-  }
-
-  /** Run the AI analysis for the current chapter. */
-  async runAiAnalysis(): Promise<void> {
-    if (!this.currentChapterFile || !this.plugin.ollamaService) return;
-    if (!this.plugin.settings.ollama.enabled || !this.plugin.settings.ollama.model) return;
-    if (!this.plugin.isChapterFile(this.currentChapterFile)) return;
-
-    // Read chapter text and check if it changed since last analysis
-    const chapterText = await this.app.vault.read(this.currentChapterFile);
-    const hash = this.hashText(chapterText);
-    if (hash === this.aiLastAnalysedHash && this.aiFindings.length > 0) return;
-
-    this.aiIsAnalysing = true;
-    this.renderAiSectionContent();
-
-    try {
-      // Auto-load model if configured
-      if (this.plugin.settings.ollama.autoManageModel) {
-        const loaded = await this.plugin.ollamaService.isModelLoaded();
-        if (!loaded) {
-          await this.plugin.ollamaService.loadModel();
-        }
-      }
-
-      // Gather chapter context (act, chapter name, scene) for override-aware summaries
-      const chapterName = this.plugin.getChapterNameForFileSync(this.currentChapterFile);
-      const actName = this.plugin.getActForFileSync(this.currentChapterFile) || undefined;
-      const sceneName = this.currentScene ?? undefined;
-
-      const entities = await this.plugin.collectEntitySummaries(chapterName, sceneName, actName);
-
-      // Get entities already detected by regex so the LLM only reports novel finds
-      const body = this.plugin.stripFrontmatter(chapterText);
-      const mentions = this.plugin.scanMentions(body);
-      const alreadyFound = [
-        ...mentions.characters,
-        ...mentions.locations,
-        ...mentions.items,
-        ...mentions.lore,
-      ];
-
-      // Determine which checks are enabled
-      const checks = {
-        references: this.plugin.settings.ollama.checkReferences,
-        inconsistencies: this.plugin.settings.ollama.checkInconsistencies,
-        suggestions: this.plugin.settings.ollama.checkSuggestions,
-      };
-
-      const result = await this.plugin.ollamaService.analyseChapter(
-        body, entities, alreadyFound,
-        { chapterName, actName, sceneName },
-        checks,
-        (done, total) => {
-          this.updateAiProgress(done, total);
-        },
-        this.aiParagraphHashes,
-        this.aiParagraphFindings,
-      );
-
-      // Update caches
-      this.aiParagraphHashes = result.hashes;
-      this.aiParagraphFindings = new Map();
-      for (const f of result.findings) {
-        const idx = (f as AiFinding & { _paraIdx?: number })._paraIdx ?? -1;
-        if (idx >= 0) {
-          const arr = this.aiParagraphFindings.get(idx) ?? [];
-          arr.push(f);
-          this.aiParagraphFindings.set(idx, arr);
-        }
-      }
-
-      // Separate reference findings: merge into normal entity lists, don't show as cards
-      const refFindings = result.findings.filter(f => f.type === 'reference');
-      const nonRefFindings = result.findings.filter(f => f.type !== 'reference');
-
-      // Build extra entity lists from reference findings
-      this.aiExtraEntities = { characters: [], locations: [], items: [], lore: [] };
-      for (const ref of refFindings) {
-        if (!ref.entityName) continue;
-        const etype = ref.entityType || 'character';
-        if (etype === 'character' && !this.aiExtraEntities.characters.includes(ref.entityName)) {
-          this.aiExtraEntities.characters.push(ref.entityName);
-        } else if (etype === 'location' && !this.aiExtraEntities.locations.includes(ref.entityName)) {
-          this.aiExtraEntities.locations.push(ref.entityName);
-        } else if (etype === 'item' && !this.aiExtraEntities.items.includes(ref.entityName)) {
-          this.aiExtraEntities.items.push(ref.entityName);
-        } else if (etype === 'lore' && !this.aiExtraEntities.lore.includes(ref.entityName)) {
-          this.aiExtraEntities.lore.push(ref.entityName);
-        }
-      }
-
-      this.aiFindings = nonRefFindings;
-      this.aiLastAnalysedHash = hash;
-      this.aiIsAnalysing = false;
-
-      // Re-render the full sidebar so merged entities appear in normal sections
-      void this.render();
-      this.pushHighlightsToEditor(chapterText);
-    } catch (err) {
-      this.aiIsAnalysing = false;
-      const msg = err instanceof Error ? err.message : String(err);
-      new Notice(t('ollama.analysisError', { error: msg }));
-      this.renderAiSectionContent();
-    }
-  }
-
-  /** Update the progress indicator inside the AI section while analysing. */
-  private updateAiProgress(done: number, total: number): void {
-    if (!this.aiSectionEl) return;
-    const bar = this.aiSectionEl.querySelector<HTMLElement>('.novalist-ai-progress-fill');
-    const label = this.aiSectionEl.querySelector<HTMLElement>('.novalist-ai-progress-label');
-    if (bar) bar.style.width = `${Math.round((done / total) * 100)}%`;
-    if (label) label.textContent = `${done} / ${total}`;
-  }
-
-  /** Render the AI Assistant section container (persists across re-renders). */
-  private renderAiSection(parent: HTMLElement): void {
-    if (!this.plugin.settings.ollama.enabled) return;
-
-    const section = parent.createDiv('novalist-overview-section novalist-ai-sidebar-section');
-
-    // Section title row with action buttons
-    const titleRow = section.createDiv('novalist-ai-sidebar-title-row');
-    titleRow.createEl('div', { text: t('ollama.sidebarTitle'), cls: 'novalist-overview-section-title' });
-
-    const actions = titleRow.createDiv('novalist-ai-sidebar-actions');
-
-    // Auto-analyse toggle
-    const autoBtn = actions.createEl('button', {
-      cls: `novalist-ai-sidebar-auto-btn${this.aiAutoAnalyse ? ' is-active' : ''}`,
-      attr: { title: t('ollama.autoAnalyseDesc') },
-    });
-    autoBtn.createEl('span', { text: t('ollama.autoAnalyse') });
-    autoBtn.addEventListener('click', () => {
-      this.aiAutoAnalyse = !this.aiAutoAnalyse;
-      autoBtn.toggleClass('is-active', this.aiAutoAnalyse);
-      if (this.aiAutoAnalyse && this.currentChapterFile) {
-        this.scheduleAiAnalysis();
-      }
-    });
-
-    // Re-analyse button
-    const rerunBtn = actions.createEl('button', {
-      cls: 'novalist-ai-sidebar-rerun-btn',
-      attr: { title: t('ollama.reanalyse') },
-    });
-    rerunBtn.createEl('span', { text: '\u21BB' }); // ↻ refresh icon
-    rerunBtn.addEventListener('click', () => {
-      this.aiLastAnalysedHash = '';
-      this.aiParagraphHashes.clear();
-      this.aiParagraphFindings.clear();
-      void this.runAiAnalysis();
-    });
-
-    // AI content container (re-rendered independently)
-    this.aiSectionEl = section.createDiv('novalist-ai-sidebar-content');
-    this.renderAiSectionContent();
-  }
-
-  /** Re-render only the AI findings area (without touching the rest of the sidebar). */
-  private renderAiSectionContent(): void {
-    if (!this.aiSectionEl) return;
-    this.aiSectionEl.empty();
-
-    // Not configured
-    if (!this.plugin.settings.ollama.enabled || !this.plugin.settings.ollama.model) {
-      this.aiSectionEl.createEl('p', { text: t('ollama.sidebarDisabled'), cls: 'novalist-ai-sidebar-hint' });
-      return;
-    }
-
-    // No chapter
-    if (!this.currentChapterFile || !this.plugin.isChapterFile(this.currentChapterFile)) {
-      this.aiSectionEl.createEl('p', { text: t('ollama.sidebarNoChapter'), cls: 'novalist-ai-sidebar-hint' });
-      return;
-    }
-
-    // Loading
-    if (this.aiIsAnalysing) {
-      const loading = this.aiSectionEl.createDiv('novalist-ai-sidebar-loading');
-      loading.createEl('div', { cls: 'novalist-ai-spinner' });
-      loading.createEl('span', { text: t('ollama.analysing') });
-      // Progress bar
-      const progressWrap = loading.createDiv('novalist-ai-progress');
-      progressWrap.createDiv('novalist-ai-progress-fill');
-      loading.createEl('span', { text: '', cls: 'novalist-ai-progress-label' });
-      return;
-    }
-
-    // No findings yet — prompt to run
-    if (this.aiFindings.length === 0 && !this.aiLastAnalysedHash) {
-      const hint = this.aiSectionEl.createDiv('novalist-ai-sidebar-hint');
-      const runBtn = hint.createEl('button', {
-        text: t('ollama.reanalyse'),
-        cls: 'mod-cta novalist-ai-sidebar-run-btn',
-      });
-      runBtn.addEventListener('click', () => void this.runAiAnalysis());
-      return;
-    }
-
-    // Sub-tabs (references are merged into normal entity lists, not shown here)
-    const tabBar = this.aiSectionEl.createDiv('novalist-ai-sidebar-tabs');
-    const tabDefs: { key: AiFilterTab; label: string }[] = [
-      { key: 'all', label: t('ollama.tabAll') },
-      { key: 'inconsistency', label: t('ollama.tabInconsistencies') },
-      { key: 'suggestion', label: t('ollama.tabSuggestions') },
-    ];
-    for (const td of tabDefs) {
-      const count = td.key === 'all' ? this.aiFindings.length : this.aiFindings.filter(f => f.type === td.key).length;
-      const btn = tabBar.createEl('button', {
-        cls: `novalist-ai-sidebar-tab${td.key === this.aiActiveTab ? ' is-active' : ''}`,
-        attr: { 'data-tab': td.key },
-      });
-      btn.createEl('span', { text: td.label });
-      if (count > 0) {
-        btn.createEl('span', { text: String(count), cls: 'novalist-ai-sidebar-tab-count' });
-      }
-      btn.addEventListener('click', () => {
-        this.aiActiveTab = td.key;
-        this.renderAiSectionContent();
-      });
-    }
-
-    // Filtered findings
-    const filtered = this.aiActiveTab === 'all'
-      ? this.aiFindings
-      : this.aiFindings.filter(f => f.type === this.aiActiveTab);
-
-    if (filtered.length === 0) {
-      this.aiSectionEl.createEl('p', { text: t('ollama.noFindings'), cls: 'novalist-ai-sidebar-hint' });
-      return;
-    }
-
-    const list = this.aiSectionEl.createDiv('novalist-ai-sidebar-findings');
-    for (const finding of filtered) {
-      this.renderAiFinding(list, finding);
-    }
-  }
-
-  /** Render a single AI finding card in the sidebar. */
-  private renderAiFinding(container: HTMLElement, finding: AiFinding): void {
-    const card = container.createDiv('novalist-ai-sidebar-finding');
-    card.addClass(`novalist-ai-sidebar-finding--${finding.type}`);
-
-    // Header row: badge + title
-    const header = card.createDiv('novalist-ai-sidebar-finding-header');
-    const badgeLabel = this.getAiBadgeLabel(finding.type);
-    const badge = header.createEl('span', { text: badgeLabel, cls: 'novalist-ai-badge' });
-    badge.addClass(`novalist-ai-badge--${finding.type}`);
-    badge.setAttribute('aria-label', badgeLabel);
-    header.createEl('span', { text: finding.title, cls: 'novalist-ai-sidebar-finding-title' });
-
-    // Description
-    if (finding.description) {
-      card.createEl('p', { text: finding.description, cls: 'novalist-ai-sidebar-finding-desc' });
-    }
-
-    // Excerpt
-    if (finding.excerpt) {
-      card.createEl('blockquote', { text: finding.excerpt, cls: 'novalist-ai-excerpt' });
-    }
-
-    // Entity info
-    if (finding.entityName) {
-      const info = card.createDiv('novalist-ai-entity-info');
-      info.createEl('span', { text: finding.entityName, cls: 'novalist-ai-entity-name' });
-      if (finding.entityType) {
-        info.createEl('span', { text: ` (${finding.entityType})`, cls: 'novalist-ai-entity-type' });
-      }
-    }
-
-    // Action buttons
-    const actions = card.createDiv('novalist-ai-sidebar-finding-actions');
-
-    if (finding.type === 'suggestion' && finding.entityName) {
-      const createBtn = actions.createEl('button', { text: t('ollama.createEntity'), cls: 'mod-cta novalist-ai-action-btn' });
-      createBtn.addEventListener('click', () => {
-        this.createEntityFromSuggestion(finding);
-        card.addClass('is-dismissed');
-      });
-    }
-
-    const dismissBtn = actions.createEl('button', { text: t('ollama.dismiss'), cls: 'novalist-ai-action-btn' });
-    dismissBtn.addEventListener('click', () => {
-      this.aiFindings = this.aiFindings.filter(f => f !== finding);
-      this.renderAiSectionContent();
-    });
-  }
-
-  private getAiBadgeLabel(type: AiFindingType): string {
-    switch (type) {
-      case 'reference': return t('ollama.findingReference');
-      case 'inconsistency': return t('ollama.findingInconsistency');
-      case 'suggestion': return t('ollama.findingSuggestion');
-    }
-  }
-
-  private createEntityFromSuggestion(finding: AiFinding): void {
-    const entityType = finding.entityType || 'character';
-    switch (entityType) {
-      case 'character':
-        this.plugin.openCharacterModal(finding.entityName);
-        break;
-      case 'location':
-        this.plugin.openLocationModal(finding.entityName);
-        break;
-      case 'item':
-        this.plugin.openItemModal(finding.entityName);
-        break;
-      case 'lore':
-        this.plugin.openLoreModal(finding.entityName);
-        break;
-      default:
-        this.plugin.openCharacterModal(finding.entityName);
-        break;
-    }
-  }
-
-  /**
-   * Convert AI findings into editor highlights by locating each finding's
-   * excerpt in the chapter text.
-   */
-  private pushHighlightsToEditor(chapterText: string): void {
-    const highlights: AiHighlight[] = [];
-    for (const finding of this.aiFindings) {
-      if (!finding.excerpt) continue;
-      // Find the excerpt position in the chapter text (case-insensitive)
-      const idx = chapterText.toLowerCase().indexOf(finding.excerpt.toLowerCase());
-      if (idx === -1) continue;
-      highlights.push({
-        from: idx,
-        to: idx + finding.excerpt.length,
-        type: finding.type,
-        title: `[${finding.type}] ${finding.title}`,
-      });
-    }
-    this.plugin.pushAiHighlightsToEditor(highlights);
   }
 
   private renderPlotBoardSection(parent: HTMLElement): void {

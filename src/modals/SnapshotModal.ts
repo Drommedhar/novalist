@@ -391,3 +391,85 @@ export class SnapshotListModal extends Modal {
     this.contentEl.empty();
   }
 }
+
+// ─── Snapshot-all modal ─────────────────────────────────────────────
+
+/**
+ * Modal that asks for a snapshot name, then creates a snapshot with that
+ * name for every chapter in the project.
+ */
+export class SnapshotAllModal extends Modal {
+  private plugin: NovalistPlugin;
+
+  constructor(app: App, plugin: NovalistPlugin) {
+    super(app);
+    this.plugin = plugin;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl('h3', { text: t('snapshot.allTitle') });
+    contentEl.createEl('p', {
+      text: t('snapshot.allDesc'),
+      cls: 'setting-item-description',
+    });
+
+    let snapshotName = '';
+
+    new Setting(contentEl)
+      .setName(t('snapshot.name'))
+      .setDesc(t('snapshot.nameDesc'))
+      .addText((text) => {
+        text.setPlaceholder(t('snapshot.namePlaceholder'));
+        text.onChange((value) => {
+          snapshotName = value;
+        });
+        setTimeout(() => text.inputEl.focus(), 50);
+        text.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void doCreate();
+          }
+        });
+      });
+
+    const doCreate = async (): Promise<void> => {
+      const name = snapshotName.trim();
+      if (!name) {
+        new Notice(t('snapshot.nameRequired'));
+        return;
+      }
+
+      const chapters = this.plugin.getChapterDescriptionsSync();
+      if (chapters.length === 0) {
+        new Notice(t('snapshot.allNoChapters'));
+        this.close();
+        return;
+      }
+
+      const root = this.plugin.resolvedProjectPath();
+      for (const chapter of chapters) {
+        await createSnapshot(this.app.vault, root, chapter.file, name, chapter.id);
+      }
+
+      new Notice(t('snapshot.allCreated', { count: String(chapters.length) }));
+      this.close();
+    };
+
+    const buttonDiv = contentEl.createDiv('modal-button-container');
+
+    new ButtonComponent(buttonDiv)
+      .setButtonText(t('modal.cancel'))
+      .onClick(() => this.close());
+
+    new ButtonComponent(buttonDiv)
+      .setButtonText(t('modal.create'))
+      .setCta()
+      .onClick(() => void doCreate());
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}

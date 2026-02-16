@@ -13,7 +13,7 @@ import { normalizeCharacterRole } from '../utils/characterUtils';
 import { ChapterListData, CharacterListData, CHAPTER_STATUSES, ChapterStatus } from '../types';
 import { ChapterEditData } from '../modals/ChapterDescriptionModal';
 import { SceneNameModal } from '../modals/SceneNameModal';
-import { SnapshotNameModal, SnapshotListModal } from '../modals/SnapshotModal';
+import { SnapshotNameModal, SnapshotListModal, SnapshotAllModal } from '../modals/SnapshotModal';
 import { t } from '../i18n';
 
 export const NOVELIST_EXPLORER_VIEW_TYPE = 'novalist-explorer';
@@ -509,6 +509,14 @@ export class NovalistExplorerView extends ItemView {
           .setIcon('history')
           .onClick(() => {
             new SnapshotListModal(this.app, this.plugin, file).open();
+          });
+      });
+      menu.addItem((item) => {
+        item
+          .setTitle(t('explorer.snapshotAll'))
+          .setIcon('camera')
+          .onClick(() => {
+            new SnapshotAllModal(this.app, this.plugin).open();
           });
       });
     }

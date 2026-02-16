@@ -177,20 +177,6 @@ Novalist tracks how many words you write each day against a configurable daily g
 
 When you paste or drop an image into a project file, Novalist automatically moves it to your configured `Images/` folder, handling name collisions and preserving link integrity.
 
-### AI Analysis (Ollama)
-
-Connect a local [Ollama](https://ollama.com) LLM to analyse chapter text. Enable the feature in settings, point it at your Ollama server, and select a model. Each check can be individually enabled or disabled to speed up analysis. The analysis is override-aware — character data reflects the effective state for the current act, chapter, and scene. Text is analysed paragraph-by-paragraph for more consistent results and to enable incremental re-scanning — only paragraphs whose content has changed since the last run are sent to the model.
-
-- **Reference detection** — finds indirect entity references the regex system cannot catch, such as pronouns, relationship terms (e.g. "his wife" → the character linked as Wife), nicknames, and abbreviated names. Direct name matches already found by regex are excluded.
-- **Consistency checking** — flags contradictions between the chapter text and your entity data (e.g. wrong hair colour, mismatched location details). Relationship-based references are also checked. Entity data reflects act/chapter/scene overrides.
-- **Entity suggestions** — spots characters, locations, items, or lore concepts that appear in the text but do not exist in the project, and offers to create them.
-
-Findings are shown in two places: the **AI Assistant section** at the bottom of the context sidebar (with sub-tabs and action buttons), and as **inline highlights** directly in the editor — references get a solid underline, inconsistencies a wavy red underline, and suggestions a dashed green underline. Hover over a highlight to see the finding title.
-
-An `Auto` toggle enables iterative re-analysis — the chapter is automatically re-analysed 5 seconds after each edit. A manual re-analyse button is always available. Unchanged paragraphs are skipped automatically, making re-analysis faster after small edits.
-
-The toolbar gains an `AI` tab with a one-click analyse button and a `Full Story` button. The **Full Story Analysis** modal iterates over every chapter in the project, analysing each paragraph individually with a progress bar and estimated time remaining. A cancel button lets you stop at any time. Results are grouped by chapter. Findings can also be viewed in a standalone modal via the command palette. Model lifecycle can be managed automatically (loaded on demand, unloaded when the plugin closes) or manually via the settings panel.
-
 ### Acts
 
 Acts are an optional grouping layer above chapters. Create an act from the explorer's `Add act` button, then right-click a chapter and use `Assign to act` to place it under that act. Chapters in the explorer are grouped under collapsible act headers, and unassigned chapters appear in a separate section. Acts are stored as frontmatter on chapter files and managed entirely through the explorer UI — no manual frontmatter editing required. Right-click an act header to rename or delete it. Drag chapters between act groups to reassign them. Character sheet overrides can target an act, applying to all chapters within it unless a more specific override exists.
@@ -210,6 +196,7 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 Snapshot a chapter before a major rewrite and compare versions side-by-side.
 
 - **Create a snapshot** from the command palette (`Snapshot chapter`) or by right-clicking a chapter in the explorer and selecting `Snapshot`. Enter a descriptive name (e.g. "Before restructuring") and the current chapter content is saved to the project's `Snapshots/` folder.
+- **Snapshot all chapters** at once via the command palette (`Snapshot all chapters`) or the explorer context menu (`Snapshot All Chapters`). Enter a single name and a snapshot is created for every chapter in the project.
 - **View snapshots** from the command palette (`View chapter snapshots`) or the explorer context menu (`View Snapshots`). The modal lists all snapshots for the chapter sorted by date, newest first.
 - **Compare** a snapshot against the current chapter text in a side-by-side diff view with added, removed, and unchanged lines highlighted. A summary bar shows line counts.
 - **Restore** a snapshot to replace the chapter body while preserving frontmatter.
@@ -247,13 +234,6 @@ Snapshot a chapter before a major rewrite and compare versions side-by-side.
 | Project word goal | Target total word count | 50000 |
 | Role colors | Color picker per character role | Auto-discovered |
 | Gender colors | Color picker per gender value | Auto-discovered |
-| Enable AI assistant | Use a local Ollama LLM for reference detection, consistency checks, and entity suggestions | Off |
-| Ollama server URL | Address of the Ollama API server | `http://127.0.0.1:11434` |
-| Model | Select which Ollama model to use for analysis | _(none)_ |
-| Auto-manage model | Automatically load the model when needed and unload it when the plugin closes | On |
-| Check references | Detect indirect entity references (pronouns, relationship terms) that regex matching cannot find | On |
-| Check inconsistencies | Flag contradictions between the chapter text and entity details | On |
-| Check suggestions | Identify unregistered entities mentioned in the text | On |
 
 ## Commands
 
@@ -279,9 +259,8 @@ Snapshot a chapter before a major rewrite and compare versions side-by-side.
 | Switch project | Switch the active project |
 | Rename active project | Rename the active project and its vault folder |
 | Snapshot chapter | Save a named snapshot of the current chapter |
+| Snapshot all chapters | Save a named snapshot of every chapter at once |
 | View chapter snapshots | List, compare, restore, or delete snapshots for the current chapter |
-| Analyse chapter with AI | Run Ollama-powered reference, consistency, and suggestion analysis on the active chapter |
-| Analyse full story with AI | Analyse every chapter in the project with a progress bar, ETA, and grouped results |
 
 ## Internationalization
 
