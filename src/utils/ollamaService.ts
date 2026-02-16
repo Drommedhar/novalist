@@ -292,6 +292,12 @@ class CopilotAcpClient {
     }
   }
 
+  /** Select a model for this session. Also callable externally after model change. */
+  async applyModel(modelId: string): Promise<void> {
+    if (!this.isAlive || !this.sessionId) return;
+    await this.selectModel(modelId);
+  }
+
   /** Select a model for this session via the best available mechanism. */
   private async selectModel(modelId: string): Promise<void> {
     // Try session/set_config_option first (generic ACP path)
@@ -478,8 +484,12 @@ export class OllamaService {
     this.copilotClient.modelId = mid;
   }
 
-  setCopilotModel(modelId: string): void {
+  async setCopilotModel(modelId: string): Promise<void> {
     this.copilotClient.modelId = modelId;
+    // If the session is already running, apply the model switch immediately
+    if (this.copilotClient.isAlive) {
+      await this.copilotClient.applyModel(modelId);
+    }
   }
 
   /** List available models from the Copilot CLI via ACP. */

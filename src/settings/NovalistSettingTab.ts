@@ -717,7 +717,7 @@ export class NovalistSettingTab extends PluginSettingTab {
     copilotModelDropdown.addEventListener('change', () => {
       this.plugin.settings.ollama.copilotModel = copilotModelDropdown.value;
       if (this.plugin.ollamaService) {
-        this.plugin.ollamaService.setCopilotModel(copilotModelDropdown.value);
+        void this.plugin.ollamaService.setCopilotModel(copilotModelDropdown.value);
       }
       void this.plugin.saveSettings();
     });
