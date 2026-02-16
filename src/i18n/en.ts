@@ -24,6 +24,7 @@ export default {
   'cmd.switchProject': 'Switch project',
   'cmd.renameProject': 'Rename active project',
   'cmd.snapshotChapter': 'Snapshot chapter',
+  'cmd.snapshotAllChapters': 'Snapshot all chapters',
   'cmd.viewSnapshots': 'View chapter snapshots',
 
   // ── Notice / toast messages ────────────────────────────────────────
@@ -722,6 +723,11 @@ export default {
   'snapshot.notAChapter': 'Active file is not a chapter.',
   'snapshot.lineRestoreTooltip': 'Click to apply this change',
   'snapshot.lineRestored': 'Line change applied.',
+  'snapshot.allTitle': 'Snapshot All Chapters',
+  'snapshot.allDesc': 'Creates a snapshot with the same name for every chapter in the project.',
+  'snapshot.allCreated': 'Created {count} snapshot(s) across all chapters.',
+  'snapshot.allNoChapters': 'No chapters found in the project.',
   'explorer.snapshot': 'Snapshot',
+  'explorer.snapshotAll': 'Snapshot All Chapters',
   'explorer.viewSnapshots': 'View Snapshots',
 } as const;

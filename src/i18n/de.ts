@@ -24,6 +24,7 @@ export default {
   'cmd.switchProject': 'Projekt wechseln',
   'cmd.renameProject': 'Aktives Projekt umbenennen',
   'cmd.snapshotChapter': 'Kapitel-Snapshot erstellen',
+  'cmd.snapshotAllChapters': 'Alle Kapitel snapshottten',
   'cmd.viewSnapshots': 'Kapitel-Snapshots anzeigen',
 
   // ── Notice / toast messages ────────────────────────────────────────
@@ -717,6 +718,11 @@ export default {
   'snapshot.notAChapter': 'Aktive Datei ist kein Kapitel.',
   'snapshot.lineRestoreTooltip': 'Klicken, um diese Änderung zu übernehmen',
   'snapshot.lineRestored': 'Zeilenänderung übernommen.',
+  'snapshot.allTitle': 'Alle Kapitel snapshottten',
+  'snapshot.allDesc': 'Erstellt einen Snapshot mit demselben Namen für jedes Kapitel im Projekt.',
+  'snapshot.allCreated': '{count} Snapshot(s) über alle Kapitel erstellt.',
+  'snapshot.allNoChapters': 'Keine Kapitel im Projekt gefunden.',
   'explorer.snapshot': 'Snapshot',
+  'explorer.snapshotAll': 'Alle Kapitel snapshottten',
   'explorer.viewSnapshots': 'Snapshots anzeigen',
 } as const;

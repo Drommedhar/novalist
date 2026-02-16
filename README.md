@@ -196,6 +196,7 @@ A toggle in settings that adds printed-book-style spacing between paragraphs in 
 Snapshot a chapter before a major rewrite and compare versions side-by-side.
 
 - **Create a snapshot** from the command palette (`Snapshot chapter`) or by right-clicking a chapter in the explorer and selecting `Snapshot`. Enter a descriptive name (e.g. "Before restructuring") and the current chapter content is saved to the project's `Snapshots/` folder.
+- **Snapshot all chapters** at once via the command palette (`Snapshot all chapters`) or the explorer context menu (`Snapshot All Chapters`). Enter a single name and a snapshot is created for every chapter in the project.
 - **View snapshots** from the command palette (`View chapter snapshots`) or the explorer context menu (`View Snapshots`). The modal lists all snapshots for the chapter sorted by date, newest first.
 - **Compare** a snapshot against the current chapter text in a side-by-side diff view with added, removed, and unchanged lines highlighted. A summary bar shows line counts.
 - **Restore** a snapshot to replace the chapter body while preserving frontmatter.
@@ -258,6 +259,7 @@ Snapshot a chapter before a major rewrite and compare versions side-by-side.
 | Switch project | Switch the active project |
 | Rename active project | Rename the active project and its vault folder |
 | Snapshot chapter | Save a named snapshot of the current chapter |
+| Snapshot all chapters | Save a named snapshot of every chapter at once |
 | View chapter snapshots | List, compare, restore, or delete snapshots for the current chapter |
 
 ## Internationalization

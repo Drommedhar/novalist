@@ -55,7 +55,7 @@ import { ChapterDescriptionModal, ChapterEditData } from './modals/ChapterDescri
 import { SceneNameModal } from './modals/SceneNameModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { ProjectSwitcherModal, ProjectRenameModal } from './modals/ProjectModals';
-import { SnapshotNameModal, SnapshotListModal } from './modals/SnapshotModal';
+import { SnapshotNameModal, SnapshotListModal, SnapshotAllModal } from './modals/SnapshotModal';
 import { updateSnapshotChapterName } from './utils/snapshotUtils';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole, computeInterval } from './utils/characterUtils';
@@ -420,6 +420,15 @@ export default class NovalistPlugin extends Plugin {
         if (canRun && file) {
           new SnapshotListModal(this.app, this, file).open();
         }
+      }
+    });
+
+    // Snapshot every chapter at once
+    this.addCommand({
+      id: 'snapshot-all-chapters',
+      name: t('cmd.snapshotAllChapters'),
+      callback: () => {
+        new SnapshotAllModal(this.app, this).open();
       }
     });
 
