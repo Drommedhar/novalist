@@ -527,9 +527,16 @@ export interface WordCountGoals {
 }
 
 // ─── Ollama / AI Assistant ──────────────────────────────────────────
+export type AiProvider = 'ollama' | 'copilot';
+export type AiAnalysisMode = 'paragraph' | 'chapter';
+
 export interface OllamaSettings {
   /** Whether the AI assistant feature is enabled. */
   enabled: boolean;
+  /** Which LLM provider to use. */
+  provider: AiProvider;
+  /** Whether to analyse per paragraph or send the whole chapter at once. */
+  analysisMode: AiAnalysisMode;
   /** Base URL of the Ollama API server. */
   baseUrl: string;
   /** Model name to use (e.g. "llama3.2:latest"). */
@@ -542,4 +549,8 @@ export interface OllamaSettings {
   checkInconsistencies: boolean;
   /** Enable entity suggestion detection in AI analysis. */
   checkSuggestions: boolean;
+  /** Path to the Copilot CLI executable (used when provider is 'copilot'). */
+  copilotPath: string;
+  /** Copilot model to use (e.g. "gpt-4o"). Empty means Copilot's default. */
+  copilotModel: string;
 }

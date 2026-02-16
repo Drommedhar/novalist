@@ -438,13 +438,14 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
-    // Analyse chapter with AI (Ollama)
+    // Analyse chapter with AI (Ollama / Copilot)
     this.addCommand({
       id: 'analyse-chapter-ai',
       name: t('cmd.analyseChapter'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
-        const canRun = file instanceof TFile && this.isChapterFile(file) && this.settings.ollama.enabled;
+        const isCopilot = this.settings.ollama.provider === 'copilot';
+        const canRun = file instanceof TFile && this.isChapterFile(file) && this.settings.ollama.enabled && (isCopilot || !!this.settings.ollama.model);
         if (checking) return canRun;
         if (canRun && file) {
           this.analyseChapterWithAi(file);
@@ -452,12 +453,13 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
-    // Analyse full story with AI (Ollama)
+    // Analyse full story with AI (Ollama / Copilot)
     this.addCommand({
       id: 'analyse-full-story-ai',
       name: t('cmd.analyseFullStory'),
       checkCallback: (checking: boolean) => {
-        const canRun = this.settings.ollama.enabled && !!this.settings.ollama.model;
+        const isCopilot = this.settings.ollama.provider === 'copilot';
+        const canRun = this.settings.ollama.enabled && (isCopilot || !!this.settings.ollama.model);
         if (checking) return canRun;
         if (canRun) {
           this.analyseFullStoryWithAi();
@@ -623,9 +625,12 @@ export default class NovalistPlugin extends Plugin {
   onunload(): void {
     // Clean up paragraph spacing class
     document.body.classList.remove('novalist-book-paragraph-spacing');
-    // Unload Ollama model if auto-managed
+    // Unload Ollama model if auto-managed, and stop Copilot process
     if (this.ollamaService && this.settings.ollama.autoManageModel) {
       void this.ollamaService.unloadModel();
+    }
+    if (this.ollamaService) {
+      void this.ollamaService.stopCopilot();
     }
   }
 
@@ -682,6 +687,10 @@ export default class NovalistPlugin extends Plugin {
     if (ol.checkReferences === undefined) ol.checkReferences = true;
     if (ol.checkInconsistencies === undefined) ol.checkInconsistencies = true;
     if (ol.checkSuggestions === undefined) ol.checkSuggestions = true;
+    if (!ol.provider) ol.provider = 'ollama';
+    if (!ol.analysisMode) ol.analysisMode = 'paragraph';
+    if (!ol.copilotPath) ol.copilotPath = 'copilot';
+    if (ol.copilotModel === undefined) ol.copilotModel = '';
 
     // Migrate templates: ensure templates exist for older saved data
     if (!this.settings.characterTemplates || this.settings.characterTemplates.length === 0) {
@@ -1794,21 +1803,33 @@ order: ${orderValue}
   // ─── AI / Ollama ─────────────────────────────────────────────────
 
   initOllamaService(): void {
-    if (this.settings.ollama.enabled && this.settings.ollama.model) {
+    const vaultPath = (this.app.vault.adapter as unknown as { basePath?: string }).basePath ?? '';
+    if (this.settings.ollama.enabled && (this.settings.ollama.model || this.settings.ollama.provider === 'copilot')) {
       this.ollamaService = new OllamaService(
         this.settings.ollama.baseUrl,
         this.settings.ollama.model,
+        this.settings.ollama.provider,
+        this.settings.ollama.analysisMode,
+        this.settings.ollama.copilotPath,
+        vaultPath,
+        this.settings.ollama.copilotModel,
       );
     } else {
       this.ollamaService = new OllamaService(
         this.settings.ollama.baseUrl || 'http://127.0.0.1:11434',
         this.settings.ollama.model || '',
+        this.settings.ollama.provider || 'ollama',
+        this.settings.ollama.analysisMode || 'paragraph',
+        this.settings.ollama.copilotPath || 'copilot',
+        vaultPath,
+        this.settings.ollama.copilotModel || '',
       );
     }
   }
 
   analyseChapterWithAi(file: TFile): void {
-    if (!this.settings.ollama.enabled || !this.settings.ollama.model) {
+    const isCopilot = this.settings.ollama.provider === 'copilot';
+    if (!this.settings.ollama.enabled || (!isCopilot && !this.settings.ollama.model)) {
       new Notice(t('ollama.notConfigured'));
       return;
     }
@@ -1819,7 +1840,8 @@ order: ${orderValue}
   }
 
   analyseFullStoryWithAi(): void {
-    if (!this.settings.ollama.enabled || !this.settings.ollama.model) {
+    const isCopilot = this.settings.ollama.provider === 'copilot';
+    if (!this.settings.ollama.enabled || (!isCopilot && !this.settings.ollama.model)) {
       new Notice(t('ollama.notConfigured'));
       return;
     }

@@ -86,21 +86,22 @@ export class FullStoryAnalysisModal extends Modal {
     }
 
     // Count total paragraphs across all chapters for progress
+    const isChapterMode = this.plugin.settings.ollama.analysisMode === 'chapter';
     const chapterTexts: { file: TFile; name: string; body: string; paragraphs: string[] }[] = [];
     let totalParagraphs = 0;
     for (const ch of chapters) {
       const raw = await this.app.vault.read(ch.file);
       const body = this.plugin.stripFrontmatter(raw);
-      const paragraphs = OllamaService.splitParagraphs(body);
+      const paragraphs = isChapterMode ? [] : OllamaService.splitParagraphs(body);
       chapterTexts.push({ file: ch.file, name: ch.name, body, paragraphs });
-      totalParagraphs += paragraphs.length;
+      totalParagraphs += isChapterMode ? 1 : paragraphs.length;
     }
 
     this.renderProgress(0, totalParagraphs, chapterTexts[0].name, 0);
 
     try {
-      // Auto-load model if configured
-      if (this.plugin.settings.ollama.autoManageModel) {
+      // Auto-load model if configured (Ollama only)
+      if (this.plugin.settings.ollama.provider === 'ollama' && this.plugin.settings.ollama.autoManageModel) {
         const loaded = await this.plugin.ollamaService.isModelLoaded();
         if (!loaded) {
           await this.plugin.ollamaService.loadModel();
@@ -141,7 +142,7 @@ export class FullStoryAnalysisModal extends Modal {
           },
         );
 
-        doneSoFar += ch.paragraphs.length;
+        doneSoFar += isChapterMode ? 1 : ch.paragraphs.length;
 
         if (result.findings.length > 0) {
           this.findings.push({

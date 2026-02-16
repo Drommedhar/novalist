@@ -1,4 +1,7 @@
 import { requestUrl, RequestUrlParam } from 'obsidian';
+import { spawn } from 'child_process';
+import type { ChildProcess } from 'child_process';
+import type { AiProvider, AiAnalysisMode } from '../types';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -60,16 +63,395 @@ export interface EnabledChecks {
   suggestions: boolean;
 }
 
+// ─── Copilot ACP Client ─────────────────────────────────────────────
+
+/** Shape of a model entry in the ACP session/new response. */
+interface AcpAvailableModel {
+  modelId: string;
+  name: string;
+  description?: string;
+}
+
+/** Models block returned by session/new. */
+interface AcpModelsBlock {
+  availableModels?: AcpAvailableModel[];
+  currentModelId?: string;
+}
+
+/** Shape of a config option (configOptions) from ACP session/new response. */
+interface AcpConfigOption {
+  id?: string;
+  category?: string;
+  currentValue?: string;
+}
+
+/** Simplified model entry exposed to the settings UI. */
+export interface CopilotModelInfo {
+  id: string;
+  name: string;
+}
+
+/**
+ * Lightweight Agent Client Protocol (ACP) client that communicates with
+ * GitHub Copilot CLI over NDJSON/stdio.
+ */
+class CopilotAcpClient {
+  private proc: ChildProcess | null = null;
+  private nextId = 1;
+  private buffer = '';
+  private sessionId: string | null = null;
+  private pendingRequests = new Map<number, {
+    resolve: (value: unknown) => void;
+    reject: (reason: Error) => void;
+  }>();
+  /** Accumulates text chunks from the current prompt. */
+  private promptText = '';
+  /** Absolute path used as cwd for sessions. */
+  vaultPath = '';
+  /** Desired model id (empty = use Copilot default). */
+  modelId = '';
+  /** Config option id for the model selector (discovered at session start). */
+  private modelConfigId: string | null = null;
+  /** Cached available models from last session/new response. */
+  private cachedModels: CopilotModelInfo[] = [];
+
+  constructor(private execPath: string) {}
+
+  /** Whether the process is alive. */
+  get isAlive(): boolean {
+    return this.proc !== null && this.proc.exitCode === null;
+  }
+
+  /** Start the ACP process, initialize, and create a session. */
+  async start(): Promise<void> {
+    if (this.isAlive && this.sessionId) return;
+
+    await this.stop();
+    this.sessionId = null;
+
+    console.debug('[Novalist ACP] Spawning:', this.execPath, '--acp --stdio');
+    this.proc = spawn(this.execPath, ['--acp', '--stdio'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    this.buffer = '';
+    this.proc.stdout?.on('data', (chunk: Buffer) => {
+      this.buffer += chunk.toString();
+      this.processBuffer();
+    });
+
+    this.proc.stderr?.on('data', (chunk: Buffer) => {
+      console.warn('[Novalist ACP] stderr:', chunk.toString());
+    });
+
+    this.proc.on('error', (err: Error) => {
+      console.error('[Novalist ACP] Process error:', err.message);
+      for (const [, p] of this.pendingRequests) {
+        p.reject(err);
+      }
+      this.pendingRequests.clear();
+      this.proc = null;
+    });
+
+    this.proc.on('exit', (code) => {
+      console.debug('[Novalist ACP] Process exited with code:', code);
+      this.proc = null;
+      this.sessionId = null;
+    });
+
+    // Initialize the ACP connection
+    await this.rpcRequest('initialize', {
+      protocolVersion: 1,
+      clientCapabilities: {},
+      clientInfo: {
+        name: 'novalist',
+        title: 'Novalist',
+        version: '1.0.0',
+      },
+    });
+
+    // Create a session
+    const sessionResult = await this.rpcRequest('session/new', {
+      cwd: this.vaultPath || process.cwd(),
+      mcpServers: [],
+    }) as { sessionId: string; models?: AcpModelsBlock; configOptions?: AcpConfigOption[] };
+    this.sessionId = sessionResult.sessionId;
+
+    // Cache available models from the response
+    this.parseModels(sessionResult);
+
+    // Discover config option id for model selector (if available via configOptions)
+    this.modelConfigId = null;
+    if (sessionResult.configOptions) {
+      for (const opt of sessionResult.configOptions) {
+        if (opt.category === 'model' && opt.id) {
+          this.modelConfigId = opt.id;
+          break;
+        }
+      }
+    }
+
+    // Apply the desired model if one is configured
+    if (this.modelId) {
+      await this.selectModel(this.modelId);
+    }
+  }
+
+  /** Stop the ACP process. */
+  async stop(): Promise<void> {
+    if (!this.proc) return;
+    const p = this.proc;
+    this.proc = null;
+    this.sessionId = null;
+    p.stdin?.end();
+    p.kill('SIGTERM');
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => resolve(), 2000);
+      p.once('exit', () => { clearTimeout(timeout); resolve(); });
+    });
+  }
+
+  /** Send a cancel notification to abort the current prompt. */
+  cancelPrompt(): void {
+    if (this.sessionId && this.proc?.stdin?.writable) {
+      this.sendMessage({
+        jsonrpc: '2.0',
+        method: 'session/cancel',
+        params: { sessionId: this.sessionId },
+      });
+    }
+  }
+
+  /** Send a text prompt and return the full response text. */
+  async generate(prompt: string): Promise<string> {
+    if (!this.isAlive || !this.sessionId) {
+      await this.start();
+    }
+
+    this.promptText = '';
+
+    const result = await this.rpcRequest('session/prompt', {
+      sessionId: this.sessionId,
+      prompt: [{ type: 'text', text: prompt }],
+    }) as { stopReason: string };
+
+    const text = this.promptText;
+    this.promptText = '';
+
+    console.debug(`[Novalist ACP] Prompt done — stopReason: ${result.stopReason}, text length: ${text.length}`);
+
+    if (result.stopReason !== 'end_turn') {
+      throw new Error(`Copilot stopped with reason: ${result.stopReason}`);
+    }
+
+    return text;
+  }
+
+  /** Check whether the Copilot CLI is reachable by spawning a short-lived process. */
+  async isAvailable(): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      try {
+        const p = spawn(this.execPath, ['--help'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        let done = false;
+        const finish = (ok: boolean): void => {
+          if (done) return;
+          done = true;
+          resolve(ok);
+        };
+        p.on('error', () => finish(false));
+        p.on('exit', (code) => finish(code === 0));
+        setTimeout(() => { p.kill(); finish(false); }, 5000);
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+
+  /**
+   * Enumerate available models. Uses the cached list from the last
+   * session/new response. Starts the process if needed.
+   */
+  async listModels(): Promise<CopilotModelInfo[]> {
+    if (!this.isAlive || !this.sessionId) {
+      await this.start();
+    }
+    return this.cachedModels;
+  }
+
+  // ── model helpers ───────────────────────────────────────────
+
+  /** Parse models from a session/new response and cache them. */
+  private parseModels(result: { models?: AcpModelsBlock; configOptions?: AcpConfigOption[] }): void {
+    this.cachedModels = [];
+
+    // Primary path: models.availableModels (Copilot CLI)
+    if (result.models?.availableModels) {
+      for (const m of result.models.availableModels) {
+        this.cachedModels.push({ id: m.modelId, name: m.name ?? m.modelId });
+      }
+    }
+  }
+
+  /** Select a model for this session via the best available mechanism. */
+  private async selectModel(modelId: string): Promise<void> {
+    // Try session/set_config_option first (generic ACP path)
+    if (this.modelConfigId) {
+      try {
+        await this.rpcRequest('session/set_config_option', {
+          sessionId: this.sessionId,
+          configId: this.modelConfigId,
+          value: modelId,
+        });
+        return;
+      } catch {
+        // fall through to set_model
+      }
+    }
+
+    // Try session/set_model (Copilot-specific path)
+    try {
+      await this.rpcRequest('session/set_model', {
+        sessionId: this.sessionId,
+        modelId,
+      });
+    } catch {
+      console.warn(`[Novalist ACP] Could not set model to ${modelId}`);
+    }
+  }
+
+  // ── internal helpers ──────────────────────────────────────────
+
+  private sendMessage(msg: object): void {
+    if (!this.proc?.stdin?.writable) {
+      console.warn('[Novalist ACP] Cannot send — stdin not writable');
+      return;
+    }
+    const json = JSON.stringify(msg);
+    console.debug('[Novalist ACP] >>>', json.length > 500 ? json.slice(0, 500) + '…' : json);
+    this.proc.stdin.write(json + '\n');
+  }
+
+  private async rpcRequest(method: string, params: object): Promise<unknown> {
+    const id = this.nextId++;
+    console.debug(`[Novalist ACP] RPC request #${id}: ${method}`);
+    return new Promise<unknown>((resolve, reject) => {
+      this.pendingRequests.set(id, { resolve, reject });
+      this.sendMessage({ jsonrpc: '2.0', id, method, params });
+    });
+  }
+
+  private processBuffer(): void {
+    const lines = this.buffer.split('\n');
+    this.buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const msg = JSON.parse(trimmed) as Record<string, unknown>;
+        // Log everything except verbose agent_message_chunk notifications
+        const update = (msg['params'] as Record<string, unknown> | undefined)?.['update'] as Record<string, unknown> | undefined;
+        if (update?.['sessionUpdate'] === 'agent_message_chunk') {
+          const c = update['content'] as { text?: string } | undefined;
+          console.debug('[Novalist ACP] <<< agent_message_chunk:', (c?.text ?? '').slice(0, 120));
+        } else {
+          console.debug('[Novalist ACP] <<<', trimmed.length > 500 ? trimmed.slice(0, 500) + '…' : trimmed);
+        }
+        this.handleMessage(msg);
+      } catch {
+        console.warn('[Novalist ACP] Invalid JSON line:', trimmed.slice(0, 200));
+      }
+    }
+  }
+
+  private handleMessage(msg: Record<string, unknown>): void {
+    // Response to one of our requests
+    if ('id' in msg && ('result' in msg || 'error' in msg)) {
+      const id = msg['id'] as number;
+      const pending = this.pendingRequests.get(id);
+      if (pending) {
+        this.pendingRequests.delete(id);
+        if ('error' in msg) {
+          const err = msg['error'] as { message?: string };
+          pending.reject(new Error(err?.message ?? 'ACP error'));
+        } else {
+          pending.resolve(msg['result']);
+        }
+      }
+      return;
+    }
+
+    // Incoming request from the agent (e.g. permission request)
+    if ('id' in msg && 'method' in msg) {
+      this.handleIncomingRequest(msg);
+      return;
+    }
+
+    // Notification (no id)
+    if ('method' in msg && !('id' in msg)) {
+      this.handleNotification(msg);
+    }
+  }
+
+  private handleIncomingRequest(msg: Record<string, unknown>): void {
+    const method = msg['method'] as string;
+    const id = msg['id'] as number;
+    if (method === 'session/request_permission') {
+      // Auto-reject all permission requests — we only want text generation.
+      const params = msg['params'] as Record<string, unknown> | undefined;
+      const options = (params?.['options'] ?? []) as Array<{ optionId?: string; kind?: string }>;
+      const rejectOpt = options.find(o => o.kind === 'reject_once') ?? options.find(o => o.kind === 'reject_always');
+      if (rejectOpt?.optionId) {
+        this.sendMessage({ jsonrpc: '2.0', id, result: { outcome: { outcome: 'selected', optionId: rejectOpt.optionId } } });
+      } else {
+        this.sendMessage({ jsonrpc: '2.0', id, result: { outcome: { outcome: 'cancelled' } } });
+      }
+    } else {
+      this.sendMessage({ jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not supported' } });
+    }
+  }
+
+  private handleNotification(msg: Record<string, unknown>): void {
+    const method = msg['method'] as string;
+    if (method !== 'session/update') return;
+    const params = msg['params'] as Record<string, unknown> | undefined;
+    const update = params?.['update'] as Record<string, unknown> | undefined;
+    if (!update) return;
+
+    if (update['sessionUpdate'] === 'agent_message_chunk') {
+      const content = update['content'] as { type?: string; text?: string } | undefined;
+      if (content?.type === 'text' && content.text) {
+        this.promptText += content.text;
+      }
+    }
+  }
+}
+
 // ─── Service ────────────────────────────────────────────────────────
 
 export class OllamaService {
   private baseUrl: string;
   private model: string;
+  private provider: AiProvider;
+  private analysisMode: AiAnalysisMode;
+  private copilotClient: CopilotAcpClient;
   private abortController: AbortController | null = null;
 
-  constructor(baseUrl: string, model: string) {
+  constructor(
+    baseUrl: string,
+    model: string,
+    provider: AiProvider = 'ollama',
+    analysisMode: AiAnalysisMode = 'paragraph',
+    copilotPath = 'copilot',
+    vaultPath = '',
+    copilotModel = '',
+  ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.model = model;
+    this.provider = provider;
+    this.analysisMode = analysisMode;
+    this.copilotClient = new CopilotAcpClient(copilotPath);
+    this.copilotClient.vaultPath = vaultPath;
+    this.copilotClient.modelId = copilotModel;
   }
 
   setModel(model: string): void {
@@ -80,8 +462,36 @@ export class OllamaService {
     this.baseUrl = url.replace(/\/+$/, '');
   }
 
+  setProvider(provider: AiProvider): void {
+    this.provider = provider;
+  }
+
+  setAnalysisMode(mode: AiAnalysisMode): void {
+    this.analysisMode = mode;
+  }
+
+  setCopilotPath(path: string): void {
+    const vp = this.copilotClient.vaultPath;
+    const mid = this.copilotClient.modelId;
+    this.copilotClient = new CopilotAcpClient(path);
+    this.copilotClient.vaultPath = vp;
+    this.copilotClient.modelId = mid;
+  }
+
+  setCopilotModel(modelId: string): void {
+    this.copilotClient.modelId = modelId;
+  }
+
+  /** List available models from the Copilot CLI via ACP. */
+  async listCopilotModels(): Promise<CopilotModelInfo[]> {
+    return this.copilotClient.listModels();
+  }
+
   /** Cancel any in-flight request. */
   cancel(): void {
+    if (this.provider === 'copilot') {
+      this.copilotClient.cancelPrompt();
+    }
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
@@ -158,9 +568,48 @@ export class OllamaService {
     }
   }
 
+  // ── Copilot helpers ────────────────────────────────────────────
+
+  /** Check whether the Copilot CLI is reachable. */
+  async isCopilotAvailable(): Promise<boolean> {
+    return this.copilotClient.isAvailable();
+  }
+
+  /** Start the Copilot ACP session (equivalent to loadModel for Ollama). */
+  async startCopilot(): Promise<boolean> {
+    try {
+      await this.copilotClient.start();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Stop the Copilot ACP session (equivalent to unloadModel for Ollama). */
+  async stopCopilot(): Promise<boolean> {
+    try {
+      await this.copilotClient.stop();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Whether the Copilot process is currently alive. */
+  get isCopilotRunning(): boolean {
+    return this.copilotClient.isAlive;
+  }
+
   // ── Generation ─────────────────────────────────────────────────
 
   private async generate(prompt: string, temperature = 0.3, maxTokens = 4096): Promise<string> {
+    if (this.provider === 'copilot') {
+      return this.copilotClient.generate(prompt);
+    }
+    return this.generateOllama(prompt, temperature, maxTokens);
+  }
+
+  private async generateOllama(prompt: string, temperature: number, maxTokens: number): Promise<string> {
     this.abortController = new AbortController();
     const body: OllamaGenerateRequest = {
       model: this.model,
@@ -212,6 +661,28 @@ export class OllamaService {
     return merged;
   }
 
+  /** Build the task instructions block shared by paragraph and chapter prompts. */
+  private buildTaskInstructions(checks: EnabledChecks, alreadyFound?: string[]): string[] {
+    const tasks: string[] = [];
+    let taskNum = 1;
+    const doRefs = checks.references;
+    const doIncon = checks.inconsistencies;
+    const doSug = checks.suggestions;
+
+    if (doRefs) {
+      tasks.push(`${taskNum}. **References** ("type":"reference"): Find places where a known entity is referenced INDIRECTLY — through relationship terms (e.g. "his wife", "her mother"), pronouns that resolve to a specific entity, nicknames, or abbreviated names. Direct name mentions that simple regex matching would catch should NOT be reported.${alreadyFound && alreadyFound.length > 0 ? ' The regex system has already found: ' + alreadyFound.join(', ') + '. Only report references the regex missed.' : ''} Use the relationship data to resolve indirect references to the correct entity. For each reference, set entityName to the full entity name.`);
+      taskNum++;
+    }
+    if (doIncon) {
+      tasks.push(`${taskNum}. **Inconsistencies** ("type":"inconsistency"): Compare the text against the known entity details (e.g. hair colour, eye colour, gender, location description, item properties). Also use relationships to check indirect references — e.g. if "his wife" is described with blue eyes but the resolved character has brown eyes, report it. Report any contradictions.`);
+      taskNum++;
+    }
+    if (doSug) {
+      tasks.push(`${taskNum}. **Suggestions** ("type":"suggestion"): Identify character names, place names, or notable objects mentioned in the text that do NOT match any known entity and could be added as new entities.`);
+    }
+    return tasks;
+  }
+
   /**
    * Analyse a single paragraph against known entities.
    * Smaller context → more deterministic output than whole-chapter analysis.
@@ -238,19 +709,7 @@ export class OllamaService {
       ? `\nChapter context: Chapter "${context.chapterName}"${context.actName ? `, Act "${context.actName}"` : ''}${context.sceneName ? `, Scene "${context.sceneName}"` : ''}. The entity details above already reflect any act/chapter/scene-specific overrides.\n`
       : '';
 
-    const tasks: string[] = [];
-    let taskNum = 1;
-    if (doRefs) {
-      tasks.push(`${taskNum}. **References** ("type":"reference"): Find places where a known entity is referenced INDIRECTLY — through relationship terms (e.g. "his wife", "her mother"), pronouns that resolve to a specific entity, nicknames, or abbreviated names. Direct name mentions that simple regex matching would catch should NOT be reported.${alreadyFound && alreadyFound.length > 0 ? ' The regex system has already found: ' + alreadyFound.join(', ') + '. Only report references the regex missed.' : ''} Use the relationship data to resolve indirect references to the correct entity. For each reference, set entityName to the full entity name.`);
-      taskNum++;
-    }
-    if (doIncon) {
-      tasks.push(`${taskNum}. **Inconsistencies** ("type":"inconsistency"): Compare the text against the known entity details (e.g. hair colour, eye colour, gender, location description, item properties). Also use relationships to check indirect references — e.g. if "his wife" is described with blue eyes but the resolved character has brown eyes, report it. Report any contradictions.`);
-      taskNum++;
-    }
-    if (doSug) {
-      tasks.push(`${taskNum}. **Suggestions** ("type":"suggestion"): Identify character names, place names, or notable objects mentioned in the text that do NOT match any known entity and could be added as new entities.`);
-    }
+    const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound);
 
     const prompt = `You are a fiction-writing assistant analysing a short passage from a novel. The project tracks entities (characters, locations, items, lore) by matching their names as plain text — no special markup is used.
 
@@ -279,9 +738,66 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
   }
 
   /**
+   * Analyse an entire chapter in a single LLM call.
+   * Better for large-context models; gives the LLM full narrative context.
+   */
+  async analyseChapterWhole(
+    chapterText: string,
+    entities: EntitySummary[],
+    alreadyFound?: string[],
+    context?: ChapterContext,
+    checks?: EnabledChecks,
+  ): Promise<AiFinding[]> {
+    const doRefs = checks?.references ?? true;
+    const doIncon = checks?.inconsistencies ?? true;
+    const doSug = checks?.suggestions ?? true;
+    if (!doRefs && !doIncon && !doSug) return [];
+
+    const entityBlock = entities.map(e => `- [${e.type}] ${e.name}: ${e.details}`).join('\n');
+
+    const alreadyFoundBlock = alreadyFound && alreadyFound.length > 0
+      ? `\nEntities already detected by regex matching (DO NOT report these as basic name-match references — only report them if you find an INDIRECT reference such as a pronoun, nickname, relationship term, or abbreviated name that the regex cannot catch):\n${alreadyFound.join(', ')}\n`
+      : '';
+
+    const contextBlock = context
+      ? `\nChapter context: Chapter "${context.chapterName}"${context.actName ? `, Act "${context.actName}"` : ''}${context.sceneName ? `, Scene "${context.sceneName}"` : ''}. The entity details above already reflect any act/chapter/scene-specific overrides.\n`
+      : '';
+
+    const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound);
+
+    const prompt = `You are a fiction-writing assistant analysing a COMPLETE chapter from a novel. The project tracks entities (characters, locations, items, lore) by matching their names as plain text — no special markup is used. You have the full chapter text, so you can detect cross-paragraph patterns and narrative-level inconsistencies.
+
+Known entities (note: relationship fields tell you who is connected — e.g. if John Doe has "Wife: Jane Doe", then "his wife" refers to Jane Doe):
+${entityBlock || '(no entities registered yet)'}
+${alreadyFoundBlock}${contextBlock}
+Full chapter text:
+"""
+${chapterText}
+"""
+
+Perform the following task(s) and return ONLY a JSON array (no markdown fences, no explanation outside the array). Each element must be an object with these fields:
+- "type": one of "reference", "inconsistency", or "suggestion"
+- "title": short heading (max 80 chars)
+- "description": concise explanation
+- "excerpt": the EXACT text from the chapter that this finding refers to (verbatim copy, max 120 chars). This will be used to locate the finding in the document.
+- "entityName": the entity name this relates to (or empty string)
+- "entityType": "character", "location", "item", "lore", or empty string
+
+${tasks.join('\n')}
+
+If a task has no findings, simply omit entries for it. Return an empty array [] if nothing is found.`;
+
+    const raw = await this.generate(prompt, 0, 8192);
+    return this.parseFindings(raw);
+  }
+
+  /**
    * Analyse chapter text paragraph-by-paragraph.
    * Reports progress via an optional callback: (done, total) => void.
    * Returns the aggregated findings.
+   *
+   * When {@link useWholeChapter} is true (or the service-level analysisMode
+   * is 'chapter'), the entire text is sent as a single prompt instead.
    */
   async analyseChapter(
     chapterText: string,
@@ -292,7 +808,17 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
     onProgress?: (done: number, total: number) => void,
     paragraphHashes?: Map<number, string>,
     cachedFindings?: Map<number, AiFinding[]>,
+    useWholeChapter?: boolean,
   ): Promise<{ findings: AiFinding[]; hashes: Map<number, string> }> {
+    const wholeChapter = useWholeChapter ?? (this.analysisMode === 'chapter');
+
+    if (wholeChapter) {
+      onProgress?.(0, 1);
+      const findings = await this.analyseChapterWhole(chapterText, entities, alreadyFound, context, checks);
+      onProgress?.(1, 1);
+      return { findings, hashes: new Map() };
+    }
+
     const doRefs = checks?.references ?? true;
     const doIncon = checks?.inconsistencies ?? true;
     const doSug = checks?.suggestions ?? true;

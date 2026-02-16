@@ -279,11 +279,15 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   projectData: {},
   ollama: {
     enabled: false,
+    provider: 'ollama',
+    analysisMode: 'paragraph',
     baseUrl: 'http://127.0.0.1:11434',
     model: '',
     autoManageModel: true,
     checkReferences: true,
     checkInconsistencies: true,
     checkSuggestions: true,
+    copilotPath: 'copilot',
+    copilotModel: '',
   },
 };

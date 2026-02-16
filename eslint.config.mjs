@@ -67,6 +67,7 @@ export default defineConfig([
   {
     // ollamaService.ts needs the native fetch API for streaming responses
     // — requestUrl does not support ReadableStream / NDJSON streaming.
+    // It also uses child_process for the Copilot ACP client.
     files: ["src/utils/ollamaService.ts"],
     languageOptions: {
       globals: {
@@ -75,10 +76,13 @@ export default defineConfig([
         ReadableStreamDefaultReader: "readonly",
         RequestInit: "readonly",
         TextDecoder: "readonly",
+        process: "readonly",
+        Buffer: "readonly",
       },
     },
     rules: {
       "no-restricted-globals": "off",
+      "import/no-nodejs-modules": "off",
     },
   },
 ]);

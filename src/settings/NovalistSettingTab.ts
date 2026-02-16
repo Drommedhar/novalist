@@ -423,7 +423,7 @@ export class NovalistSettingTab extends PluginSettingTab {
           }
         }));
 
-    // ── AI Assistant (Ollama) ──────────────────────────────────────
+    // ── AI Assistant ──────────────────────────────────────────────
     new Setting(containerEl)
       .setName(t('ollama.settings'))
       .setHeading();
@@ -446,6 +446,82 @@ export class NovalistSettingTab extends PluginSettingTab {
   }
 
   private renderOllamaSettings(containerEl: HTMLElement): void {
+    const provider = this.plugin.settings.ollama.provider;
+
+    // Provider selector
+    new Setting(containerEl)
+      .setName(t('ollama.provider'))
+      .setDesc(t('ollama.providerDesc'))
+      .addDropdown(dd => dd
+        .addOption('ollama', t('ollama.providerOllama'))
+        .addOption('copilot', t('ollama.providerCopilot'))
+        .setValue(provider)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.provider = value as 'ollama' | 'copilot';
+          await this.plugin.saveSettings();
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setProvider(value as 'ollama' | 'copilot');
+          }
+          this.display();
+        }));
+
+    // Analysis mode selector
+    new Setting(containerEl)
+      .setName(t('ollama.analysisMode'))
+      .setDesc(t('ollama.analysisModeDesc'))
+      .addDropdown(dd => dd
+        .addOption('paragraph', t('ollama.analysisModeP'))
+        .addOption('chapter', t('ollama.analysisModeC'))
+        .setValue(this.plugin.settings.ollama.analysisMode)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.analysisMode = value as 'paragraph' | 'chapter';
+          await this.plugin.saveSettings();
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setAnalysisMode(value as 'paragraph' | 'chapter');
+          }
+        }));
+
+    // ── Provider-specific settings ──────────────────────────────
+    if (provider === 'ollama') {
+      this.renderOllamaProviderSettings(containerEl);
+    } else {
+      this.renderCopilotProviderSettings(containerEl);
+    }
+
+    // ── Shared check toggles ──────────────────────────────────────
+    new Setting(containerEl)
+      .setName(t('ollama.checkReferences'))
+      .setDesc(t('ollama.checkReferencesDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.checkReferences)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.checkReferences = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t('ollama.checkInconsistencies'))
+      .setDesc(t('ollama.checkInconsistenciesDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.checkInconsistencies)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.checkInconsistencies = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName(t('ollama.checkSuggestions'))
+      .setDesc(t('ollama.checkSuggestionsDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.checkSuggestions)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.checkSuggestions = value;
+          await this.plugin.saveSettings();
+        }));
+  }
+
+  /** Render settings specific to the Ollama provider. */
+  private renderOllamaProviderSettings(containerEl: HTMLElement): void {
     new Setting(containerEl)
       .setName(t('ollama.baseUrl'))
       .setDesc(t('ollama.baseUrlDesc'))
@@ -524,37 +600,6 @@ export class NovalistSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
-    // Per-check toggles
-    new Setting(containerEl)
-      .setName(t('ollama.checkReferences'))
-      .setDesc(t('ollama.checkReferencesDesc'))
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.ollama.checkReferences)
-        .onChange(async (value) => {
-          this.plugin.settings.ollama.checkReferences = value;
-          await this.plugin.saveSettings();
-        }));
-
-    new Setting(containerEl)
-      .setName(t('ollama.checkInconsistencies'))
-      .setDesc(t('ollama.checkInconsistenciesDesc'))
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.ollama.checkInconsistencies)
-        .onChange(async (value) => {
-          this.plugin.settings.ollama.checkInconsistencies = value;
-          await this.plugin.saveSettings();
-        }));
-
-    new Setting(containerEl)
-      .setName(t('ollama.checkSuggestions'))
-      .setDesc(t('ollama.checkSuggestionsDesc'))
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.ollama.checkSuggestions)
-        .onChange(async (value) => {
-          this.plugin.settings.ollama.checkSuggestions = value;
-          await this.plugin.saveSettings();
-        }));
-
     // Load / Unload buttons
     const modelMgmt = new Setting(containerEl);
     modelMgmt.addButton(btn => btn
@@ -576,6 +621,110 @@ export class NovalistSettingTab extends PluginSettingTab {
 
     // Run initial population
     void populateModels();
+  }
+
+  /** Render settings specific to the GitHub Copilot provider. */
+  private renderCopilotProviderSettings(containerEl: HTMLElement): void {
+    new Setting(containerEl)
+      .setName(t('ollama.copilotPath'))
+      .setDesc(t('ollama.copilotPathDesc'))
+      .addText(text => text
+        .setPlaceholder(t('ollama.copilotPathPlaceholder'))
+        .setValue(this.plugin.settings.ollama.copilotPath)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.copilotPath = value;
+          await this.plugin.saveSettings();
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setCopilotPath(value);
+          }
+        }));
+
+    // Status + verify
+    const statusSetting = new Setting(containerEl)
+      .setName(t('ollama.copilotStatus'));
+    const statusDesc = statusSetting.descEl;
+    statusDesc.setText(t('ollama.copilotChecking'));
+    statusDesc.addClass('novalist-ollama-status');
+
+    const verifyCopilot = async (): Promise<void> => {
+      statusDesc.setText(t('ollama.copilotChecking'));
+      statusDesc.toggleClass('mod-success', false);
+      statusDesc.toggleClass('mod-warning', false);
+      if (!this.plugin.ollamaService) return;
+      const ok = await this.plugin.ollamaService.isCopilotAvailable();
+      statusDesc.setText(ok ? t('ollama.copilotReady') : t('ollama.copilotNotFound'));
+      statusDesc.toggleClass('mod-success', ok);
+      statusDesc.toggleClass('mod-warning', !ok);
+    };
+
+    statusSetting.addButton(btn => btn
+      .setButtonText(t('ollama.copilotVerify'))
+      .setCta()
+      .onClick(() => { void verifyCopilot(); }));
+
+    void verifyCopilot();
+
+    // ── Copilot model selector ──
+    const copilotModelSetting = new Setting(containerEl)
+      .setName(t('ollama.copilotModel'))
+      .setDesc(t('ollama.copilotModelDesc'));
+
+    const copilotModelDropdown = copilotModelSetting.controlEl.createEl('select', { cls: 'dropdown' });
+    const copilotRefreshBtn = copilotModelSetting.controlEl.createEl('button', {
+      text: t('ollama.copilotModelRefresh'),
+      cls: 'mod-cta',
+    });
+    copilotRefreshBtn.setCssProps({ 'margin-left': '8px' });
+
+    // Default option always present
+    const addDefaultOption = (): void => {
+      const opt = copilotModelDropdown.createEl('option', {
+        text: t('ollama.copilotModelDefault'),
+        value: '',
+      });
+      if (!this.plugin.settings.ollama.copilotModel) opt.selected = true;
+    };
+
+    const populateCopilotModels = async (): Promise<void> => {
+      copilotModelDropdown.empty();
+      addDefaultOption();
+      if (!this.plugin.ollamaService) return;
+      copilotModelDropdown.disabled = true;
+      copilotRefreshBtn.disabled = true;
+      try {
+        const models = await this.plugin.ollamaService.listCopilotModels();
+        if (models.length === 0) {
+          const opt = copilotModelDropdown.createEl('option', {
+            text: t('ollama.copilotNoModels'),
+            value: '__none__',
+          });
+          opt.disabled = true;
+        } else {
+          for (const m of models) {
+            const opt = copilotModelDropdown.createEl('option', {
+              text: m.name,
+              value: m.id,
+            });
+            if (m.id === this.plugin.settings.ollama.copilotModel) opt.selected = true;
+          }
+        }
+      } finally {
+        copilotModelDropdown.disabled = false;
+        copilotRefreshBtn.disabled = false;
+      }
+    };
+
+    copilotModelDropdown.addEventListener('change', () => {
+      this.plugin.settings.ollama.copilotModel = copilotModelDropdown.value;
+      if (this.plugin.ollamaService) {
+        this.plugin.ollamaService.setCopilotModel(copilotModelDropdown.value);
+      }
+      void this.plugin.saveSettings();
+    });
+
+    copilotRefreshBtn.addEventListener('click', () => { void populateCopilotModels(); });
+
+    void populateCopilotModels();
   }
 
   private renderTemplatesForCategory(containerEl: HTMLElement): void {

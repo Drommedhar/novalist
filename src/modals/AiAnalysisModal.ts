@@ -71,8 +71,8 @@ export class AiAnalysisModal extends Modal {
     this.renderLoading();
 
     try {
-      // Auto-load model if configured
-      if (this.plugin.settings.ollama.autoManageModel) {
+      // Auto-load model if configured (Ollama only)
+      if (this.plugin.settings.ollama.provider === 'ollama' && this.plugin.settings.ollama.autoManageModel) {
         const loaded = await this.plugin.ollamaService.isModelLoaded();
         if (!loaded) {
           await this.plugin.ollamaService.loadModel();
