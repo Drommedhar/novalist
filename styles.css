@@ -5332,8 +5332,29 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   background: rgba(80, 200, 80, 0.12);
 }
 
+.novalist-diff-modified td:nth-child(1),
+.novalist-diff-modified td:nth-child(2) {
+  background: rgba(255, 80, 80, 0.12);
+}
+
+.novalist-diff-modified td:nth-child(3),
+.novalist-diff-modified td:nth-child(4) {
+  background: rgba(80, 200, 80, 0.12);
+}
+
 .novalist-diff-unchanged td {
   background: transparent;
+}
+
+/* Inline (word-level) change highlight */
+.novalist-diff-inline-del {
+  background: rgba(255, 80, 80, 0.30);
+  border-radius: 2px;
+}
+
+.novalist-diff-inline-ins {
+  background: rgba(80, 200, 80, 0.30);
+  border-radius: 2px;
 }
 
 /* Clickable diff rows (added / removed) */
@@ -5359,4 +5380,14 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-diff-clickable.novalist-diff-removed:hover td:nth-child(3),
 .novalist-diff-clickable.novalist-diff-removed:hover td:nth-child(4) {
   background: transparent;
+}
+
+.novalist-diff-clickable.novalist-diff-modified:hover td:nth-child(1),
+.novalist-diff-clickable.novalist-diff-modified:hover td:nth-child(2) {
+  background: rgba(255, 80, 80, 0.25);
+}
+
+.novalist-diff-clickable.novalist-diff-modified:hover td:nth-child(3),
+.novalist-diff-clickable.novalist-diff-modified:hover td:nth-child(4) {
+  background: rgba(80, 200, 80, 0.25);
 }

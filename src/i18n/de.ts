@@ -711,7 +711,7 @@ export default {
   'snapshot.compareTitle': 'Vergleich \u2013 {name}',
   'snapshot.snapshotVersion': 'Snapshot: {name}',
   'snapshot.currentVersion': 'Aktuelle Version',
-  'snapshot.diffStats': '+{added} hinzugef\u00fcgt, \u2212{removed} entfernt, {unchanged} unver\u00e4ndert',
+  'snapshot.diffStats': '+{added} hinzugef\u00fcgt, \u2212{removed} entfernt, ~{modified} ge\u00e4ndert, {unchanged} unver\u00e4ndert',
   'snapshot.restored': 'Kapitel aus Snapshot \u201e{name}\u201c wiederhergestellt.',
   'snapshot.deleted': 'Snapshot \u201e{name}\u201c gel\u00f6scht.',
   'snapshot.notAChapter': 'Aktive Datei ist kein Kapitel.',

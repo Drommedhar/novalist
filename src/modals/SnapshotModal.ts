@@ -7,6 +7,7 @@ import {
   deleteSnapshot,
   getSnapshotBody,
   computeLineDiff,
+  refineLineDiff,
   stripFrontmatter,
   type SnapshotInfo,
   type DiffLine,
@@ -185,11 +186,12 @@ export class SnapshotListModal extends Modal {
     const currentBody = stripFrontmatter(currentContent);
     const snapshotBody = await getSnapshotBody(this.app.vault, snapshot);
 
-    const diffLines = computeLineDiff(snapshotBody, currentBody);
+    const diffLines = refineLineDiff(computeLineDiff(snapshotBody, currentBody));
 
     // Summary bar
     const added = diffLines.filter((l) => l.type === 'added').length;
     const removed = diffLines.filter((l) => l.type === 'removed').length;
+    const modified = diffLines.filter((l) => l.type === 'modified').length;
     const unchanged = diffLines.filter((l) => l.type === 'unchanged').length;
 
     const stats = contentEl.createDiv('novalist-diff-stats');
@@ -197,6 +199,7 @@ export class SnapshotListModal extends Modal {
       text: t('snapshot.diffStats', {
         added: added.toString(),
         removed: removed.toString(),
+        modified: modified.toString(),
         unchanged: unchanged.toString(),
       }),
       cls: 'novalist-diff-stats-text',
@@ -225,28 +228,58 @@ export class SnapshotListModal extends Modal {
         cls: `novalist-diff-row novalist-diff-${line.type}`,
       });
 
-      // Left side
-      tr.createEl('td', {
-        text: line.type !== 'added' ? (line.leftLineNo?.toString() ?? '') : '',
-        cls: 'novalist-diff-linenum',
-      });
-      tr.createEl('td', {
-        text: line.type !== 'added' ? (line.content || '\u00A0') : '',
-        cls: 'novalist-diff-content',
-      });
+      if (line.type === 'modified') {
+        // ── Modified line: show both sides with inline highlights ──
+        tr.createEl('td', {
+          text: line.leftLineNo?.toString() ?? '',
+          cls: 'novalist-diff-linenum',
+        });
 
-      // Right side
-      tr.createEl('td', {
-        text: line.type !== 'removed' ? (line.rightLineNo?.toString() ?? '') : '',
-        cls: 'novalist-diff-linenum',
-      });
-      tr.createEl('td', {
-        text: line.type !== 'removed' ? (line.content || '\u00A0') : '',
-        cls: 'novalist-diff-content',
-      });
+        const leftTd = tr.createEl('td', { cls: 'novalist-diff-content' });
+        for (const seg of line.oldSegments ?? []) {
+          if (seg.changed) {
+            leftTd.createSpan({ text: seg.text, cls: 'novalist-diff-inline-del' });
+          } else {
+            leftTd.appendText(seg.text);
+          }
+        }
 
-      // Click-to-restore for added/removed rows
-      if (line.type === 'added' || line.type === 'removed') {
+        tr.createEl('td', {
+          text: line.rightLineNo?.toString() ?? '',
+          cls: 'novalist-diff-linenum',
+        });
+
+        const rightTd = tr.createEl('td', { cls: 'novalist-diff-content' });
+        for (const seg of line.newSegments ?? []) {
+          if (seg.changed) {
+            rightTd.createSpan({ text: seg.text, cls: 'novalist-diff-inline-ins' });
+          } else {
+            rightTd.appendText(seg.text);
+          }
+        }
+      } else {
+        // ── Unchanged / added / removed lines ──
+        tr.createEl('td', {
+          text: line.type !== 'added' ? (line.leftLineNo?.toString() ?? '') : '',
+          cls: 'novalist-diff-linenum',
+        });
+        tr.createEl('td', {
+          text: line.type !== 'added' ? (line.content || '\u00A0') : '',
+          cls: 'novalist-diff-content',
+        });
+
+        tr.createEl('td', {
+          text: line.type !== 'removed' ? (line.rightLineNo?.toString() ?? '') : '',
+          cls: 'novalist-diff-linenum',
+        });
+        tr.createEl('td', {
+          text: line.type !== 'removed' ? (line.content || '\u00A0') : '',
+          cls: 'novalist-diff-content',
+        });
+      }
+
+      // Click-to-restore for added / removed / modified rows
+      if (line.type === 'added' || line.type === 'removed' || line.type === 'modified') {
         tr.classList.add('novalist-diff-clickable');
         tr.title = t('snapshot.lineRestoreTooltip');
         tr.addEventListener('click', () => {
@@ -291,6 +324,12 @@ export class SnapshotListModal extends Modal {
       const idx = target.rightLineNo - 1;
       if (idx >= 0 && idx < bodyLines.length && bodyLines[idx] === target.content) {
         bodyLines.splice(idx, 1);
+      }
+    } else if (target.type === 'modified' && target.rightLineNo != null && target.oldContent != null) {
+      // Replace the current line with the snapshot version
+      const idx = target.rightLineNo - 1;
+      if (idx >= 0 && idx < bodyLines.length && bodyLines[idx] === target.newContent) {
+        bodyLines[idx] = target.oldContent;
       }
     } else if (target.type === 'removed' && target.leftLineNo != null) {
       // Re-insert this line into the current body.

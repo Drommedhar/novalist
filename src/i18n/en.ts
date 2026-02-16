@@ -716,7 +716,7 @@ export default {
   'snapshot.compareTitle': 'Compare \u2013 {name}',
   'snapshot.snapshotVersion': 'Snapshot: {name}',
   'snapshot.currentVersion': 'Current Version',
-  'snapshot.diffStats': '+{added} added, \u2212{removed} removed, {unchanged} unchanged',
+  'snapshot.diffStats': '+{added} added, \u2212{removed} removed, ~{modified} modified, {unchanged} unchanged',
   'snapshot.restored': 'Chapter restored from snapshot "{name}".',
   'snapshot.deleted': 'Snapshot "{name}" deleted.',
   'snapshot.notAChapter': 'Active file is not a chapter.',
