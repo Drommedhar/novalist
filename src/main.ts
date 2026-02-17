@@ -2357,7 +2357,8 @@ order: ${orderValue}
       endIdx = startIdx + nextChapterMatch.index;
     }
     
-    const chapterBlock = chapterText.substring(startIdx, endIdx);
+    // Prepend \n so the Images regex can match even when Images is the first line
+    const chapterBlock = '\n' + chapterText.substring(startIdx, endIdx);
     
     // Find Images section within this chapter block
     const imagesMatch = chapterBlock.match(/\n\s*[-*]\s*Images:\s*\n/);
