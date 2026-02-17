@@ -256,16 +256,14 @@ export class NovalistSidebarView extends ItemView {
           if (age) {
             let displayAge = age;
             // Compute age from birthdate when template uses date mode
-            if (charData.templateId) {
-              const charTemplate = this.plugin.getCharacterTemplate(charData.templateId);
-              if (charTemplate.ageMode === 'date' && chapterId) {
-                const scName = this.currentScene ?? undefined;
-                const chapterDate = this.plugin.getDateForChapterScene(chapterId, scName);
-                if (chapterDate) {
-                  const interval = computeInterval(age, chapterDate, charTemplate.ageIntervalUnit ?? 'years');
-                  if (interval !== null && interval >= 0) {
-                    displayAge = String(interval);
-                  }
+            const charTemplate = this.plugin.getCharacterTemplate(charData.templateId);
+            if (charTemplate.ageMode === 'date' && chapterId) {
+              const scName = this.currentScene ?? undefined;
+              const chapterDate = this.plugin.getDateForChapterScene(chapterId, scName);
+              if (chapterDate) {
+                const interval = computeInterval(age, chapterDate, charTemplate.ageIntervalUnit ?? 'years');
+                if (interval !== null && interval >= 0) {
+                  displayAge = String(interval);
                 }
               }
             }
