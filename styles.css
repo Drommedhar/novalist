@@ -21,10 +21,11 @@
 }
 
 .novalist-sidebar-header {
-  margin-bottom: 15px;
+  margin: 0 0 15px 0;
   padding-bottom: 10px;
   border-bottom: 2px solid var(--interactive-accent);
   color: var(--text-normal);
+  font-size: 16px;
 }
 
 .novalist-tabs {
@@ -272,6 +273,28 @@
 }
 
 /* Modal Styles */
+.novalist-modal-description {
+  width: 100%;
+  min-height: 80px;
+  max-height: 200px;
+  padding: 8px 10px;
+  margin: 4px 0 8px;
+  resize: vertical;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-modifier-form-field);
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.novalist-modal-description:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+}
+
 .modal-button-container {
   display: flex;
   justify-content: flex-end;
@@ -3846,6 +3869,13 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   color: var(--text-normal);
 }
 
+.novalist-sidebar-scene-date {
+  margin-left: auto;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* Statistics popup: scene rows */
 .novalist-stats-popup-scene-row td {
   font-size: 0.85em;
@@ -5762,6 +5792,101 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-ai-highlight--suggestion {
   background: rgba(64, 192, 96, 0.12);
   border-bottom: 2px dashed var(--text-success, #40c060);
+}
+
+/* ─── AI Highlight Peek Card ──────────────────────────────────── */
+
+.novalist-ai-peek-card {
+  position: absolute;
+  z-index: var(--layer-popover, 400);
+  width: 380px;
+  max-width: 90vw;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-small);
+  overflow: hidden;
+  animation: novalist-ai-peek-in 0.12s ease-out;
+}
+
+@keyframes novalist-ai-peek-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.novalist-ai-peek-card--reference {
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.novalist-ai-peek-card--inconsistency {
+  border-left: 3px solid var(--text-error);
+}
+
+.novalist-ai-peek-card--suggestion {
+  border-left: 3px solid var(--text-success, #40c060);
+}
+
+.novalist-ai-peek-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.novalist-ai-peek-title {
+  font-weight: 600;
+  flex: 1;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.novalist-ai-peek-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 2px;
+  border-radius: var(--radius-s);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.novalist-ai-peek-close:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.novalist-ai-peek-desc {
+  margin: 0;
+  padding: 8px 10px 4px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.novalist-ai-peek-excerpt {
+  margin: 4px 10px 4px;
+  padding: 4px 10px;
+  border-left: 3px solid var(--interactive-accent);
+  color: var(--text-faint);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.novalist-ai-peek-entity {
+  padding: 2px 10px 4px;
+}
+
+.novalist-ai-peek-actions {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px 8px;
 }
 
 /* ─── AI Progress Bar ─────────────────────────────────────────── */

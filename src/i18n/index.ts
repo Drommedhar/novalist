@@ -19,6 +19,31 @@ const locales: Record<string, Translations> = {
 /** Resolved language code (set once via {@link initLocale}). */
 let currentLang = 'en';
 
+/** Map of language codes to their full English names for LLM prompt instructions. */
+const languageNames: Record<string, string> = {
+  de: 'German',
+  en: 'English',
+  es: 'Spanish',
+  fr: 'French',
+  it: 'Italian',
+  ja: 'Japanese',
+  ko: 'Korean',
+  nl: 'Dutch',
+  pl: 'Polish',
+  pt: 'Portuguese',
+  ru: 'Russian',
+  zh: 'Chinese',
+};
+
+/**
+ * Return the full English name of the current UI language
+ * (e.g. "German", "English"). Used to instruct the LLM
+ * to respond in the same language as the Obsidian UI.
+ */
+export function getLanguageName(): string {
+  return languageNames[currentLang] ?? 'English';
+}
+
 /**
  * Initialise the i18n locale.
  *

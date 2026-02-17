@@ -201,7 +201,7 @@ export class AiAnalysisModal extends Modal {
       });
     }
 
-    if (finding.type === 'suggestion' && finding.entityName) {
+    if (finding.type === 'suggestion') {
       const createBtn = actions.createEl('button', { text: t('ollama.createEntity'), cls: 'mod-cta novalist-ai-action-btn' });
       createBtn.addEventListener('click', () => {
         this.createEntityFromSuggestion(finding);
@@ -239,22 +239,24 @@ export class AiAnalysisModal extends Modal {
   }
 
   private createEntityFromSuggestion(finding: AiFinding): void {
+    const name = finding.entityName || undefined;
+    const desc = finding.description || undefined;
     const entityType = finding.entityType || 'character';
     switch (entityType) {
       case 'character':
-        this.plugin.openCharacterModal(finding.entityName);
+        this.plugin.openCharacterModal(name);
         break;
       case 'location':
-        this.plugin.openLocationModal(finding.entityName, finding.description);
+        this.plugin.openLocationModal(name, desc);
         break;
       case 'item':
-        this.plugin.openItemModal(finding.entityName, finding.description);
+        this.plugin.openItemModal(name, desc);
         break;
       case 'lore':
-        this.plugin.openLoreModal(finding.entityName, finding.description);
+        this.plugin.openLoreModal(name, desc);
         break;
       default:
-        this.plugin.openCharacterModal(finding.entityName);
+        this.plugin.openCharacterModal(name);
         break;
     }
   }

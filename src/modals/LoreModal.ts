@@ -45,11 +45,12 @@ export class LoreModal extends Modal {
         dropdown.onChange(value => { this.category = value; });
       });
     
-    new Setting(contentEl)
-      .setName(t('modal.description'))
-      .addTextArea(text => text
-        .setValue(this.description)
-        .onChange(value => this.description = value));
+    const descArea = contentEl.createEl('textarea', {
+      cls: 'novalist-modal-description',
+      attr: { placeholder: t('modal.description'), rows: '4' },
+    });
+    descArea.value = this.description;
+    descArea.addEventListener('input', () => { this.description = descArea.value; });
 
     // Template selector
     const templates = this.plugin.settings.loreTemplates;

@@ -8,7 +8,7 @@ import {
   WorkspaceLeaf,
 } from 'obsidian';
 import type NovalistPlugin from '../main';
-import { t } from '../i18n';
+import { t, getLanguageName } from '../i18n';
 import type { EntitySummary } from '../utils/ollamaService';
 
 export const AI_CHAT_VIEW_TYPE = 'novalist-ai-chat';
@@ -353,6 +353,8 @@ export class AiChatView extends ItemView {
       'and the content of the chapter the user is currently editing (if any).\n' +
       'Answer questions, offer plot advice, suggest improvements, and help with writing tasks. ' +
       'Be concise but thorough. Respect the established world and characters.\n\n' +
+      `IMPORTANT: Always respond in ${getLanguageName()}. ` +
+      'The user\'s Obsidian UI is set to this language and they expect answers in it.\n\n' +
       'IMPORTANT: The entity data below has already been adjusted for the current chapter and scene. ' +
       'Character ages, roles, appearances, and other properties reflect their state at this point in the story. ' +
       'You MUST treat these values as authoritative — do NOT invent different values.\n'

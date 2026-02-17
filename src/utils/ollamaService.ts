@@ -2,6 +2,7 @@ import { requestUrl, RequestUrlParam } from 'obsidian';
 import { spawn } from 'child_process';
 import type { ChildProcess } from 'child_process';
 import type { AiProvider, AiAnalysisMode } from '../types';
+import { getLanguageName } from '../i18n';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -900,7 +901,7 @@ export class OllamaService {
       taskNum++;
     }
     if (doSug) {
-      tasks.push(`${taskNum}. **Suggestions** ("type":"suggestion"): Identify character names, place names, or notable objects mentioned in the text that do NOT match any known entity and could be added as new entities.`);
+      tasks.push(`${taskNum}. **Suggestions** ("type":"suggestion"): Identify character names, place names, or notable objects mentioned in the text that do NOT match any known entity and could be added as new entities. For every suggestion you MUST set "entityName" to the exact name of the entity to create and "entityType" to one of "character", "location", "item", or "lore".`);
     }
     return tasks;
   }
@@ -933,7 +934,11 @@ export class OllamaService {
 
     const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound);
 
+    const lang = getLanguageName();
+
     const prompt = `You are a fiction-writing assistant analysing a short passage from a novel. The project tracks entities (characters, locations, items, lore) by matching their names as plain text — no special markup is used.
+
+IMPORTANT: Write all "title" and "description" values in ${lang}. The JSON keys and "type" / "entityType" enum values must remain in English.
 
 Known entities (note: relationship fields tell you who is connected — e.g. if John Doe has "Wife: Jane Doe", then "his wife" refers to Jane Doe):
 ${entityBlock || '(no entities registered yet)'}
@@ -987,7 +992,11 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
 
     const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound);
 
+    const lang = getLanguageName();
+
     const prompt = `You are a fiction-writing assistant analysing a COMPLETE chapter from a novel. The project tracks entities (characters, locations, items, lore) by matching their names as plain text — no special markup is used. You have the full chapter text, so you can detect cross-paragraph patterns and narrative-level inconsistencies.
+
+IMPORTANT: Write all "title" and "description" values in ${lang}. The JSON keys and "type" / "entityType" enum values must remain in English.
 
 Known entities (note: relationship fields tell you who is connected — e.g. if John Doe has "Wife: Jane Doe", then "his wife" refers to Jane Doe):
 ${entityBlock || '(no entities registered yet)'}
@@ -1111,14 +1120,29 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
           typeof obj['title'] === 'string' &&
           typeof obj['description'] === 'string'
         );
-      }).map(f => ({
-        type: f.type,
-        title: f.title,
-        description: f.description,
-        excerpt: f.excerpt ?? '',
-        entityName: f.entityName ?? '',
-        entityType: f.entityType ?? '',
-      }));
+      }).map(f => {
+        let name = f.entityName ?? '';
+        let etype = f.entityType ?? '';
+        // Fallback: extract entity name from title for suggestions
+        // Titles often follow the pattern "Entity Name as Something"
+        if (f.type === 'suggestion' && !name && f.title) {
+          const asMatch = f.title.match(/^(.+?)\s+as\s+/i);
+          if (asMatch) {
+            name = asMatch[1].trim();
+          } else {
+            name = f.title;
+          }
+          if (!etype) etype = 'item';
+        }
+        return {
+          type: f.type,
+          title: f.title,
+          description: f.description,
+          excerpt: f.excerpt ?? '',
+          entityName: name,
+          entityType: etype,
+        };
+      });
     } catch {
       return [];
     }

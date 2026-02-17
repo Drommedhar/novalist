@@ -130,6 +130,7 @@ export class NovalistSidebarView extends ItemView {
 
   async render(): Promise<void> {
     const container = this.containerEl;
+    const prevScroll = container.scrollTop;
     container.empty();
     container.addClass('novalist-sidebar');
 
@@ -160,10 +161,21 @@ export class NovalistSidebarView extends ItemView {
       if (!chapterData.lore.includes(name)) chapterData.lore.push(name);
     }
 
-    // Show current scene context if inside a scene
-    if (this.currentScene) {
+    // Show current scene/chapter context with date
+    const contextDate = this.currentScene
+      ? this.plugin.getSceneDateSync(this.currentChapterFile, this.currentScene)
+      : this.plugin.getChapterDateSync(this.currentChapterFile);
+
+    const contextLabel = this.currentScene
+      ? this.currentScene
+      : this.currentChapterFile.basename;
+
+    if (contextLabel || contextDate) {
       const sceneCtx = contextContent.createDiv('novalist-sidebar-scene-context');
-      sceneCtx.createEl('span', { text: this.currentScene, cls: 'novalist-sidebar-scene-label' });
+      sceneCtx.createEl('span', { text: contextLabel, cls: 'novalist-sidebar-scene-label' });
+      if (contextDate) {
+        sceneCtx.createEl('span', { text: contextDate, cls: 'novalist-sidebar-scene-date' });
+      }
     }
     
     // Characters Section
@@ -387,6 +399,9 @@ export class NovalistSidebarView extends ItemView {
 
     // AI Assistant Section
     this.renderAiSection(contextContent);
+
+    // Restore scroll position after re-render
+    container.scrollTop = prevScroll;
   }
 
   onClose(): Promise<void> {
@@ -696,7 +711,7 @@ export class NovalistSidebarView extends ItemView {
     // Action buttons
     const actions = card.createDiv('novalist-ai-sidebar-finding-actions');
 
-    if (finding.type === 'suggestion' && finding.entityName) {
+    if (finding.type === 'suggestion') {
       const createBtn = actions.createEl('button', { text: t('ollama.createEntity'), cls: 'mod-cta novalist-ai-action-btn' });
       createBtn.addEventListener('click', () => {
         this.createEntityFromSuggestion(finding);
@@ -719,23 +734,33 @@ export class NovalistSidebarView extends ItemView {
     }
   }
 
+  /** Dismiss a finding by matching its title and excerpt (called from AI highlight peek). */
+  dismissFindingByKey(title: string, excerpt?: string): void {
+    this.aiFindings = this.aiFindings.filter(
+      f => !(f.title === title && (f.excerpt ?? '') === (excerpt ?? '')),
+    );
+    this.renderAiSectionContent();
+  }
+
   private createEntityFromSuggestion(finding: AiFinding): void {
+    const name = finding.entityName || undefined;
+    const desc = finding.description || undefined;
     const entityType = finding.entityType || 'character';
     switch (entityType) {
       case 'character':
-        this.plugin.openCharacterModal(finding.entityName);
+        this.plugin.openCharacterModal(name);
         break;
       case 'location':
-        this.plugin.openLocationModal(finding.entityName);
+        this.plugin.openLocationModal(name, desc);
         break;
       case 'item':
-        this.plugin.openItemModal(finding.entityName);
+        this.plugin.openItemModal(name, desc);
         break;
       case 'lore':
-        this.plugin.openLoreModal(finding.entityName);
+        this.plugin.openLoreModal(name, desc);
         break;
       default:
-        this.plugin.openCharacterModal(finding.entityName);
+        this.plugin.openCharacterModal(name);
         break;
     }
   }
@@ -755,7 +780,11 @@ export class NovalistSidebarView extends ItemView {
         from: idx,
         to: idx + finding.excerpt.length,
         type: finding.type,
-        title: `[${finding.type}] ${finding.title}`,
+        title: finding.title,
+        description: finding.description,
+        excerpt: finding.excerpt,
+        entityName: finding.entityName,
+        entityType: finding.entityType,
       });
     }
     this.plugin.pushAiHighlightsToEditor(highlights);

@@ -89,6 +89,7 @@ import {
   aiHighlightExtension,
   setAiHighlightsEffect,
   clearAiHighlightsEffect,
+  aiHighlightsField,
   type AiHighlight,
   type AiHighlightCallbacks,
 } from './cm/aiHighlightExtension';
@@ -1801,7 +1802,15 @@ order: ${orderValue}
 
   openCharacterModal(prefillName?: string): void {
     const modal = new CharacterModal(this.app, this);
-    if (prefillName) modal.name = prefillName;
+    if (prefillName) {
+      const parts = prefillName.trim().split(/\s+/);
+      if (parts.length > 1) {
+        modal.surname = parts.pop()!;
+        modal.name = parts.join(' ');
+      } else {
+        modal.name = prefillName;
+      }
+    }
     modal.open();
   }
 
@@ -4176,8 +4185,50 @@ order: ${orderValue}
         const f = this.app.workspace.getActiveFile();
         return f ? this.isFileInProject(f) : false;
       },
+      createEntity: (highlight) => {
+        const name = highlight.entityName || undefined;
+        const desc = highlight.description || undefined;
+        const entityType = highlight.entityType || 'character';
+        switch (entityType) {
+          case 'character': this.openCharacterModal(name); break;
+          case 'location': this.openLocationModal(name, desc); break;
+          case 'item': this.openItemModal(name, desc); break;
+          case 'lore': this.openLoreModal(name, desc); break;
+          default: this.openCharacterModal(name); break;
+        }
+      },
+      dismissFinding: (highlight) => {
+        // Remove from sidebar
+        for (const leaf of this.app.workspace.getLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE)) {
+          (leaf.view as NovalistSidebarView).dismissFindingByKey(highlight.title, highlight.excerpt);
+        }
+        // Remove from editor highlights
+        this.removeAiHighlight(highlight);
+      },
     };
     this.registerEditorExtension(aiHighlightExtension(callbacks));
+  }
+
+  /** Remove a single AI highlight from all editors. */
+  private removeAiHighlight(highlight: AiHighlight): void {
+    this.app.workspace.iterateAllLeaves(leaf => {
+      if (leaf.view instanceof MarkdownView) {
+        const editor = leaf.view.editor;
+        const cmEditor = (editor as unknown as {
+          cm?: {
+            dispatch: (spec: { effects: unknown }) => void;
+            state: { field: (f: typeof aiHighlightsField) => AiHighlight[] };
+          };
+        }).cm;
+        if (cmEditor) {
+          const current = cmEditor.state.field(aiHighlightsField);
+          const filtered = current.filter(
+            h => !(h.from === highlight.from && h.to === highlight.to && h.title === highlight.title),
+          );
+          cmEditor.dispatch({ effects: setAiHighlightsEffect.of(filtered) });
+        }
+      }
+    });
   }
 
   /** Push AI findings as inline highlights into the active editor. */
@@ -4254,9 +4305,12 @@ order: ${orderValue}
       return;
     }
 
-    const chapterStats: ChapterOverviewStat[] = [];
+    // Pre-allocate array to preserve chapter ordering from getChapterDescriptionsSync()
+    const chapterStats: (ChapterOverviewStat | null)[] = new Array<ChapterOverviewStat | null>(chapters.length).fill(null);
 
-    for (const ch of chapters) {
+    for (let ci = 0; ci < chapters.length; ci++) {
+      const ch = chapters[ci];
+      const idx = ci;
       void vault.cachedRead(ch.file).then(content => {
         const words = countWords(content);
         totalWords += words;
@@ -4279,16 +4333,15 @@ order: ${orderValue}
           }
         }
 
-        chapterStats.push({
+        chapterStats[idx] = {
           name: ch.name,
           words,
           readability: readability.score > 0 ? readability : null,
           scenes: scenes.length > 0 ? scenes : undefined
-        });
+        };
         remaining--;
         if (remaining === 0) {
-          // Sort by name for consistent display
-          chapterStats.sort((a, b) => a.name.localeCompare(b.name));
+          const ordered = chapterStats.filter((s): s is ChapterOverviewStat => s !== null);
           const avg = chapterCount > 0 ? Math.round(totalWords / chapterCount) : 0;
           this.cachedProjectOverview = {
             totalWords,
@@ -4297,7 +4350,7 @@ order: ${orderValue}
             totalLocations: locationCount,
             readingTime: Math.ceil(totalWords / 200),
             avgChapter: avg,
-            chapters: chapterStats
+            chapters: ordered
           };
           this.updateDailyWordCount(totalWords);
         }
