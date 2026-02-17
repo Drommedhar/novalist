@@ -2740,7 +2740,7 @@ order: ${orderValue}
   getChapterDateSync(file: TFile): string {
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
-    return typeof fm?.date === 'string' ? fm.date.trim() : '';
+    return this.coerceDateValue(fm?.date);
   }
 
   /** Get the date for a specific scene within a chapter. Falls back to the chapter date. */
@@ -2748,13 +2748,36 @@ order: ${orderValue}
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
     if (fm?.sceneDates && typeof fm.sceneDates === 'object') {
-      const sd = fm.sceneDates as Record<string, string>;
-      if (typeof sd[sceneName] === 'string' && sd[sceneName].trim()) {
-        return sd[sceneName].trim();
+      const sd = fm.sceneDates as Record<string, unknown>;
+      // Try exact key match first
+      const exact = this.coerceDateValue(sd[sceneName]);
+      if (exact) return exact;
+      // Fuzzy match: normalise separators (":", " - ", " – ") so renamed
+      // headings still find their stored date entry
+      const normalize = (s: string) => s.replace(/\s*[:–—-]\s*/g, ' ').trim().toLowerCase();
+      const needle = normalize(sceneName);
+      for (const key of Object.keys(sd)) {
+        if (normalize(key) === needle) {
+          const v = this.coerceDateValue(sd[key]);
+          if (v) return v;
+        }
       }
     }
     // Fall back to chapter date
-    return typeof fm?.date === 'string' ? fm.date.trim() : '';
+    return this.coerceDateValue(fm?.date);
+  }
+
+  /** Convert an unknown YAML value (string, Date, number) to a date string. */
+  private coerceDateValue(raw: unknown): string {
+    if (raw == null) return '';
+    if (typeof raw === 'string') return raw.trim();
+    if (raw instanceof Date && !isNaN(raw.getTime())) {
+      return raw.toISOString().split('T')[0];
+    }
+    if (typeof raw === 'number' || typeof raw === 'boolean') {
+      return String(raw);
+    }
+    return '';
   }
 
   /** Set the date for a specific scene (stored in frontmatter sceneDates map). */
@@ -2899,6 +2922,7 @@ order: ${orderValue}
   }
 
   serializeFrontmatter(fm: Record<string, string | number | Record<string, string>>): string {
+      const needsQuote = (s: string) => /[:{}[\],&*?|><!%@`#]/.test(s);
       const lines: string[] = [];
       for (const [k, v] of Object.entries(fm)) {
         if (v !== null && typeof v === 'object') {
@@ -2906,7 +2930,8 @@ order: ${orderValue}
           if (entries.length === 0) continue;
           lines.push(`${k}:`);
           for (const [subK, subV] of entries) {
-            lines.push(`  ${subK}: ${String(subV)}`);
+            const safeKey = needsQuote(subK) ? `"${subK.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : subK;
+            lines.push(`  ${safeKey}: ${String(subV)}`);
           }
         } else {
           const scalar = v as string | number;
@@ -3085,16 +3110,26 @@ order: ${orderValue}
     for (const line of lines) {
       // Indented line — belongs to current nested object
       if (/^\s{2,}/.test(line) && currentKey !== null) {
-        const parts = line.split(':');
-        if (parts.length >= 2) {
-          const subKey = parts[0].trim();
-          const subVal = parts.slice(1).join(':').trim();
-          if (subKey) {
-            if (typeof fm[currentKey] !== 'object') {
-              fm[currentKey] = {};
-            }
-            (fm[currentKey] as Record<string, string>)[subKey] = subVal;
+        const trimmed = line.trim();
+        let subKey: string | null = null;
+        let subVal = '';
+        // Handle quoted keys (e.g. "Szene 4: Freunde finden": value)
+        const quotedMatch = trimmed.match(/^"((?:[^"\\]|\\.)*)"\s*:\s*(.*)/);
+        if (quotedMatch) {
+          subKey = quotedMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+          subVal = quotedMatch[2];
+        } else {
+          const parts = line.split(':');
+          if (parts.length >= 2) {
+            subKey = parts[0].trim();
+            subVal = parts.slice(1).join(':').trim();
           }
+        }
+        if (subKey) {
+          if (typeof fm[currentKey] !== 'object') {
+            fm[currentKey] = {};
+          }
+          (fm[currentKey] as Record<string, string>)[subKey] = subVal;
         }
         continue;
       }
