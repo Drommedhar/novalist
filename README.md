@@ -188,7 +188,7 @@ Two analysis modes are available. **Per paragraph** splits the text and analyses
 
 - **Reference detection** — finds indirect entity references the regex system cannot catch, such as pronouns, relationship terms (e.g. "his wife" → the character linked as Wife), nicknames, and abbreviated names. Direct name matches already found by regex are excluded.
 - **Consistency checking** — flags contradictions between the chapter text and your entity data (e.g. wrong hair colour, mismatched location details). Relationship-based references are also checked. Entity data reflects act/chapter/scene overrides.
-- **Entity suggestions** — spots characters, locations, items, or lore concepts that appear in the text but do not exist in the project, and offers to create them.
+- **Entity suggestions** — spots characters, locations, items, or lore concepts that appear in the text but do not exist in the project, and offers to create them. Each suggestion card has a `Create` button that opens the matching creation modal with the entity name and description pre-filled.
 
 Findings are shown in two places: the **AI Assistant section** at the bottom of the context sidebar (with sub-tabs and action buttons), and as **inline highlights** directly in the editor — references get a solid underline, inconsistencies a wavy red underline, and suggestions a dashed green underline. Hover over a highlight to see the finding title.
 

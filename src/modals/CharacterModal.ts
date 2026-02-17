@@ -29,12 +29,16 @@ export class CharacterModal extends Modal {
     // Name
     new Setting(contentEl)
       .setName(t('modal.name'))
-      .addText(text => text.onChange(value => this.name = value));
+      .addText(text => text
+        .setValue(this.name)
+        .onChange(value => this.name = value));
     
     // Surname
     new Setting(contentEl)
       .setName(t('modal.surname'))
-      .addText(text => text.onChange(value => this.surname = value));
+      .addText(text => text
+        .setValue(this.surname)
+        .onChange(value => this.surname = value));
 
     // Template selector
     const templates = this.plugin.settings.characterTemplates;

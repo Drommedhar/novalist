@@ -245,13 +245,13 @@ export class AiAnalysisModal extends Modal {
         this.plugin.openCharacterModal(finding.entityName);
         break;
       case 'location':
-        this.plugin.openLocationModal(finding.entityName);
+        this.plugin.openLocationModal(finding.entityName, finding.description);
         break;
       case 'item':
-        this.plugin.openItemModal(finding.entityName);
+        this.plugin.openItemModal(finding.entityName, finding.description);
         break;
       case 'lore':
-        this.plugin.openLoreModal(finding.entityName);
+        this.plugin.openLoreModal(finding.entityName, finding.description);
         break;
       default:
         this.plugin.openCharacterModal(finding.entityName);

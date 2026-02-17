@@ -29,7 +29,9 @@ export class LoreModal extends Modal {
     
     new Setting(contentEl)
       .setName(t('modal.name'))
-      .addText(text => text.onChange(value => this.name = value));
+      .addText(text => text
+        .setValue(this.name)
+        .onChange(value => this.name = value));
 
     new Setting(contentEl)
       .setName(t('modal.category'))
@@ -39,12 +41,15 @@ export class LoreModal extends Modal {
         dropdown.addOption('Culture', 'Culture');
         dropdown.addOption('History', 'History');
         dropdown.addOption('Other', 'Other');
+        dropdown.setValue(this.category);
         dropdown.onChange(value => { this.category = value; });
       });
     
     new Setting(contentEl)
       .setName(t('modal.description'))
-      .addTextArea(text => text.onChange(value => this.description = value));
+      .addTextArea(text => text
+        .setValue(this.description)
+        .onChange(value => this.description = value));
 
     // Template selector
     const templates = this.plugin.settings.loreTemplates;

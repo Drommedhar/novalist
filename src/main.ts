@@ -1805,21 +1805,24 @@ order: ${orderValue}
     modal.open();
   }
 
-  openLocationModal(prefillName?: string): void {
+  openLocationModal(prefillName?: string, prefillDescription?: string): void {
     const modal = new LocationModal(this.app, this);
     if (prefillName) modal.name = prefillName;
+    if (prefillDescription) modal.description = prefillDescription;
     modal.open();
   }
 
-  openItemModal(prefillName?: string): void {
+  openItemModal(prefillName?: string, prefillDescription?: string): void {
     const modal = new ItemModal(this.app, this);
     if (prefillName) modal.name = prefillName;
+    if (prefillDescription) modal.description = prefillDescription;
     modal.open();
   }
 
-  openLoreModal(prefillName?: string): void {
+  openLoreModal(prefillName?: string, prefillDescription?: string): void {
     const modal = new LoreModal(this.app, this);
     if (prefillName) modal.name = prefillName;
+    if (prefillDescription) modal.description = prefillDescription;
     modal.open();
   }
 

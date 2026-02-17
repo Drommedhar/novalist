@@ -269,6 +269,47 @@ export class FullStoryAnalysisModal extends Modal {
         entityInfo.createEl('span', { text: ` (${finding.entityType})`, cls: 'novalist-ai-entity-type' });
       }
     }
+
+    // Action buttons
+    const actions = card.createDiv('novalist-ai-actions');
+
+    if (finding.type === 'suggestion' && finding.entityName) {
+      const createBtn = actions.createEl('button', { text: t('ollama.createEntity'), cls: 'mod-cta novalist-ai-action-btn' });
+      createBtn.addEventListener('click', () => {
+        this.createEntityFromSuggestion(finding);
+        card.addClass('is-dismissed');
+      });
+    }
+
+    const dismissBtn = actions.createEl('button', { text: t('ollama.dismiss'), cls: 'novalist-ai-action-btn' });
+    dismissBtn.addEventListener('click', () => {
+      for (const cr of this.findings) {
+        cr.findings = cr.findings.filter(f => f !== finding);
+      }
+      this.findings = this.findings.filter(cr => cr.findings.length > 0);
+      this.renderFindings();
+    });
+  }
+
+  private createEntityFromSuggestion(finding: AiFinding): void {
+    const entityType = finding.entityType || 'character';
+    switch (entityType) {
+      case 'character':
+        this.plugin.openCharacterModal(finding.entityName);
+        break;
+      case 'location':
+        this.plugin.openLocationModal(finding.entityName, finding.description);
+        break;
+      case 'item':
+        this.plugin.openItemModal(finding.entityName, finding.description);
+        break;
+      case 'lore':
+        this.plugin.openLoreModal(finding.entityName, finding.description);
+        break;
+      default:
+        this.plugin.openCharacterModal(finding.entityName);
+        break;
+    }
   }
 
   private getBadgeLabel(type: AiFindingType): string {
