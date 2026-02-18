@@ -29,7 +29,8 @@ import {
   ItemTemplate,
   LoreTemplate,
   ItemListData,
-  LoreListData
+  LoreListData,
+  RecentEditEntry
 } from './types';
 import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS, DEFAULT_CHARACTER_TEMPLATE, DEFAULT_LOCATION_TEMPLATE, DEFAULT_ITEM_TEMPLATE, DEFAULT_LORE_TEMPLATE, cloneCharacterTemplate, cloneLocationTemplate, cloneItemTemplate, cloneLoreTemplate, createDefaultProject, createDefaultProjectData, migrateTemplateDefs } from './settings/NovalistSettings';
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
@@ -43,6 +44,7 @@ import { ItemSheetView, ITEM_SHEET_VIEW_TYPE } from './views/ItemSheetView';
 import { LoreSheetView, LORE_SHEET_VIEW_TYPE } from './views/LoreSheetView';
 import { ImageGalleryView, IMAGE_GALLERY_VIEW_TYPE } from './views/ImageGalleryView';
 import { AiChatView, AI_CHAT_VIEW_TYPE } from './views/AiChatView';
+import { DashboardView, DASHBOARD_VIEW_TYPE } from './views/DashboardView';
 import { NovalistToolbarManager } from './utils/toolbarUtils';
 
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
@@ -114,9 +116,12 @@ export default class NovalistPlugin extends Plugin {
     this.updateBookParagraphSpacing();
 
     await this.refreshEntityIndex();
-    this.app.workspace.onLayoutReady(() => {
+    this.app.workspace.onLayoutReady(async () => {
       if (!this.settings.startupWizardShown || !this.app.vault.getAbstractFileByPath(this.resolvedProjectPath())) {
         new StartupWizardModal(this.app, this).open();
+      } else {
+        // Auto-open Dashboard on startup
+        await this.openDashboardOnStartup();
       }
     });
     
@@ -189,6 +194,12 @@ export default class NovalistPlugin extends Plugin {
     this.registerView(
       AI_CHAT_VIEW_TYPE,
       (leaf) => new AiChatView(leaf, this)
+    );
+
+    // Register dashboard view
+    this.registerView(
+      DASHBOARD_VIEW_TYPE,
+      (leaf) => new DashboardView(leaf, this)
     );
 
     // Register annotation CM6 extension
@@ -370,6 +381,15 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
+    // Open dashboard
+    this.addCommand({
+      id: 'open-dashboard',
+      name: t('cmd.openDashboard'),
+      callback: () => {
+        void this.activateDashboardView();
+      }
+    });
+
     // Add new chapter command
     this.addCommand({
       id: 'add-chapter-description',
@@ -495,11 +515,18 @@ export default class NovalistPlugin extends Plugin {
     // Initialize Ollama service if enabled
     this.initOllamaService();
 
-    // Handle auto-replacement on keyup
+    // Handle auto-replacement on keyup and track recent edits
     this.registerEvent(
-      this.app.workspace.on('editor-change', () => {
+      this.app.workspace.on('editor-change', (editor: Editor) => {
         this.handleBoldFieldFormatting();
         this.handleAutoReplacement();
+        
+        // Track recent edits for dashboard
+        const file = this.app.workspace.getActiveFile();
+        if (file && this.isFileInProject(file)) {
+          const cursor = editor.getCursor();
+          this.updateRecentEdit(file, cursor.line, cursor.ch);
+        }
       })
     );
 
@@ -678,6 +705,7 @@ export default class NovalistPlugin extends Plugin {
         wordCountGoals: this.settings.wordCountGoals || DEFAULT_SETTINGS.wordCountGoals,
         explorerGroupCollapsed: this.settings.explorerGroupCollapsed || {},
         relationshipPairs: this.settings.relationshipPairs || {},
+        recentEdits: this.settings.recentEdits || [],
       };
     }
     if (!this.settings.projectData) {
@@ -772,6 +800,7 @@ export default class NovalistPlugin extends Plugin {
       this.settings.wordCountGoals = pd.wordCountGoals;
       this.settings.explorerGroupCollapsed = pd.explorerGroupCollapsed;
       this.settings.relationshipPairs = pd.relationshipPairs;
+      this.settings.recentEdits = pd.recentEdits ?? [];
     } else {
       // No projectData entry yet — preserve any top-level data that was
       // loaded from an older version instead of replacing it with empty defaults.
@@ -781,6 +810,7 @@ export default class NovalistPlugin extends Plugin {
         wordCountGoals: this.settings.wordCountGoals ?? createDefaultProjectData().wordCountGoals,
         explorerGroupCollapsed: this.settings.explorerGroupCollapsed ?? {},
         relationshipPairs: this.settings.relationshipPairs ?? {},
+        recentEdits: this.settings.recentEdits ?? [],
       };
       this.settings.projectData[this.settings.activeProjectId] = fallback;
       this.settings.commentThreads = fallback.commentThreads;
@@ -788,6 +818,7 @@ export default class NovalistPlugin extends Plugin {
       this.settings.wordCountGoals = fallback.wordCountGoals;
       this.settings.explorerGroupCollapsed = fallback.explorerGroupCollapsed;
       this.settings.relationshipPairs = fallback.relationshipPairs;
+      this.settings.recentEdits = fallback.recentEdits;
     }
   }
 
@@ -799,6 +830,7 @@ export default class NovalistPlugin extends Plugin {
       wordCountGoals: this.settings.wordCountGoals,
       explorerGroupCollapsed: this.settings.explorerGroupCollapsed,
       relationshipPairs: this.settings.relationshipPairs,
+      recentEdits: this.settings.recentEdits,
     };
     const activeProject = this.getActiveProject();
     if (activeProject) {
@@ -891,6 +923,9 @@ export default class NovalistPlugin extends Plugin {
     }
     for (const leaf of this.app.workspace.getLeavesOfType(NOVELIST_SIDEBAR_VIEW_TYPE)) {
       void (leaf.view as NovalistSidebarView).render();
+    }
+    for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
+      void (leaf.view as DashboardView).render();
     }
 
     new Notice(t('notice.projectSwitched', { name: target.name }));
@@ -3822,6 +3857,74 @@ order: ${orderValue}
     });
 
     void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async activateDashboardView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: DASHBOARD_VIEW_TYPE,
+      active: true
+    });
+
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async openDashboardOnStartup(): Promise<void> {
+    // Close all main-area markdown leaves (editor tabs from previous session)
+    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+    for (const leaf of markdownLeaves) {
+      // Only close leaves in the main area (not sidebar)
+      if (leaf.getRoot() === this.app.workspace.rootSplit) {
+        leaf.detach();
+      }
+    }
+
+    // Open dashboard as landing page
+    await this.activateDashboardView();
+  }
+
+  updateRecentEdit(file: TFile, line: number, ch: number): void {
+    const entry: RecentEditEntry = {
+      filePath: file.path,
+      displayName: file.basename,
+      line,
+      ch,
+      timestamp: new Date().toISOString()
+    };
+
+    // Remove existing entry for this file
+    const existing = this.settings.recentEdits.findIndex(e => e.filePath === file.path);
+    if (existing >= 0) {
+      this.settings.recentEdits.splice(existing, 1);
+    }
+
+    // Add to front
+    this.settings.recentEdits.unshift(entry);
+
+    // Keep max 10 entries
+    if (this.settings.recentEdits.length > 10) {
+      this.settings.recentEdits = this.settings.recentEdits.slice(0, 10);
+    }
+
+    // Debounced save
+    this.debouncedSaveSettings();
+  }
+
+  private saveSettingsDebounceTimer: number | null = null;
+
+  debouncedSaveSettings(): void {
+    if (this.saveSettingsDebounceTimer) {
+      clearTimeout(this.saveSettingsDebounceTimer);
+    }
+    this.saveSettingsDebounceTimer = window.setTimeout(() => {
+      void this.saveSettings();
+    }, 5000);
   }
 
   normalizeEntityName(name: string): string {

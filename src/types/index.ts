@@ -14,6 +14,7 @@ export interface ProjectData {
   wordCountGoals: WordCountGoals;
   explorerGroupCollapsed: Record<string, boolean>;
   relationshipPairs: Record<string, string[]>;
+  recentEdits: RecentEditEntry[];
 }
 
 export interface NovalistSettings {
@@ -69,6 +70,8 @@ export interface NovalistSettings {
   projectData: Record<string, ProjectData>;
   /** Ollama / AI assistant configuration. */
   ollama: OllamaSettings;
+  /** Recently edited files for Dashboard quick access. */
+  recentEdits: RecentEditEntry[];
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────
@@ -484,6 +487,20 @@ export interface DailyWritingGoal {
   date: string; // YYYY-MM-DD
   targetWords: number;
   actualWords: number;
+}
+
+// ─── Recent Edit Tracking ────────────────────────────────────────────
+export interface RecentEditEntry {
+  /** File path relative to vault root */
+  filePath: string;
+  /** Display name (chapter title or filename) */
+  displayName: string;
+  /** Last known cursor line (0-based, matching Obsidian EditorPosition) */
+  line: number;
+  /** Last known cursor column/character (0-based) */
+  ch: number;
+  /** Timestamp of last edit (ISO string) */
+  timestamp: string;
 }
 
 // ─── Plot Board ─────────────────────────────────────────────────────

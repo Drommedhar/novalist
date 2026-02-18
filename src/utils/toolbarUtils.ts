@@ -269,6 +269,9 @@ export class NovalistToolbarManager {
     this.createRibbonButton(viewsItems, 'image', t('toolbar.gallery'), t('toolbar.gallery'), () => {
       void this.plugin.activateImageGalleryView();
     });
+    this.createRibbonButton(viewsItems, 'layout-dashboard', t('toolbar.dashboard'), t('toolbar.dashboard'), () => {
+      void this.plugin.activateDashboardView();
+    });
     viewsGroup.createEl('span', { text: t('toolbar.groupViews'), cls: 'novalist-ribbon-group-label' });
 
     // ── AI panel (only if Ollama enabled) ──

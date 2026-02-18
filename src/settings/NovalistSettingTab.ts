@@ -423,6 +423,21 @@ export class NovalistSettingTab extends PluginSettingTab {
           }
         }));
 
+    new Setting(containerEl)
+      .setName(t('settings.projectDeadline'))
+      .setDesc(t('settings.projectDeadlineDesc'))
+      .addText(text => text
+        .setPlaceholder(t('settings.projectDeadlinePlaceholder'))
+        .setValue(this.plugin.settings.wordCountGoals.deadline || '')
+        .onChange(async (value) => {
+          // Validate date format if provided
+          if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            return;
+          }
+          this.plugin.settings.wordCountGoals.deadline = value || undefined;
+          await this.plugin.saveSettings();
+        }));
+
     // ── AI Assistant ──────────────────────────────────────────────
     new Setting(containerEl)
       .setName(t('ollama.settings'))

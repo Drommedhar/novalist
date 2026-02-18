@@ -231,6 +231,7 @@ export function createDefaultProjectData(): ProjectData {
     },
     explorerGroupCollapsed: {},
     relationshipPairs: {},
+    recentEdits: [],
   };
 }
 
@@ -290,4 +291,5 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
     copilotPath: 'copilot',
     copilotModel: '',
   },
+  recentEdits: [],
 };

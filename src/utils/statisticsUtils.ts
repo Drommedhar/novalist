@@ -148,10 +148,10 @@ export function getOrCreateDailyGoal(goals: WordCountGoals, date: string): Daily
     actualWords: 0
   };
   goals.dailyHistory.push(newGoal);
-  // Keep only last 30 days
-  if (goals.dailyHistory.length > 30) {
+  // Keep last 365 days for trend charts
+  if (goals.dailyHistory.length > 365) {
     goals.dailyHistory.sort((a, b) => a.date.localeCompare(b.date));
-    goals.dailyHistory = goals.dailyHistory.slice(-30);
+    goals.dailyHistory = goals.dailyHistory.slice(-365);
   }
   return newGoal;
 }
@@ -169,4 +169,64 @@ export function calculateProjectProgress(goals: WordCountGoals, currentWords: nu
   const target = goals.projectGoal;
   const percentage = target > 0 ? Math.min(100, Math.round((currentWords / target) * 100)) : 0;
   return { current: currentWords, target, percentage };
+}
+
+/**
+ * Calculate the current writing streak (consecutive days with actualWords > 0).
+ * Counts backwards from today.
+ */
+export function calculateWritingStreak(goals: WordCountGoals): number {
+  if (!goals.dailyHistory || goals.dailyHistory.length === 0) {
+    return 0;
+  }
+
+  // Sort history by date descending
+  const sorted = [...goals.dailyHistory].sort((a, b) => b.date.localeCompare(a.date));
+  
+  const today = getTodayDate();
+  let streak = 0;
+  let currentDate = new Date(today);
+  
+  for (const entry of sorted) {
+    // If we're past the expected date, streak is broken
+    const expectedDateStr = currentDate.toISOString().split('T')[0];
+    if (entry.date !== expectedDateStr) {
+      // Check if this entry is for today (might not have written yet today)
+      if (streak === 0 && entry.date === today && entry.actualWords > 0) {
+        streak = 1;
+      }
+      break;
+    }
+    
+    if (entry.actualWords > 0) {
+      streak++;
+      currentDate.setDate(currentDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  
+  return streak;
+}
+
+/**
+ * Format a timestamp as relative time (e.g., "2m ago", "3h ago", "2d ago")
+ */
+export function formatTimeAgo(timestamp: string): string {
+  const now = new Date();
+  const then = new Date(timestamp);
+  const diffMs = now.getTime() - then.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) {
+    return t('dashboard.timeAgo.minutes', { n: 1 });
+  } else if (diffMins < 60) {
+    return t('dashboard.timeAgo.minutes', { n: diffMins });
+  } else if (diffHours < 24) {
+    return t('dashboard.timeAgo.hours', { n: diffHours });
+  } else {
+    return t('dashboard.timeAgo.days', { n: diffDays });
+  }
 }

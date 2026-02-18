@@ -6253,3 +6253,428 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-ai-chat-thinking.is-hidden {
   display: none;
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Dashboard View
+   ───────────────────────────────────────────────────────────────────── */
+
+.novalist-dashboard {
+  padding: 20px;
+  overflow-y: auto;
+  height: 100%;
+  container-type: inline-size;
+}
+
+.novalist-dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--interactive-accent);
+}
+
+.novalist-dashboard-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--text-normal);
+}
+
+.novalist-dashboard-refresh-btn {
+  padding: 6px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.novalist-dashboard-refresh-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.novalist-dashboard-section {
+  margin-bottom: 24px;
+  background: var(--background-secondary);
+  border-radius: 10px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.novalist-dashboard-section-title {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.novalist-dashboard-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Recent Files */
+.novalist-dashboard-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.novalist-dashboard-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.novalist-dashboard-recent-item:hover {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.novalist-dashboard-recent-icon {
+  color: var(--text-accent);
+  font-size: 12px;
+}
+
+.novalist-dashboard-recent-name {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.novalist-dashboard-recent-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Stat Cards Grid */
+.novalist-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 12px;
+}
+
+.novalist-dashboard-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.novalist-dashboard-card-icon {
+  color: var(--text-accent);
+  margin-bottom: 8px;
+}
+
+.novalist-dashboard-card-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-normal);
+  line-height: 1.2;
+}
+
+.novalist-dashboard-card-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 4px;
+}
+
+/* Progress Bar */
+.novalist-dashboard-progress-container {
+  margin-bottom: 12px;
+}
+
+.novalist-dashboard-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.novalist-dashboard-progress-pct {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.novalist-dashboard-progress-bar {
+  height: 8px;
+  background: var(--background-modifier-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.novalist-dashboard-progress-bar-small {
+  height: 6px;
+}
+
+.novalist-dashboard-progress-fill {
+  height: 100%;
+  background: var(--interactive-accent);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.novalist-dashboard-progress-complete {
+  background: var(--color-green, #40c060);
+}
+
+/* Streak */
+.novalist-dashboard-streak {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-normal);
+  margin-top: 12px;
+}
+
+.novalist-dashboard-streak-icon {
+  color: var(--color-orange, #e0a040);
+}
+
+/* Chart Controls */
+.novalist-dashboard-chart-controls {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.novalist-dashboard-range-btn {
+  padding: 4px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.novalist-dashboard-range-btn:hover {
+  border-color: var(--interactive-accent);
+}
+
+.novalist-dashboard-range-btn.is-active {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* Bar Chart */
+.novalist-dashboard-chart {
+  overflow-x: auto;
+}
+
+.novalist-dashboard-bar-chart {
+  width: 100%;
+  max-width: 700px;
+}
+
+.novalist-dashboard-bar {
+  fill: var(--interactive-accent);
+  transition: fill 0.15s ease;
+}
+
+.novalist-dashboard-bar:hover {
+  fill: var(--text-accent);
+}
+
+.novalist-dashboard-axis-label {
+  font-size: 10px;
+  fill: var(--text-muted);
+}
+
+/* Donut Chart */
+.novalist-dashboard-donut-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.novalist-dashboard-donut {
+  flex-shrink: 0;
+}
+
+.novalist-dashboard-donut-svg {
+  width: 120px;
+  height: 120px;
+}
+
+.novalist-dashboard-donut-segment {
+  transition: opacity 0.15s ease;
+}
+
+.novalist-dashboard-donut-segment:hover {
+  opacity: 0.8;
+}
+
+.novalist-dashboard-donut-text {
+  font-size: 24px;
+  font-weight: 700;
+  fill: var(--text-normal);
+}
+
+.novalist-dashboard-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.novalist-dashboard-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-normal);
+}
+
+.novalist-dashboard-legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* Goal Tracking */
+.novalist-dashboard-goal-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.novalist-dashboard-goal-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  min-width: 120px;
+}
+
+.novalist-dashboard-goal-pct {
+  font-size: 13px;
+  color: var(--text-normal);
+  font-weight: 600;
+  min-width: 60px;
+  text-align: right;
+}
+
+.novalist-dashboard-project-goal {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin: 16px 0;
+}
+
+.novalist-dashboard-ring-container {
+  flex-shrink: 0;
+}
+
+.novalist-dashboard-ring-svg {
+  width: 80px;
+  height: 80px;
+}
+
+.novalist-dashboard-ring-progress {
+  transition: stroke-dashoffset 0.5s ease;
+}
+
+.novalist-dashboard-ring-text {
+  font-size: 16px;
+  font-weight: 700;
+  fill: var(--text-normal);
+}
+
+.novalist-dashboard-project-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.novalist-dashboard-project-words {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.novalist-dashboard-project-pct {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+/* Deadline */
+.novalist-dashboard-deadline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 12px;
+}
+
+.novalist-dashboard-deadline-date {
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.novalist-dashboard-deadline-remaining {
+  padding: 2px 8px;
+  background: var(--background-modifier-border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.novalist-dashboard-deadline-urgent {
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+.novalist-dashboard-deadline-overdue {
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+.novalist-dashboard-no-deadline {
+  font-style: italic;
+}
+
+/* Responsive */
+@container (max-width: 600px) {
+  .novalist-dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .novalist-dashboard-donut-container {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .novalist-dashboard-project-goal {
+    flex-direction: column;
+    text-align: center;
+  }
+}
