@@ -9,7 +9,7 @@ import type NovalistPlugin from '../main';
 import { CharacterData, CharacterChapterInfo, LocationData, PlotBoardColumn } from '../types';
 import { normalizeCharacterRole, computeInterval } from '../utils/characterUtils';
 import { t } from '../i18n';
-import type { AiFinding, AiFindingType } from '../utils/ollamaService';
+import type { AiFinding, AiFindingType, OllamaModel, CopilotModelInfo } from '../utils/ollamaService';
 import type { AiHighlight } from '../cm/aiHighlightExtension';
 
 type AiFilterTab = 'all' | 'inconsistency' | 'suggestion';
@@ -35,6 +35,8 @@ export class NovalistSidebarView extends ItemView {
   private aiParagraphFindings: Map<number, AiFinding[]> = new Map();
   /** Entity names discovered by AI reference detection (not found by regex). */
   private aiExtraEntities: { characters: string[]; locations: string[]; items: string[]; lore: string[] } = { characters: [], locations: [], items: [], lore: [] };
+  /** Model dropdown element inside the AI section (re-used across renders). */
+  private aiModelDropdown: HTMLSelectElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
     super(leaf);
@@ -429,7 +431,8 @@ export class NovalistSidebarView extends ItemView {
 
   /** Schedule a debounced AI analysis (5 s after the last call). */
   private scheduleAiAnalysis(): void {
-    if (!this.plugin.settings.ollama.enabled || !this.plugin.settings.ollama.model) return;
+    const isCopilot = this.plugin.settings.ollama.provider === 'copilot';
+    if (!this.plugin.settings.ollama.enabled || (!isCopilot && !this.plugin.settings.ollama.model)) return;
     if (this.aiAnalysisTimer !== null) {
       window.clearTimeout(this.aiAnalysisTimer);
     }
@@ -442,7 +445,8 @@ export class NovalistSidebarView extends ItemView {
   /** Run the AI analysis for the current chapter. */
   async runAiAnalysis(): Promise<void> {
     if (!this.currentChapterFile || !this.plugin.ollamaService) return;
-    if (!this.plugin.settings.ollama.enabled || !this.plugin.settings.ollama.model) return;
+    const isCopilotRun = this.plugin.settings.ollama.provider === 'copilot';
+    if (!this.plugin.settings.ollama.enabled || (!isCopilotRun && !this.plugin.settings.ollama.model)) return;
     if (!this.plugin.isChapterFile(this.currentChapterFile)) return;
 
     // Read chapter text and check if it changed since last analysis
@@ -592,6 +596,17 @@ export class NovalistSidebarView extends ItemView {
       void this.runAiAnalysis();
     });
 
+    // Model selector row
+    const modelRow = section.createDiv('novalist-ai-sidebar-model-row');
+    modelRow.createEl('span', { text: t('aiChat.model'), cls: 'novalist-ai-sidebar-model-label' });
+    this.aiModelDropdown = modelRow.createEl('select', { cls: 'novalist-ai-sidebar-model-select dropdown' });
+    this.aiModelDropdown.addEventListener('change', () => {
+      if (this.aiModelDropdown) {
+        void this.onAiModelChange(this.aiModelDropdown.value);
+      }
+    });
+    void this.populateAiModelDropdown();
+
     // AI content container (re-rendered independently)
     this.aiSectionEl = section.createDiv('novalist-ai-sidebar-content');
     this.renderAiSectionContent();
@@ -602,8 +617,9 @@ export class NovalistSidebarView extends ItemView {
     if (!this.aiSectionEl) return;
     this.aiSectionEl.empty();
 
-    // Not configured
-    if (!this.plugin.settings.ollama.enabled || !this.plugin.settings.ollama.model) {
+    // Not configured — for Copilot the model field can be empty (uses default)
+    const isCopilot = this.plugin.settings.ollama.provider === 'copilot';
+    if (!this.plugin.settings.ollama.enabled || (!isCopilot && !this.plugin.settings.ollama.model)) {
       this.aiSectionEl.createEl('p', { text: t('ollama.sidebarDisabled'), cls: 'novalist-ai-sidebar-hint' });
       return;
     }
@@ -674,6 +690,70 @@ export class NovalistSidebarView extends ItemView {
     for (const finding of filtered) {
       this.renderAiFinding(list, finding);
     }
+  }
+
+  /** Populate the model dropdown inside the AI sidebar section. */
+  async populateAiModelDropdown(): Promise<void> {
+    if (!this.aiModelDropdown) return;
+    this.aiModelDropdown.empty();
+
+    const provider = this.plugin.settings.ollama.provider;
+
+    if (!this.plugin.ollamaService) {
+      this.plugin.initOllamaService();
+    }
+    if (!this.plugin.ollamaService) return;
+
+    if (provider === 'ollama') {
+      const loadingOpt = this.aiModelDropdown.createEl('option', { text: t('aiChat.modelLoading'), value: '__loading__' });
+      loadingOpt.disabled = true;
+      let models: OllamaModel[] = [];
+      try {
+        models = await this.plugin.ollamaService.listModels();
+      } catch { /* ignore */ }
+      this.aiModelDropdown.empty();
+      if (models.length === 0) {
+        const opt = this.aiModelDropdown.createEl('option', { text: t('aiChat.noModels'), value: '' });
+        opt.selected = true;
+        return;
+      }
+      for (const m of models) {
+        const opt = this.aiModelDropdown.createEl('option', { text: m.name, value: m.name });
+        if (m.name === this.plugin.settings.ollama.model) opt.selected = true;
+      }
+    } else {
+      const defaultOpt = this.aiModelDropdown.createEl('option', {
+        text: t('aiChat.modelDefault'),
+        value: '',
+      });
+      if (!this.plugin.settings.ollama.copilotModel) defaultOpt.selected = true;
+
+      let models: CopilotModelInfo[] = [];
+      try {
+        models = await this.plugin.ollamaService.listCopilotModels();
+      } catch { /* ignore */ }
+      for (const m of models) {
+        const opt = this.aiModelDropdown.createEl('option', { text: m.name, value: m.id });
+        if (m.id === this.plugin.settings.ollama.copilotModel) opt.selected = true;
+      }
+    }
+  }
+
+  /** Handle model selection change from the AI sidebar dropdown. */
+  private async onAiModelChange(value: string): Promise<void> {
+    const provider = this.plugin.settings.ollama.provider;
+    if (provider === 'ollama') {
+      this.plugin.settings.ollama.model = value;
+      if (this.plugin.ollamaService) {
+        this.plugin.ollamaService.setModel(value);
+      }
+    } else {
+      this.plugin.settings.ollama.copilotModel = value;
+      if (this.plugin.ollamaService) {
+        await this.plugin.ollamaService.setCopilotModel(value);
+      }
+    }
+    await this.plugin.saveSettings();
   }
 
   /** Render a single AI finding card in the sidebar. */

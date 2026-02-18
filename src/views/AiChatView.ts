@@ -9,7 +9,7 @@ import {
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { t, getLanguageName } from '../i18n';
-import type { EntitySummary } from '../utils/ollamaService';
+import type { EntitySummary, OllamaModel, CopilotModelInfo } from '../utils/ollamaService';
 
 export const AI_CHAT_VIEW_TYPE = 'novalist-ai-chat';
 
@@ -36,6 +36,7 @@ export class AiChatView extends ItemView {
   private clearBtn: HTMLButtonElement;
   private statusEl: HTMLElement;
   private scrollContainer: HTMLElement;
+  private modelDropdown: HTMLSelectElement;
   /** Temporary component used for rendering Markdown in assistant messages. */
   private renderComponent: Component;
 
@@ -71,6 +72,15 @@ export class AiChatView extends ItemView {
     // ── Header ──
     const header = containerEl.createDiv('novalist-ai-chat-header');
     header.createEl('span', { text: t('aiChat.displayName'), cls: 'novalist-ai-chat-header-title' });
+
+    // Model selector
+    const modelWrapper = header.createDiv('novalist-ai-chat-model-wrapper');
+    modelWrapper.createEl('span', { text: t('aiChat.model'), cls: 'novalist-ai-chat-model-label' });
+    this.modelDropdown = modelWrapper.createEl('select', { cls: 'novalist-ai-chat-model-select dropdown' });
+    this.modelDropdown.addEventListener('change', () => {
+      void this.onModelChange(this.modelDropdown.value);
+    });
+    void this.populateModelDropdown();
 
     this.clearBtn = header.createEl('button', {
       cls: 'novalist-ai-chat-clear-btn',
@@ -152,6 +162,74 @@ export class AiChatView extends ItemView {
         cls: 'novalist-ai-chat-status-badge is-warning',
       });
     }
+  }
+
+  // ─── Model selector ─────────────────────────────────────────────
+
+  /** Populate the model dropdown from the current provider's model list. */
+  async populateModelDropdown(): Promise<void> {
+    if (!this.modelDropdown) return;
+    this.modelDropdown.empty();
+
+    const provider = this.plugin.settings.ollama.provider;
+
+    if (!this.plugin.ollamaService) {
+      this.plugin.initOllamaService();
+    }
+    if (!this.plugin.ollamaService) return;
+
+    if (provider === 'ollama') {
+      // Ollama: fetch local models
+      const loadingOpt = this.modelDropdown.createEl('option', { text: t('aiChat.modelLoading'), value: '__loading__' });
+      loadingOpt.disabled = true;
+      let models: OllamaModel[] = [];
+      try {
+        models = await this.plugin.ollamaService.listModels();
+      } catch { /* ignore */ }
+      this.modelDropdown.empty();
+      if (models.length === 0) {
+        const opt = this.modelDropdown.createEl('option', { text: t('aiChat.noModels'), value: '' });
+        opt.selected = true;
+        return;
+      }
+      for (const m of models) {
+        const opt = this.modelDropdown.createEl('option', { text: m.name, value: m.name });
+        if (m.name === this.plugin.settings.ollama.model) opt.selected = true;
+      }
+    } else {
+      // Copilot: list available models
+      const defaultOpt = this.modelDropdown.createEl('option', {
+        text: t('aiChat.modelDefault'),
+        value: '',
+      });
+      if (!this.plugin.settings.ollama.copilotModel) defaultOpt.selected = true;
+
+      let models: CopilotModelInfo[] = [];
+      try {
+        models = await this.plugin.ollamaService.listCopilotModels();
+      } catch { /* ignore */ }
+      for (const m of models) {
+        const opt = this.modelDropdown.createEl('option', { text: m.name, value: m.id });
+        if (m.id === this.plugin.settings.ollama.copilotModel) opt.selected = true;
+      }
+    }
+  }
+
+  /** Handle model selection change from the dropdown. */
+  private async onModelChange(value: string): Promise<void> {
+    const provider = this.plugin.settings.ollama.provider;
+    if (provider === 'ollama') {
+      this.plugin.settings.ollama.model = value;
+      if (this.plugin.ollamaService) {
+        this.plugin.ollamaService.setModel(value);
+      }
+    } else {
+      this.plugin.settings.ollama.copilotModel = value;
+      if (this.plugin.ollamaService) {
+        await this.plugin.ollamaService.setCopilotModel(value);
+      }
+    }
+    await this.plugin.saveSettings();
   }
 
   // ─── Active chapter resolution ───────────────────────────────────

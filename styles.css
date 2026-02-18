@@ -5618,6 +5618,26 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   gap: 4px;
 }
 
+.novalist-ai-sidebar-model-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.novalist-ai-sidebar-model-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.novalist-ai-sidebar-model-select {
+  font-size: var(--font-ui-smaller);
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+}
+
 .novalist-ai-sidebar-auto-btn,
 .novalist-ai-sidebar-rerun-btn {
   padding: 2px 8px;
@@ -5979,6 +5999,26 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-ai-chat-header-title {
   font-weight: 600;
   font-size: var(--font-ui-medium);
+}
+
+.novalist-ai-chat-model-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+.novalist-ai-chat-model-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.novalist-ai-chat-model-select {
+  font-size: var(--font-ui-smaller);
+  max-width: 180px;
+  padding: 2px 4px;
 }
 
 .novalist-ai-chat-clear-btn {

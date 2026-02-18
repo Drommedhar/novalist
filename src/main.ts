@@ -1286,6 +1286,11 @@ export default class NovalistPlugin extends Plugin {
     }
   }
 
+  /** Close all AI-related views (chat). Called when AI is disabled. */
+  closeAiViews(): void {
+    this.app.workspace.detachLeavesOfType(AI_CHAT_VIEW_TYPE);
+  }
+
   async activateExplorerView(replaceFileExplorer = false): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(NOVELIST_EXPLORER_VIEW_TYPE);
     if (existing.length > 0) {

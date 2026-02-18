@@ -436,6 +436,9 @@ export class NovalistSettingTab extends PluginSettingTab {
         .onChange(async (value) => {
           this.plugin.settings.ollama.enabled = value;
           await this.plugin.saveSettings();
+          if (!value) {
+            this.plugin.closeAiViews();
+          }
           this.display();
         }));
 

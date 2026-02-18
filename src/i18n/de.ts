@@ -828,4 +828,8 @@ export default {
   'aiChat.error': 'Chat-Fehler: {error}',
   'aiChat.editsApplied': '{count} Änderung(en) am Kapitel angewandt.',
   'aiChat.editsAppliedBadge': '{count} Änderung(en) am Kapitel angewandt',
+  'aiChat.model': 'Modell',
+  'aiChat.modelLoading': 'Laden…',
+  'aiChat.noModels': 'Keine Modelle',
+  'aiChat.modelDefault': '(Standard)',
 } as const;
