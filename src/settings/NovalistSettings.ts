@@ -1,4 +1,4 @@
-﻿import { LanguageKey, AutoReplacementPair, NovalistSettings, CharacterTemplate, LocationTemplate, ItemTemplate, LoreTemplate, NovalistProject, ProjectData, CustomPropertyDefinition } from '../types';
+﻿import { LanguageKey, AutoReplacementPair, NovalistSettings, CharacterTemplate, LocationTemplate, ItemTemplate, LoreTemplate, NovalistProject, ProjectData, CustomPropertyDefinition, TimelineData } from '../types';
 import { t } from '../i18n';
 
 export function getLanguageLabels(): Record<LanguageKey, string> {
@@ -220,6 +220,19 @@ export function createDefaultProject(): NovalistProject {
   };
 }
 
+export function createDefaultTimelineData(): TimelineData {
+  return {
+    manualEvents: [],
+    categories: [
+      { id: 'plot', name: 'Plot Point', color: '#e74c3c' },
+      { id: 'character', name: 'Character Event', color: '#3498db' },
+      { id: 'world', name: 'World Event', color: '#2ecc71' },
+    ],
+    viewMode: 'vertical',
+    zoomLevel: 'month',
+  };
+}
+
 export function createDefaultProjectData(): ProjectData {
   return {
     commentThreads: [],
@@ -232,6 +245,7 @@ export function createDefaultProjectData(): ProjectData {
     explorerGroupCollapsed: {},
     relationshipPairs: {},
     recentEdits: [],
+    timeline: createDefaultTimelineData(),
   };
 }
 
@@ -269,6 +283,7 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   enableAnnotations: true,
   commentThreads: [],
   plotBoard: { columns: [], cells: {}, labels: [], cardColors: {}, cardLabels: {}, viewMode: 'board', collapsedActs: [] },
+  timeline: createDefaultTimelineData(),
   characterTemplates: [cloneCharacterTemplate(DEFAULT_CHARACTER_TEMPLATE)],
   locationTemplates: [cloneLocationTemplate(DEFAULT_LOCATION_TEMPLATE)],
   itemTemplates: [cloneItemTemplate(DEFAULT_ITEM_TEMPLATE)],

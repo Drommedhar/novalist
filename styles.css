@@ -6678,3 +6678,548 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
     text-align: center;
   }
 }
+
+/* ─── Timeline View ────────────────────────────────────────────────── */
+
+.novalist-timeline {
+  padding: 0;
+  overflow-y: auto;
+  height: 100%;
+  position: relative;
+}
+
+/* ── Toolbar ── */
+
+.novalist-timeline-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-wrap: wrap;
+}
+
+.novalist-timeline-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.novalist-timeline-mode-toggle,
+.novalist-timeline-zoom,
+.novalist-timeline-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  white-space: nowrap;
+}
+
+.novalist-timeline-mode-toggle:hover,
+.novalist-timeline-zoom:hover,
+.novalist-timeline-add-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.novalist-timeline-mode-toggle svg,
+.novalist-timeline-zoom svg,
+.novalist-timeline-add-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.novalist-timeline-filter {
+  padding: 3px 8px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  max-width: 160px;
+}
+
+.novalist-timeline-add-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.novalist-timeline-add-btn:hover {
+  background: var(--interactive-accent-hover);
+}
+
+/* ── Empty state ── */
+
+.novalist-timeline-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Content area ── */
+
+.novalist-timeline-content {
+  padding: 16px;
+}
+
+/* ── Vertical timeline ── */
+
+.novalist-timeline-vertical {
+  position: relative;
+}
+
+.novalist-timeline-axis {
+  position: relative;
+  padding-left: 24px;
+  border-left: 2px solid var(--background-modifier-border);
+  margin-left: 16px;
+}
+
+.novalist-timeline-year-header {
+  position: relative;
+  margin: 24px 0 12px -25px;
+  padding-left: 32px;
+  font-weight: 600;
+  font-size: var(--font-ui-medium);
+  color: var(--text-accent);
+}
+
+.novalist-timeline-year-header::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+}
+
+/* ── Event row (vertical) ── */
+
+.novalist-timeline-event {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  margin-left: -25px;
+  padding-left: 8px;
+}
+
+.novalist-timeline-event-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dot-color, var(--text-muted));
+  margin-top: 6px;
+  cursor: help;
+}
+
+/* Act events get a larger, distinctive dot */
+.novalist-timeline-event.is-act .novalist-timeline-event-dot {
+  width: 14px;
+  height: 14px;
+  margin-top: 4px;
+  border: 2px solid var(--background-primary);
+  box-shadow: 0 0 0 2px var(--dot-color, #9b59b6);
+}
+
+.novalist-timeline-event-card {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  transition: box-shadow 0.15s;
+}
+
+/* Act cards get a colored left border accent */
+.novalist-timeline-event.is-act .novalist-timeline-event-card {
+  border-left: 3px solid #9b59b6;
+  background: var(--background-secondary-alt, var(--background-secondary));
+}
+
+.novalist-timeline-event-card.is-clickable {
+  cursor: pointer;
+}
+
+.novalist-timeline-event-card.is-clickable:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  border-color: var(--interactive-accent);
+}
+
+.novalist-timeline-event-date {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.novalist-timeline-event-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+}
+
+.novalist-timeline-event-source {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--badge-color, var(--background-modifier-border));
+  color: #fff;
+  white-space: nowrap;
+}
+
+.novalist-timeline-event-desc {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.novalist-timeline-event-meta {
+  margin-top: 6px;
+}
+
+.novalist-timeline-event-meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.novalist-timeline-event-meta-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.novalist-timeline-event-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  white-space: nowrap;
+}
+
+.novalist-timeline-event-badge-loc {
+  background: var(--text-success, #40c060);
+}
+
+.novalist-timeline-event-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.novalist-timeline-event-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.novalist-timeline-event-action-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.novalist-timeline-event-action-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.novalist-timeline-event-action-btn-danger:hover {
+  color: var(--text-error);
+  border-color: var(--text-error);
+}
+
+.novalist-timeline-event.is-no-date .novalist-timeline-event-card {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+/* ── Horizontal timeline ── */
+
+.novalist-timeline-horizontal {
+  overflow-x: auto;
+  padding: 16px 0;
+}
+
+.novalist-timeline-h-track {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  min-width: max-content;
+  padding: 0 24px;
+  border-top: 2px solid var(--background-modifier-border);
+  padding-top: 16px;
+}
+
+.novalist-timeline-h-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+  max-width: 180px;
+}
+
+.novalist-timeline-h-column > .novalist-timeline-event-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  margin-top: -22px;
+  margin-bottom: 4px;
+}
+
+.novalist-timeline-h-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.novalist-timeline-h-card {
+  width: 100%;
+  padding: 8px 10px;
+  border-left: 3px solid var(--card-accent, var(--background-modifier-border));
+}
+
+.novalist-timeline-h-card .novalist-timeline-event-title {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Floating form overlay ── */
+
+.novalist-timeline-form-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 60px;
+  overflow-y: auto;
+}
+
+.novalist-timeline-form {
+  width: 100%;
+  max-width: 480px;
+  padding: 16px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.novalist-timeline-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.novalist-timeline-form-row label {
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.novalist-timeline-form-row input,
+.novalist-timeline-form-row select,
+.novalist-timeline-form-row textarea {
+  padding: 6px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.novalist-timeline-form-row input[type="date"] {
+  cursor: pointer;
+}
+
+.novalist-timeline-form-row textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+/* Mini-calendar for date picking */
+.novalist-timeline-mini-cal {
+  margin-top: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px;
+  background: var(--background-secondary);
+  max-width: 240px;
+}
+
+.novalist-timeline-mini-cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.novalist-timeline-mini-cal-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.novalist-timeline-mini-cal-nav {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.novalist-timeline-mini-cal-nav:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.novalist-timeline-mini-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  text-align: center;
+}
+
+.novalist-timeline-mini-cal-dow {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-faint);
+  padding: 2px 0;
+}
+
+.novalist-timeline-mini-cal-empty {
+  /* spacer */
+}
+
+.novalist-timeline-mini-cal-day {
+  font-size: 11px;
+  padding: 3px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  position: relative;
+}
+
+.novalist-timeline-mini-cal-day:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.novalist-timeline-mini-cal-day.has-event {
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.novalist-timeline-mini-cal-day.has-event::after {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  margin: 1px auto 0;
+}
+
+.novalist-timeline-mini-cal-day.is-selected {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.novalist-timeline-mini-cal-day.is-selected::after {
+  background: var(--text-on-accent);
+}
+
+.novalist-timeline-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.novalist-timeline-form-actions button {
+  padding: 6px 16px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+}
+
+.novalist-timeline-form-actions button.mod-cta {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.novalist-timeline-form-actions button.mod-cta:hover {
+  background: var(--interactive-accent-hover);
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 600px) {
+  .novalist-timeline-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .novalist-timeline-h-column {
+    min-width: 120px;
+  }
+
+  .novalist-timeline-form {
+    max-width: 100%;
+    margin: 0 8px;
+  }
+}

@@ -45,6 +45,7 @@ import { LoreSheetView, LORE_SHEET_VIEW_TYPE } from './views/LoreSheetView';
 import { ImageGalleryView, IMAGE_GALLERY_VIEW_TYPE } from './views/ImageGalleryView';
 import { AiChatView, AI_CHAT_VIEW_TYPE } from './views/AiChatView';
 import { DashboardView, DASHBOARD_VIEW_TYPE } from './views/DashboardView';
+import { TimelineView, TIMELINE_VIEW_TYPE } from './views/TimelineView';
 import { NovalistToolbarManager } from './utils/toolbarUtils';
 
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
@@ -200,6 +201,12 @@ export default class NovalistPlugin extends Plugin {
     this.registerView(
       DASHBOARD_VIEW_TYPE,
       (leaf) => new DashboardView(leaf, this)
+    );
+
+    // Register timeline view
+    this.registerView(
+      TIMELINE_VIEW_TYPE,
+      (leaf) => new TimelineView(leaf, this)
     );
 
     // Register annotation CM6 extension
@@ -387,6 +394,15 @@ export default class NovalistPlugin extends Plugin {
       name: t('cmd.openDashboard'),
       callback: () => {
         void this.activateDashboardView();
+      }
+    });
+
+    // Open timeline
+    this.addCommand({
+      id: 'open-timeline',
+      name: t('cmd.openTimeline'),
+      callback: () => {
+        void this.activateTimelineView();
       }
     });
 
@@ -801,6 +817,7 @@ export default class NovalistPlugin extends Plugin {
       this.settings.explorerGroupCollapsed = pd.explorerGroupCollapsed;
       this.settings.relationshipPairs = pd.relationshipPairs;
       this.settings.recentEdits = pd.recentEdits ?? [];
+      this.settings.timeline = pd.timeline ?? createDefaultProjectData().timeline;
     } else {
       // No projectData entry yet — preserve any top-level data that was
       // loaded from an older version instead of replacing it with empty defaults.
@@ -811,6 +828,7 @@ export default class NovalistPlugin extends Plugin {
         explorerGroupCollapsed: this.settings.explorerGroupCollapsed ?? {},
         relationshipPairs: this.settings.relationshipPairs ?? {},
         recentEdits: this.settings.recentEdits ?? [],
+        timeline: this.settings.timeline ?? createDefaultProjectData().timeline,
       };
       this.settings.projectData[this.settings.activeProjectId] = fallback;
       this.settings.commentThreads = fallback.commentThreads;
@@ -819,6 +837,7 @@ export default class NovalistPlugin extends Plugin {
       this.settings.explorerGroupCollapsed = fallback.explorerGroupCollapsed;
       this.settings.relationshipPairs = fallback.relationshipPairs;
       this.settings.recentEdits = fallback.recentEdits;
+      this.settings.timeline = fallback.timeline;
     }
   }
 
@@ -831,6 +850,7 @@ export default class NovalistPlugin extends Plugin {
       explorerGroupCollapsed: this.settings.explorerGroupCollapsed,
       relationshipPairs: this.settings.relationshipPairs,
       recentEdits: this.settings.recentEdits,
+      timeline: this.settings.timeline,
     };
     const activeProject = this.getActiveProject();
     if (activeProject) {
@@ -926,6 +946,9 @@ export default class NovalistPlugin extends Plugin {
     }
     for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
       void (leaf.view as DashboardView).render();
+    }
+    for (const leaf of this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE)) {
+      void (leaf.view as TimelineView).render();
     }
 
     new Notice(t('notice.projectSwitched', { name: target.name }));
@@ -3869,6 +3892,22 @@ order: ${orderValue}
     const leaf = this.app.workspace.getLeaf('tab');
     await leaf.setViewState({
       type: DASHBOARD_VIEW_TYPE,
+      active: true
+    });
+
+    void this.app.workspace.revealLeaf(leaf);
+  }
+
+  async activateTimelineView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(TIMELINE_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({
+      type: TIMELINE_VIEW_TYPE,
       active: true
     });
 

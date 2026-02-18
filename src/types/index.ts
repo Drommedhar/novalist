@@ -15,6 +15,7 @@ export interface ProjectData {
   explorerGroupCollapsed: Record<string, boolean>;
   relationshipPairs: Record<string, string[]>;
   recentEdits: RecentEditEntry[];
+  timeline: TimelineData;
 }
 
 export interface NovalistSettings {
@@ -57,6 +58,8 @@ export interface NovalistSettings {
   commentThreads: CommentThread[];
   // Plot Board
   plotBoard: PlotBoardData;
+  // Timeline
+  timeline: TimelineData;
   // Entity Templates
   characterTemplates: CharacterTemplate[];
   locationTemplates: LocationTemplate[];
@@ -570,4 +573,74 @@ export interface OllamaSettings {
   copilotPath: string;
   /** Copilot model to use (e.g. "gpt-4o"). Empty means Copilot's default. */
   copilotModel: string;
+}
+
+// ─── Timeline ───────────────────────────────────────────────────────
+
+export type TimelineViewMode = 'horizontal' | 'vertical';
+export type TimelineZoomLevel = 'year' | 'month' | 'day';
+export type TimelineEventSource = 'chapter' | 'scene' | 'act' | 'manual';
+
+export interface TimelineCategory {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface TimelineManualEvent {
+  id: string;
+  /** Display title for the event */
+  title: string;
+  /** Date string — YYYY-MM-DD or free-form */
+  date: string;
+  /** Optional description */
+  description: string;
+  /** Category ID for color-coding */
+  categoryId: string;
+  /** Optional link to a chapter file path */
+  linkedChapterPath: string;
+  /** Optional link to a scene name within the linked chapter */
+  linkedSceneName: string;
+  /** Manual sort order within same date */
+  order: number;
+  /** Character references for this event */
+  characters: string[];
+  /** Location references for this event */
+  locations: string[];
+}
+
+export interface TimelineData {
+  /** Manual events not derived from chapters */
+  manualEvents: TimelineManualEvent[];
+  /** User-defined categories for color-coding */
+  categories: TimelineCategory[];
+  /** Current display mode preference */
+  viewMode: TimelineViewMode;
+  /** Current zoom level preference */
+  zoomLevel: TimelineZoomLevel;
+}
+
+/** Unified event used for rendering — built at render time from all sources */
+export interface TimelineEvent {
+  id: string;
+  title: string;
+  date: string;
+  /** Parsed sortable date — null if date cannot be parsed */
+  sortDate: Date | null;
+  description: string;
+  source: TimelineEventSource;
+  categoryId: string;
+  categoryColor: string;
+  /** Chapter file path if linked */
+  chapterPath: string;
+  /** Scene name within chapter if applicable */
+  sceneName: string;
+  /** Act name if applicable */
+  actName: string;
+  /** Chapter order for items with same date */
+  chapterOrder: number;
+  /** Characters detected in the source chapter */
+  characters: string[];
+  /** Locations detected in the source chapter */
+  locations: string[];
 }
