@@ -87,6 +87,7 @@ import {
   type FocusPeekCallbacks,
   type EntityPeekData
 } from './cm/focusPeekExtension';
+import { chapterDateExtension, type ChapterDateCallbacks } from './cm/chapterDateExtension';
 import { countWords, getTodayDate, getOrCreateDailyGoal } from './utils/statisticsUtils';
 import { calculateReadability } from './utils/readabilityUtils';
 import { OllamaService } from './utils/ollamaService';
@@ -225,6 +226,9 @@ export default class NovalistPlugin extends Plugin {
 
     // Register AI highlight CM6 extension
     this.setupAiHighlightExtension();
+
+    // Register chapter/scene date badge CM6 extension
+    this.setupChapterDateBadge();
 
     // Command to open current character file in sheet view
     this.addCommand({
@@ -4594,6 +4598,29 @@ order: ${orderValue}
       },
     };
     this.registerEditorExtension(aiHighlightExtension(callbacks));
+  }
+
+  // ─── Chapter / Scene date badge extension ─────────────────────────
+
+  private setupChapterDateBadge(): void {
+    const callbacks: ChapterDateCallbacks = {
+      isChapterFile: () => {
+        const f = this.app.workspace.getActiveFile();
+        return f ? this.isChapterFile(f) : false;
+      },
+      getChapterDate: () => {
+        const f = this.app.workspace.getActiveFile();
+        if (!f) return '';
+        return this.getChapterDateSync(f);
+      },
+      getSceneDate: (sceneName: string) => {
+        const f = this.app.workspace.getActiveFile();
+        if (!f) return '';
+        return this.getSceneDateSync(f, sceneName);
+      },
+      t: (key) => t(key),
+    };
+    this.registerEditorExtension(chapterDateExtension(callbacks));
   }
 
   /** Remove a single AI highlight from all editors. */

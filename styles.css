@@ -3876,6 +3876,43 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   white-space: nowrap;
 }
 
+/* ─── Editor: chapter / scene date badges ──────────────────────────── */
+
+.novalist-heading-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 0.55em;
+  font-weight: 400;
+  line-height: 1.6;
+  vertical-align: middle;
+  white-space: nowrap;
+  pointer-events: none;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.novalist-heading-date-chapter {
+  font-size: 0.55em;
+}
+
+.novalist-heading-date-scene {
+  font-size: 0.65em;
+}
+
+.novalist-heading-date-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.novalist-heading-date-day {
+  opacity: 0.7;
+  font-style: italic;
+}
+
 /* Statistics popup: scene rows */
 .novalist-stats-popup-scene-row td {
   font-size: 0.85em;

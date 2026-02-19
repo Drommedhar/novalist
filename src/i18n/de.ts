@@ -934,4 +934,13 @@ export default {
   'aiChat.modelLoading': 'Laden…',
   'aiChat.noModels': 'Keine Modelle',
   'aiChat.modelDefault': '(Standard)',
+
+  // ── Day of Week ─────────────────────────────────────────────────────
+  'day.sunday': 'Sonntag',
+  'day.monday': 'Montag',
+  'day.tuesday': 'Dienstag',
+  'day.wednesday': 'Mittwoch',
+  'day.thursday': 'Donnerstag',
+  'day.friday': 'Freitag',
+  'day.saturday': 'Samstag',
 } as const;
