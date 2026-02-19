@@ -30,7 +30,11 @@ import {
   LoreTemplate,
   ItemListData,
   LoreListData,
-  RecentEditEntry
+  RecentEditEntry,
+  MentionCacheEntry,
+  MentionResult,
+  CachedAiFinding,
+  WholeStoryAnalysisResult,
 } from './types';
 import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS, DEFAULT_CHARACTER_TEMPLATE, DEFAULT_LOCATION_TEMPLATE, DEFAULT_ITEM_TEMPLATE, DEFAULT_LORE_TEMPLATE, cloneCharacterTemplate, cloneLocationTemplate, cloneItemTemplate, cloneLoreTemplate, createDefaultProject, createDefaultProjectData, migrateTemplateDefs } from './settings/NovalistSettings';
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
@@ -60,7 +64,7 @@ import { SceneNameModal } from './modals/SceneNameModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { ProjectSwitcherModal, ProjectRenameModal } from './modals/ProjectModals';
 import { SnapshotNameModal, SnapshotListModal } from './modals/SnapshotModal';
-import { AiAnalysisModal } from './modals/AiAnalysisModal';
+// import { AiAnalysisModal } from './modals/AiAnalysisModal';
 import { updateSnapshotChapterName } from './utils/snapshotUtils';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole, computeInterval } from './utils/characterUtils';
@@ -88,6 +92,7 @@ import { calculateReadability } from './utils/readabilityUtils';
 import { OllamaService } from './utils/ollamaService';
 import type { EntitySummary } from './utils/ollamaService';
 import { FullStoryAnalysisModal } from './modals/FullStoryAnalysisModal';
+import { WholeStoryAnalysisModal } from './modals/WholeStoryAnalysisModal';
 import {
   aiHighlightExtension,
   setAiHighlightsEffect,
@@ -818,6 +823,8 @@ export default class NovalistPlugin extends Plugin {
       this.settings.relationshipPairs = pd.relationshipPairs;
       this.settings.recentEdits = pd.recentEdits ?? [];
       this.settings.timeline = pd.timeline ?? createDefaultProjectData().timeline;
+      // mentionCache lives only in projectData — no top-level alias needed
+      if (!pd.mentionCache) pd.mentionCache = {};
     } else {
       // No projectData entry yet — preserve any top-level data that was
       // loaded from an older version instead of replacing it with empty defaults.
@@ -829,6 +836,7 @@ export default class NovalistPlugin extends Plugin {
         relationshipPairs: this.settings.relationshipPairs ?? {},
         recentEdits: this.settings.recentEdits ?? [],
         timeline: this.settings.timeline ?? createDefaultProjectData().timeline,
+        mentionCache: {},
       };
       this.settings.projectData[this.settings.activeProjectId] = fallback;
       this.settings.commentThreads = fallback.commentThreads;
@@ -843,6 +851,7 @@ export default class NovalistPlugin extends Plugin {
 
   /** Flush top-level per-project fields back into the projectData map. */
   private flushActiveProjectData(): void {
+    const existing = this.settings.projectData[this.settings.activeProjectId];
     this.settings.projectData[this.settings.activeProjectId] = {
       commentThreads: this.settings.commentThreads,
       plotBoard: this.settings.plotBoard,
@@ -851,6 +860,9 @@ export default class NovalistPlugin extends Plugin {
       relationshipPairs: this.settings.relationshipPairs,
       recentEdits: this.settings.recentEdits,
       timeline: this.settings.timeline,
+      mentionCache: existing?.mentionCache ?? {},
+      // Preserve fields stored directly in projectData (not mirrored at top level)
+      wholeStoryAnalysis: existing?.wholeStoryAnalysis,
     };
     const activeProject = this.getActiveProject();
     if (activeProject) {
@@ -1949,7 +1961,7 @@ order: ${orderValue}
     if (!this.ollamaService) {
       this.initOllamaService();
     }
-    new AiAnalysisModal(this.app, this, file).open();
+    new FullStoryAnalysisModal(this.app, this, file).open();
   }
 
   analyseFullStoryWithAi(): void {
@@ -1962,6 +1974,19 @@ order: ${orderValue}
       this.initOllamaService();
     }
     new FullStoryAnalysisModal(this.app, this).open();
+  }
+
+  /** Open the whole-story AI analysis modal (cross-chapter review). */
+  analyseWholeStoryWithAi(): void {
+    const isCopilot = this.settings.ollama.provider === 'copilot';
+    if (!this.settings.ollama.enabled || (!isCopilot && !this.settings.ollama.model)) {
+      new Notice(t('ollama.notConfigured'));
+      return;
+    }
+    if (!this.ollamaService) {
+      this.initOllamaService();
+    }
+    new WholeStoryAnalysisModal(this.app, this).open();
   }
 
   /** Collect summaries of all known entities for LLM context.
@@ -3104,18 +3129,192 @@ order: ${orderValue}
     return this.getChapterIdForFileSync(file);
   }
 
-  async parseChapterFile(file: TFile): Promise<{ characters: string[]; locations: string[]; items: string[]; lore: string[] }> {
+  async parseChapterFile(file: TFile): Promise<MentionResult> {
     const content = await this.app.vault.read(file);
-    const body = this.stripFrontmatter(content);
-    
-    const mentions = this.scanMentions(body);
+    const hash = await this.hashContent(content);
 
-    return {
+    // Check the persistent mention cache
+    const cache = this.getMentionCache();
+    const entry = cache[file.path];
+    if (entry && entry.hash === hash) {
+      return { ...entry.chapter };
+    }
+
+    // Cache miss — scan and store
+    const body = this.stripFrontmatter(content);
+    const mentions = this.scanMentions(body);
+    const result: MentionResult = {
       characters: mentions.characters,
       locations: mentions.locations,
       items: mentions.items,
-      lore: mentions.lore
+      lore: mentions.lore,
     };
+
+    // Build scene-level cache entries
+    const scenes: Record<string, MentionResult> = {};
+    const sceneNames = this.getScenesForChapter(file);
+    for (const sceneName of sceneNames) {
+      const section = this.extractSceneSection(content, sceneName);
+      const sceneMentions = this.scanMentions(section);
+      scenes[sceneName] = {
+        characters: sceneMentions.characters,
+        locations: sceneMentions.locations,
+        items: sceneMentions.items,
+        lore: sceneMentions.lore,
+      };
+    }
+
+    cache[file.path] = { hash, chapter: result, scenes };
+    void this.saveSettings();
+
+    return { ...result };
+  }
+
+  /**
+   * Get cached scene-level mentions for a chapter file.
+   * Returns the cached result if the file hash matches, otherwise
+   * scans only the requested scene section and updates the cache.
+   */
+  async getSceneMentions(file: TFile, sceneName: string): Promise<MentionResult> {
+    const content = await this.app.vault.read(file);
+    const hash = await this.hashContent(content);
+
+    const cache = this.getMentionCache();
+    const entry = cache[file.path];
+    if (entry && entry.hash === hash && entry.scenes[sceneName]) {
+      return { ...entry.scenes[sceneName] };
+    }
+
+    // Either no cache or hash changed — scan the scene section
+    const section = this.extractSceneSection(content, sceneName);
+    const mentions = this.scanMentions(section);
+    const result: MentionResult = {
+      characters: mentions.characters,
+      locations: mentions.locations,
+      items: mentions.items,
+      lore: mentions.lore,
+    };
+
+    // If the whole cache entry is stale, rebuild it via parseChapterFile
+    if (!entry || entry.hash !== hash) {
+      // parseChapterFile will rebuild the entire entry
+      await this.parseChapterFile(file);
+    } else {
+      // Just add/update this scene in the existing entry
+      entry.scenes[sceneName] = result;
+      void this.saveSettings();
+    }
+
+    return result;
+  }
+
+  /**
+   * Store mention scan results into the cache for a chapter file.
+   * Used by AI analysis modals to persist their findings.
+   */
+  async storeMentionCache(
+    file: TFile,
+    chapterResult: MentionResult,
+    sceneResults?: Record<string, MentionResult>,
+    aiFindings?: CachedAiFinding[],
+  ): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const hash = await this.hashContent(content);
+    const cache = this.getMentionCache();
+    const existing = cache[file.path];
+    cache[file.path] = {
+      hash,
+      chapter: chapterResult,
+      scenes: sceneResults ?? existing?.scenes ?? {},
+      aiFindings: aiFindings ?? existing?.aiFindings,
+    };
+    void this.saveSettings();
+  }
+
+  /**
+   * Retrieve cached AI findings for a chapter file.
+   * Returns the findings array if the cache entry exists and the file hash
+   * still matches, otherwise `null`.
+   */
+  async getCachedAiFindings(file: TFile): Promise<CachedAiFinding[] | null> {
+    const content = await this.app.vault.read(file);
+    const hash = await this.hashContent(content);
+    const cache = this.getMentionCache();
+    const entry = cache[file.path];
+    if (entry && entry.hash === hash && entry.aiFindings) {
+      return entry.aiFindings;
+    }
+    return null;
+  }
+
+  /**
+   * Return ALL cached AI findings across every chapter in the detect cache,
+   * paired with the chapter name resolved from the file path.
+   * Entries without cached findings are omitted.
+   */
+  getAllCachedAiFindings(): Array<{ chapterName: string; findings: CachedAiFinding[] }> {
+    const cache = this.getMentionCache();
+    const result: Array<{ chapterName: string; findings: CachedAiFinding[] }> = [];
+    for (const [filePath, entry] of Object.entries(cache)) {
+      if (!entry.aiFindings || entry.aiFindings.length === 0) continue;
+      const abstract = this.app.vault.getAbstractFileByPath(filePath);
+      const chapterName = abstract instanceof TFile
+        ? this.getChapterNameForFileSync(abstract)
+        : filePath;
+      result.push({ chapterName, findings: entry.aiFindings });
+    }
+    return result;
+  }
+
+  /** Get the whole-story analysis result for the active project, if any. */
+  getWholeStoryAnalysisResult(): WholeStoryAnalysisResult | undefined {
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    return pd?.wholeStoryAnalysis;
+  }
+
+  /** Persist a whole-story analysis result for the active project. */
+  async saveWholeStoryAnalysisResult(result: WholeStoryAnalysisResult): Promise<void> {
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (pd) {
+      pd.wholeStoryAnalysis = result;
+      await this.saveSettings();
+    }
+  }
+
+  /** Get the per-project mention cache, initialising if needed. */
+  private getMentionCache(): Record<string, MentionCacheEntry> {
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (pd) {
+      if (!pd.mentionCache) pd.mentionCache = {};
+      return pd.mentionCache;
+    }
+    return {};
+  }
+
+  /** Compute a SHA-256 hex digest of a string. */
+  private async hashContent(content: string): Promise<string> {
+    const data = new TextEncoder().encode(content);
+    const buf = await window.crypto.subtle.digest('SHA-256', data);
+    const arr = new Uint8Array(buf);
+    return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /** Extract the body text of a single scene (H2 section) from chapter markdown. */
+  private extractSceneSection(content: string, sceneName: string): string {
+    const body = this.stripFrontmatter(content);
+    const lines = body.split('\n');
+    let capturing = false;
+    const result: string[] = [];
+    for (const line of lines) {
+      if (capturing) {
+        if (/^#{1,2}\s/.test(line)) break;
+        result.push(line);
+      } else if (/^##\s/.test(line)) {
+        const heading = line.replace(/^##\s+/, '').trim();
+        if (heading === sceneName) capturing = true;
+      }
+    }
+    return result.join('\n');
   }
 
   scanMentions(content: string): { characters: string[]; locations: string[]; items: string[]; lore: string[] } {
@@ -3915,17 +4114,23 @@ order: ${orderValue}
   }
 
   async openDashboardOnStartup(): Promise<void> {
-    // Close all main-area markdown leaves (editor tabs from previous session)
-    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
-    for (const leaf of markdownLeaves) {
-      // Only close leaves in the main area (not sidebar)
-      if (leaf.getRoot() === this.app.workspace.rootSplit) {
-        leaf.detach();
-      }
-    }
+    // Collect main-area markdown leaves (editor tabs from previous session)
+    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
+      .filter(l => l.getRoot() === this.app.workspace.rootSplit);
 
-    // Open dashboard as landing page
-    await this.activateDashboardView();
+    if (markdownLeaves.length > 0) {
+      // Reuse the first leaf for the dashboard to avoid an empty tab group
+      const reuse = markdownLeaves[0];
+      await reuse.setViewState({ type: DASHBOARD_VIEW_TYPE, active: true });
+      void this.app.workspace.revealLeaf(reuse);
+
+      // Detach the remaining leaves
+      for (let i = 1; i < markdownLeaves.length; i++) {
+        markdownLeaves[i].detach();
+      }
+    } else {
+      await this.activateDashboardView();
+    }
   }
 
   updateRecentEdit(file: TFile, line: number, ch: number): void {

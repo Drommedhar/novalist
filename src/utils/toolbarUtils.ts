@@ -163,6 +163,22 @@ export class NovalistToolbarManager {
     this.updateChapterDropdown(ribbon);
   }
 
+  /**
+   * Render the toolbar into an arbitrary container element.
+   * Used by the Dashboard and other non-editor views.
+   */
+  renderToolbarInto(container: HTMLElement): void {
+    const ribbon = document.createElement('div');
+    ribbon.addClass('novalist-ribbon');
+    this.renderRibbon(ribbon);
+    container.appendChild(ribbon);
+    // Hide the chapter-status group (no active file)
+    const statusGroup = ribbon.querySelector('.novalist-ribbon-group-status');
+    if (statusGroup) (statusGroup as HTMLElement).addClass('is-hidden');
+    const dividers = ribbon.querySelectorAll('.novalist-ribbon-panel[data-tab="create"] .novalist-ribbon-divider');
+    dividers.forEach(d => (d as HTMLElement).addClass('is-hidden'));
+  }
+
   /** Resolve the TFile currently displayed in a leaf-content element. */
   private getFileForLeafContent(leafContent: HTMLElement): TFile | null {
     const leaves = this.plugin.app.workspace.getLeavesOfType('markdown');
@@ -294,6 +310,9 @@ export class NovalistToolbarManager {
       });
       this.createRibbonButton(aiItems, 'book-open-check', t('toolbar.aiFullStory'), t('toolbar.aiFullStory'), () => {
         this.plugin.analyseFullStoryWithAi();
+      });
+      this.createRibbonButton(aiItems, 'book-marked', t('toolbar.aiWholeStory'), t('toolbar.aiWholeStory'), () => {
+        this.plugin.analyseWholeStoryWithAi();
       });
       this.createRibbonButton(aiItems, 'message-square', t('toolbar.aiChat'), t('toolbar.aiChat'), () => {
         void this.plugin.activateAiChatView();
@@ -485,6 +504,7 @@ export class NovalistToolbarManager {
       'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
       'sparkles': '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>',
       'book-open-check': '<path d="M8 3H2v15h7c1.7 0 3 1.3 3 3V7c0-2.2-1.8-4-4-4Z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14c0-1.7 1.3-3 3-3h7V3Z"/><path d="m16 12 2 2 4-4"/>',
+      'book-marked': '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><polyline points="10 2 10 10 13 7 16 10 16 2"/>',
       'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
       'calendar-range': '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
     };

@@ -68,6 +68,12 @@ export class DashboardView extends ItemView {
     refreshBtn.setAttr('aria-label', t('dashboard.refresh'));
     refreshBtn.addEventListener('click', () => void this.render());
 
+    // Toolbar ribbon
+    if (this.plugin.toolbarManager) {
+      const toolbarHost = container.createDiv('novalist-dashboard-toolbar');
+      this.plugin.toolbarManager.renderToolbarInto(toolbarHost);
+    }
+
     // Get all data
     const stats = await calculateProjectStatistics(this.plugin);
     const chapters = this.plugin.getChapterDescriptionsSync();

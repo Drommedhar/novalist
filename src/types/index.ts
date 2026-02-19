@@ -7,6 +7,47 @@ export interface NovalistProject {
   path: string;
 }
 
+// ─── Mention Cache ──────────────────────────────────────────────────
+
+/** The set of entity names detected in a chunk of text. */
+export interface MentionResult {
+  characters: string[];
+  locations: string[];
+  items: string[];
+  lore: string[];
+}
+
+/** Serialisable AI finding stored in the mention cache. */
+export interface CachedAiFinding {
+  type: 'reference' | 'inconsistency' | 'suggestion';
+  title: string;
+  description: string;
+  excerpt?: string;
+  entityName?: string;
+  entityType?: string;
+}
+
+/** Result of a whole-story AI analysis, persisted in ProjectData. */
+export interface WholeStoryAnalysisResult {
+  /** ISO timestamp when the analysis was run. */
+  timestamp: string;
+  findings: CachedAiFinding[];
+  thinking: string;
+  rawResponse: string;
+}
+
+/** Cached mention-scan results for a single chapter file. */
+export interface MentionCacheEntry {
+  /** SHA-256 hex digest of the file content at scan time. */
+  hash: string;
+  /** Chapter-level (whole-file) mention results. */
+  chapter: MentionResult;
+  /** Per-scene mention results, keyed by scene (H2) heading name. */
+  scenes: Record<string, MentionResult>;
+  /** AI findings produced during the last analysis of this chapter. */
+  aiFindings?: CachedAiFinding[];
+}
+
 /** Per-project data stored alongside global settings. */
 export interface ProjectData {
   commentThreads: CommentThread[];
@@ -16,6 +57,10 @@ export interface ProjectData {
   relationshipPairs: Record<string, string[]>;
   recentEdits: RecentEditEntry[];
   timeline: TimelineData;
+  /** Cached entity-mention scan results keyed by chapter file path (relative to vault root). */
+  mentionCache: Record<string, MentionCacheEntry>;
+  /** Result of the last whole-story AI analysis (cross-chapter review). */
+  wholeStoryAnalysis?: WholeStoryAnalysisResult;
 }
 
 export interface NovalistSettings {

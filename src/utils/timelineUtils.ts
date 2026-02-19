@@ -72,32 +72,6 @@ export const SOURCE_COLORS: Record<TimelineEventSource, string> = {
 };
 
 /**
- * Extract the body text of a single scene (H2 section) from a chapter's
- * markdown content. Returns everything between the scene's `## heading`
- * and the next H1/H2 heading (or end of file).
- */
-function extractSceneSection(content: string, sceneName: string): string {
-  const lines = content.split('\n');
-  let capturing = false;
-  const result: string[] = [];
-
-  for (const line of lines) {
-    if (capturing) {
-      // Stop at the next H1 or H2
-      if (/^#{1,2}\s/.test(line)) break;
-      result.push(line);
-    } else if (/^##\s/.test(line)) {
-      const heading = line.replace(/^##\s+/, '').trim();
-      if (heading === sceneName) {
-        capturing = true;
-      }
-    }
-  }
-
-  return result.join('\n');
-}
-
-/**
  * Gather events from all sources —
  * chapter dates, scene dates, act markers, and manual events.
  */
@@ -107,43 +81,20 @@ export async function buildTimelineEvents(plugin: NovalistPlugin): Promise<Timel
   const timelineData = plugin.settings.timeline;
   const categories = timelineData.categories;
 
-  // Cache of entity mentions per chapter file path
-  const mentionCache = new Map<string, { characters: string[]; locations: string[] }>();
-
+  // Helper to get chapter-level mentions via the plugin's persistent cache
   async function getMentions(filePath: string): Promise<{ characters: string[]; locations: string[] }> {
-    const cached = mentionCache.get(filePath);
-    if (cached) return cached;
     const file = plugin.app.vault.getAbstractFileByPath(filePath);
     if (!file || !('extension' in file)) return { characters: [], locations: [] };
     const parsed = await plugin.parseChapterFile(file as import('obsidian').TFile);
-    const result = { characters: parsed.characters, locations: parsed.locations };
-    mentionCache.set(filePath, result);
-    return result;
+    return { characters: parsed.characters, locations: parsed.locations };
   }
 
-  // Cache of full file contents for scene-level mention extraction
-  const contentCache = new Map<string, string>();
-
-  /** Get mentions for a single scene (H2 section) within a chapter file. */
+  // Helper to get scene-level mentions via the plugin's persistent cache
   async function getSceneMentions(filePath: string, sceneName: string): Promise<{ characters: string[]; locations: string[] }> {
-    const cacheKey = `${filePath}::${sceneName}`;
-    const cached = mentionCache.get(cacheKey);
-    if (cached) return cached;
-
-    let content = contentCache.get(filePath);
-    if (content === undefined) {
-      const file = plugin.app.vault.getAbstractFileByPath(filePath);
-      if (!file || !('extension' in file)) return { characters: [], locations: [] };
-      content = await plugin.app.vault.read(file as import('obsidian').TFile);
-      contentCache.set(filePath, content);
-    }
-
-    // Extract the text between this scene's H2 heading and the next H1/H2
-    const sceneSection = extractSceneSection(content, sceneName);
-    const parsed = plugin.scanMentions(sceneSection);
-    const result = { characters: parsed.characters, locations: parsed.locations };
-    mentionCache.set(cacheKey, result);
-    return result;
+    const file = plugin.app.vault.getAbstractFileByPath(filePath);
+    if (!file || !('extension' in file)) return { characters: [], locations: [] };
+    const parsed = await plugin.getSceneMentions(file as import('obsidian').TFile, sceneName);
+    return { characters: parsed.characters, locations: parsed.locations };
   }
 
   // Track seen acts to insert act markers at the first chapter of each act

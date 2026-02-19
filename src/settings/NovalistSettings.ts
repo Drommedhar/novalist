@@ -246,6 +246,7 @@ export function createDefaultProjectData(): ProjectData {
     relationshipPairs: {},
     recentEdits: [],
     timeline: createDefaultTimelineData(),
+    mentionCache: {},
   };
 }
 

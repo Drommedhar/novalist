@@ -1,4 +1,4 @@
-import { requestUrl, RequestUrlParam } from 'obsidian';
+import { requestUrl } from 'obsidian';
 import { spawn } from 'child_process';
 import type { ChildProcess } from 'child_process';
 import type { AiProvider, AiAnalysisMode } from '../types';
@@ -15,7 +15,7 @@ export interface OllamaModel {
 export interface OllamaGenerateRequest {
   model: string;
   prompt: string;
-  stream: false;
+  stream: boolean;
   options?: {
     temperature?: number;
     num_predict?: number;
@@ -25,6 +25,8 @@ export interface OllamaGenerateRequest {
 export interface OllamaGenerateResponse {
   model: string;
   response: string;
+  /** Thinking / chain-of-thought tokens (thinking models like DeepSeek-R1, Qwen3). */
+  thinking?: string;
   done: boolean;
 }
 
@@ -55,6 +57,8 @@ export interface ChapterContext {
   chapterName: string;
   actName?: string;
   sceneName?: string;
+  /** In-story date assigned to the chapter or scene (from frontmatter). */
+  date?: string;
 }
 
 /** Which analysis tasks to include in the request. */
@@ -692,33 +696,90 @@ export class OllamaService {
 
   // ── Generation ─────────────────────────────────────────────────
 
-  private async generate(prompt: string, temperature = 0.3, maxTokens = 4096): Promise<string> {
+  private async generate(
+    prompt: string,
+    temperature = 0.3,
+    maxTokens = 4096,
+    onChunk?: (token: string) => void,
+    onThinkingChunk?: (token: string) => void,
+  ): Promise<string> {
     if (this.provider === 'copilot') {
       return this.copilotClient.generate(prompt);
     }
-    return this.generateOllama(prompt, temperature, maxTokens);
+    return this.generateOllama(prompt, temperature, maxTokens, onChunk, onThinkingChunk);
   }
 
-  private async generateOllama(prompt: string, temperature: number, maxTokens: number): Promise<string> {
+  private async generateOllama(
+    prompt: string,
+    temperature: number,
+    maxTokens: number,
+    onChunk?: (token: string) => void,
+    onThinkingChunk?: (token: string) => void,
+  ): Promise<string> {
     this.abortController = new AbortController();
-    const body: OllamaGenerateRequest = {
+    // Use /api/chat instead of /api/generate for better thinking-model
+    // support and context handling.  The prompt is wrapped as a single
+    // user message.
+    const body = {
       model: this.model,
-      prompt,
-      stream: false,
+      messages: [{ role: 'user', content: prompt }],
+      stream: true,
       options: { temperature, num_predict: maxTokens },
     };
 
-    const params: RequestUrlParam = {
-      url: `${this.baseUrl}/api/generate`,
+    const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST',
-      body: JSON.stringify(body),
       headers: { 'Content-Type': 'application/json' },
-    };
+      body: JSON.stringify(body),
+      signal: this.abortController.signal,
+    });
 
-    const res = await requestUrl(params);
-    this.abortController = null;
-    const data = res.json as OllamaGenerateResponse;
-    return data.response ?? '';
+    if (!response.ok || !response.body) {
+      this.abortController = null;
+      throw new Error(`Ollama chat request failed: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let buffer = '';
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const json = JSON.parse(trimmed) as { message?: { content?: string; thinking?: string }; done?: boolean };
+            const thinking = json.message?.thinking ?? '';
+            if (thinking) {
+              onThinkingChunk?.(thinking);
+            }
+            const token = json.message?.content ?? '';
+            if (token) {
+              fullText += token;
+              onChunk?.(token);
+            }
+          } catch { /* skip malformed lines */ }
+        }
+      }
+    } finally {
+      this.abortController = null;
+    }
+
+    // Some models embed thinking inside <think>…</think> tags in the
+    // response text instead of using the dedicated thinking field.
+    // Strip those out so the caller gets only the actual answer.
+    const { cleaned, thinking: inlineThinking } = OllamaService.stripInlineThinking(fullText);
+    if (inlineThinking) {
+      onThinkingChunk?.(inlineThinking);
+    }
+    return cleaned;
   }
 
   // ── Streaming chat generation ──────────────────────────────────
@@ -807,7 +868,15 @@ export class OllamaService {
       this.abortController = null;
     }
 
-    return { response: fullText, thinking: thinkingText };
+    // Some models embed thinking inside <think>…</think> tags in the
+    // response text instead of (or in addition to) the dedicated field.
+    const { cleaned, thinking: inlineThinking } = OllamaService.stripInlineThinking(fullText);
+    if (inlineThinking) {
+      thinkingText = (thinkingText + '\n\n' + inlineThinking).trim();
+      onThinkingChunk?.(inlineThinking);
+    }
+
+    return { response: cleaned, thinking: thinkingText };
   }
 
   private async generateChatCopilot(
@@ -836,18 +905,14 @@ export class OllamaService {
     }).join('\n\n');
     try {
       const raw = await this.copilotClient.generate(prompt);
-      // Some models also emit thinking wrapped in <think>…</think>
-      // tags inline.  Extract it so we can display it separately.
-      const thinkParts: string[] = [];
-      const cleaned = raw.replace(/<think>([\s\S]*?)<\/think>/g, (_, inner: string) => {
-        thinkParts.push(inner.trim());
-        origThinkCb?.(inner.trim());
-        return '';
-      });
-      if (thinkParts.length > 0) {
-        thinkingText = (thinkingText + '\n\n' + thinkParts.join('\n\n')).trim();
+      // Strip inline <think>…</think> tags and route them to the
+      // thinking callback.
+      const { cleaned, thinking: inlineThinking } = OllamaService.stripInlineThinking(raw);
+      if (inlineThinking) {
+        origThinkCb?.(inlineThinking);
+        thinkingText = (thinkingText + '\n\n' + inlineThinking).trim();
       }
-      return { response: cleaned.trim(), thinking: thinkingText };
+      return { response: cleaned, thinking: thinkingText };
     } finally {
       this.copilotClient.onChunk = null;
       this.copilotClient.onThinkingChunk = null;
@@ -862,6 +927,22 @@ export class OllamaService {
    * single-line dialogue) are merged so we don't flood the LLM with tiny
    * requests.
    */
+  /**
+   * Strip inline `<think>…</think>` blocks from text and return the
+   * cleaned response plus the extracted thinking content.  Models like
+   * DeepSeek-R1 and some Qwen variants embed chain-of-thought inside
+   * these tags rather than using a dedicated thinking field.
+   */
+  static stripInlineThinking(text: string): { cleaned: string; thinking: string } {
+    const thinkParts: string[] = [];
+    const cleaned = text.replace(/<think>([\s\S]*?)<\/think>/g, (_, inner: string) => {
+      const part = inner.trim();
+      if (part) thinkParts.push(part);
+      return '';
+    });
+    return { cleaned: cleaned.trim(), thinking: thinkParts.join('\n\n') };
+  }
+
   static splitParagraphs(text: string): string[] {
     // Split on one or more blank lines
     const raw = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 0);
@@ -917,6 +998,10 @@ export class OllamaService {
     context?: ChapterContext,
     checks?: EnabledChecks,
   ): Promise<AiFinding[]> {
+    // Reset the Copilot session so the model has no memory of previous
+    // paragraphs / scenes.  No-op for Ollama (stateless HTTP).
+    await this.resetChatSession();
+
     const doRefs = checks?.references ?? true;
     const doIncon = checks?.inconsistencies ?? true;
     const doSug = checks?.suggestions ?? true;
@@ -929,7 +1014,7 @@ export class OllamaService {
       : '';
 
     const contextBlock = context
-      ? `\nChapter context: Chapter "${context.chapterName}"${context.actName ? `, Act "${context.actName}"` : ''}${context.sceneName ? `, Scene "${context.sceneName}"` : ''}. The entity details above already reflect any act/chapter/scene-specific overrides.\n`
+      ? `\nChapter context: Chapter "${context.chapterName}"${context.actName ? `, Act "${context.actName}"` : ''}${context.sceneName ? `, Scene "${context.sceneName}"` : ''}${context.date ? `, In-story date: ${context.date}` : ''}. The entity details above already reflect any act/chapter/scene-specific overrides.\n`
       : '';
 
     const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound);
@@ -965,8 +1050,12 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
   }
 
   /**
-   * Analyse an entire chapter in a single LLM call.
+   * Analyse a text passage (scene or full chapter) in a single LLM call.
    * Better for large-context models; gives the LLM full narrative context.
+   *
+   * When {@link onResponseChunk} is provided the method uses the streaming
+   * chat API so that reasoning / thinking tokens can be forwarded to the
+   * caller in real time.
    */
   async analyseChapterWhole(
     chapterText: string,
@@ -974,11 +1063,17 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
     alreadyFound?: string[],
     context?: ChapterContext,
     checks?: EnabledChecks,
-  ): Promise<AiFinding[]> {
+    onResponseChunk?: (token: string) => void,
+    onThinkingChunk?: (token: string) => void,
+  ): Promise<{ findings: AiFinding[]; rawResponse: string; thinking: string }> {
+    // Reset the Copilot session so the model has no memory of previous
+    // scenes / chapters.  No-op for Ollama (stateless HTTP).
+    await this.resetChatSession();
+
     const doRefs = checks?.references ?? true;
     const doIncon = checks?.inconsistencies ?? true;
     const doSug = checks?.suggestions ?? true;
-    if (!doRefs && !doIncon && !doSug) return [];
+    if (!doRefs && !doIncon && !doSug) return { findings: [], rawResponse: '', thinking: '' };
 
     const entityBlock = entities.map(e => `- [${e.type}] ${e.name}: ${e.details}`).join('\n');
 
@@ -987,21 +1082,27 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
       : '';
 
     const contextBlock = context
-      ? `\nChapter context: Chapter "${context.chapterName}"${context.actName ? `, Act "${context.actName}"` : ''}${context.sceneName ? `, Scene "${context.sceneName}"` : ''}. The entity details above already reflect any act/chapter/scene-specific overrides.\n`
+      ? `\nChapter context: Chapter "${context.chapterName}"${context.actName ? `, Act "${context.actName}"` : ''}${context.sceneName ? `, Scene "${context.sceneName}"` : ''}${context.date ? `, In-story date: ${context.date}` : ''}. The entity details above already reflect any act/chapter/scene-specific overrides.\n`
       : '';
 
     const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound);
 
     const lang = getLanguageName();
 
-    const prompt = `You are a fiction-writing assistant analysing a COMPLETE chapter from a novel. The project tracks entities (characters, locations, items, lore) by matching their names as plain text — no special markup is used. You have the full chapter text, so you can detect cross-paragraph patterns and narrative-level inconsistencies.
+    const isScene = !!context?.sceneName;
+    const textLabel = isScene ? 'Scene text' : 'Full chapter text';
+    const scopeDescription = isScene
+      ? `a scene from a novel chapter. The project tracks entities (characters, locations, items, lore) by matching their names as plain text — no special markup is used. You have the full scene text, so you can detect cross-paragraph patterns and narrative-level inconsistencies within this scene.`
+      : `a complete chapter from a novel. The project tracks entities (characters, locations, items, lore) by matching their names as plain text — no special markup is used. You have the full chapter text, so you can detect cross-paragraph patterns and narrative-level inconsistencies.`;
+
+    const prompt = `You are a fiction-writing assistant analysing ${scopeDescription}
 
 IMPORTANT: Write all "title" and "description" values in ${lang}. The JSON keys and "type" / "entityType" enum values must remain in English.
 
 Known entities (note: relationship fields tell you who is connected — e.g. if John Doe has "Wife: Jane Doe", then "his wife" refers to Jane Doe):
 ${entityBlock || '(no entities registered yet)'}
 ${alreadyFoundBlock}${contextBlock}
-Full chapter text:
+${textLabel}:
 """
 ${chapterText}
 """
@@ -1010,7 +1111,7 @@ Perform the following task(s) and return ONLY a JSON array (no markdown fences, 
 - "type": one of "reference", "inconsistency", or "suggestion"
 - "title": short heading (max 80 chars)
 - "description": concise explanation
-- "excerpt": the EXACT text from the chapter that this finding refers to (verbatim copy, max 120 chars). This will be used to locate the finding in the document.
+- "excerpt": the EXACT text from the ${isScene ? 'scene' : 'chapter'} that this finding refers to (verbatim copy, max 120 chars). This will be used to locate the finding in the document.
 - "entityName": the entity name this relates to (or empty string)
 - "entityType": "character", "location", "item", "lore", or empty string
 
@@ -1018,8 +1119,28 @@ ${tasks.join('\n')}
 
 If a task has no findings, simply omit entries for it. Return an empty array [] if nothing is found.`;
 
-    const raw = await this.generate(prompt, 0, 8192);
-    return this.parseFindings(raw);
+    let raw: string;
+    let thinking = '';
+
+    if (onResponseChunk || onThinkingChunk) {
+      // Use streaming chat API so we can forward thinking + response tokens
+      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'user', content: prompt },
+      ];
+      const result = await this.generateChat(
+        messages,
+        (token) => { onResponseChunk?.(token); },
+        0,
+        8192,
+        (token) => { onThinkingChunk?.(token); },
+      );
+      raw = result.response;
+      thinking = result.thinking;
+    } else {
+      raw = await this.generate(prompt, 0, 8192);
+    }
+
+    return { findings: this.parseFindings(raw), rawResponse: raw, thinking };
   }
 
   /**
@@ -1045,9 +1166,9 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
 
     if (wholeChapter) {
       onProgress?.(0, 1);
-      const findings = await this.analyseChapterWhole(chapterText, entities, alreadyFound, context, checks);
+      const result = await this.analyseChapterWhole(chapterText, entities, alreadyFound, context, checks);
       onProgress?.(1, 1);
-      return { findings, hashes: new Map() };
+      return { findings: result.findings, hashes: new Map() };
     }
 
     const doRefs = checks?.references ?? true;
@@ -1085,6 +1206,120 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
     return { findings: allFindings, hashes: newHashes };
   }
 
+  /**
+   * Analyse ALL chapters as a single unified whole-story review.
+   *
+   * Sends the combined text of every chapter together with all known entities
+   * and any cached per-chapter AI findings (from the detect cache) so the
+   * model can verify, cross-reference, and augment the preliminary findings
+   * across the complete narrative.
+   *
+   * This is a single LLM call that may be large – suitable for models with
+   * 128 K+ context windows.  Streaming callbacks are supported so the caller
+   * can display live thinking / response tokens.
+   */
+  async analyseWholeStory(
+    chapters: Array<{ name: string; text: string }>,
+    entities: EntitySummary[],
+    cachedFindings: Array<{ chapterName: string; findings: Array<{ type: string; title: string; description: string; excerpt?: string; entityName?: string; entityType?: string }> }>,
+    onResponseChunk?: (token: string) => void,
+    onThinkingChunk?: (token: string) => void,
+  ): Promise<{ findings: AiFinding[]; rawResponse: string; thinking: string }> {
+    // Start fresh so the model has no memory of previous calls.
+    await this.resetChatSession();
+
+    const lang = getLanguageName();
+
+    const entityBlock = entities.length > 0
+      ? entities.map(e => `- [${e.type}] ${e.name}: ${e.details}`).join('\n')
+      : '(no entities registered yet)';
+
+    // Format cached findings per chapter
+    let cachedFindingsBlock = '';
+    if (cachedFindings.some(cf => cf.findings.length > 0)) {
+      const lines: string[] = [];
+      for (const cf of cachedFindings) {
+        if (cf.findings.length === 0) continue;
+        lines.push(`Chapter "${cf.chapterName}":`);
+        for (const f of cf.findings) {
+          lines.push(`  [${f.type}] ${f.title}: ${f.description}${f.excerpt ? ` (excerpt: "${f.excerpt}")` : ''}`);
+        }
+      }
+      cachedFindingsBlock = lines.join('\n');
+    }
+
+    // Combine all chapter texts with clear dividers
+    const storyBlock = chapters
+      .map(ch => `--- Chapter: ${ch.name} ---\n${ch.text}`)
+      .join('\n\n');
+
+    const prompt = `You are a fiction-analysis assistant performing a WHOLE-STORY review of a complete novel manuscript spanning ${chapters.length} chapter(s).
+
+IMPORTANT: Write all "title" and "description" values in ${lang}. The JSON keys and "type" / "entityType" enum values must remain in English.
+
+## Known Entities
+${entityBlock}
+
+${cachedFindingsBlock ? `## Preliminary Per-Chapter Findings (to be verified and cross-referenced)
+The following findings were discovered during previous per-chapter analysis. Treat them as preliminary hints that may contain duplicates, chapter-isolated false positives, or issues worth verifying across the full narrative:
+${cachedFindingsBlock}
+
+` : ''}## Full Story Text
+${storyBlock}
+
+## Your Task
+Review the complete story and the entity data above and return a final, comprehensive list of findings. Focus on:
+
+1. **Inconsistencies** ("type":"inconsistency"): Contradictions that span the full story — e.g. a character's appearance described differently across chapters, location descriptions that contradict each other, timeline contradictions, or entity details that contradict their registered profiles. Confirm, merge, or expand upon the preliminary findings above. Also add NEW cross-chapter inconsistencies not caught by the per-chapter analysis.
+
+2. **Suggestions** ("type":"suggestion"): Character names, place names, or other notable entities mentioned in the story that are NOT yet registered in the entity list and should be added.
+
+Return ONLY a JSON array (no markdown fences, no explanation outside the array). Each element must have:
+- "type": "inconsistency" or "suggestion"
+- "title": short heading (max 80 chars)
+- "description": detailed explanation of the finding
+- "excerpt": best verbatim text excerpt from the story that illustrates the finding (max 120 chars)
+- "entityName": the entity name this relates to (or empty string)
+- "entityType": "character", "location", "item", "lore", or empty string
+
+Consolidate duplicate or overlapping findings into single entries. Return an empty array [] if nothing is found.
+
+IMPORTANT: After your thinking/reasoning, you MUST produce the JSON array as plain text in your response — not inside any thinking, reasoning, or code block tags. The first non-whitespace character of your final response must be "[".`;
+
+   let raw: string;
+   let thinking = '';
+
+   if (onResponseChunk || onThinkingChunk) {
+     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+       { role: 'user', content: prompt },
+     ];
+     const result = await this.generateChat(
+       messages,
+       (token) => { onResponseChunk?.(token); },
+       0,
+       32768,
+       (token) => { onThinkingChunk?.(token); },
+     );
+     raw = result.response;
+     thinking = result.thinking;
+   } else {
+     raw = await this.generate(prompt, 0, 32768);
+   }
+
+   // Fallback: some extended-thinking models (e.g. Copilot Claude with
+   // extended thinking or DeepSeek-R1) emit the JSON inside the thinking
+   // block and leave the response empty.  Try to recover findings from the
+   // thinking text when the response produces no findings.
+   if ((!raw || !raw.trim() || this.parseFindings(raw).length === 0) && thinking) {
+     const thinkingFindings = this.parseFindings(thinking);
+     if (thinkingFindings.length > 0) {
+       return { findings: thinkingFindings, rawResponse: raw, thinking };
+     }
+   }
+
+   return { findings: this.parseFindings(raw), rawResponse: raw, thinking };
+ }
+
   // ── Helpers ────────────────────────────────────────────────────
 
   /** Simple string hash (same algorithm used by the sidebar). */
@@ -1109,42 +1344,114 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
     const endIdx = cleaned.lastIndexOf(']');
     if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return [];
     const jsonStr = cleaned.substring(startIdx, endIdx + 1);
+
+    let items: unknown[];
     try {
       const parsed: unknown = JSON.parse(jsonStr);
       if (!Array.isArray(parsed)) return [];
-      return parsed.filter((item): item is AiFinding => {
-        if (typeof item !== 'object' || item === null) return false;
-        const obj = item as Record<string, unknown>;
-        return (
-          typeof obj['type'] === 'string' &&
-          typeof obj['title'] === 'string' &&
-          typeof obj['description'] === 'string'
-        );
-      }).map(f => {
-        let name = f.entityName ?? '';
-        let etype = f.entityType ?? '';
-        // Fallback: extract entity name from title for suggestions
-        // Titles often follow the pattern "Entity Name as Something"
-        if (f.type === 'suggestion' && !name && f.title) {
-          const asMatch = f.title.match(/^(.+?)\s+as\s+/i);
-          if (asMatch) {
-            name = asMatch[1].trim();
-          } else {
-            name = f.title;
-          }
-          if (!etype) etype = 'item';
-        }
-        return {
-          type: f.type,
-          title: f.title,
-          description: f.description,
-          excerpt: f.excerpt ?? '',
-          entityName: name,
-          entityType: etype,
-        };
-      });
+      items = parsed;
     } catch {
-      return [];
+      // JSON.parse failed — likely due to unescaped quotes inside string
+      // values.  Fall back to extracting individual top-level objects and
+      // parsing them one-by-one for best-effort recovery.
+      items = this.extractJsonObjects(jsonStr);
+      if (items.length === 0) return [];
+    }
+
+    return items.filter((item): item is AiFinding => {
+      if (typeof item !== 'object' || item === null) return false;
+      const obj = item as Record<string, unknown>;
+      return (
+        typeof obj['type'] === 'string' &&
+        typeof obj['title'] === 'string' &&
+        typeof obj['description'] === 'string'
+      );
+    }).map(f => this.normalizeFinding(f));
+  }
+
+  /** Normalise a parsed finding: fill in missing entityName / entityType. */
+  private normalizeFinding(f: AiFinding): AiFinding {
+    let name = f.entityName ?? '';
+    let etype = f.entityType ?? '';
+    if (f.type === 'suggestion' && !name && f.title) {
+      const asMatch = f.title.match(/^(.+?)\s+as\s+/i);
+      if (asMatch) {
+        name = asMatch[1].trim();
+      } else {
+        name = f.title;
+      }
+      if (!etype) etype = 'item';
+    }
+    return {
+      type: f.type,
+      title: f.title,
+      description: f.description,
+      excerpt: f.excerpt ?? '',
+      entityName: name,
+      entityType: etype,
+    };
+  }
+
+  /**
+   * Best-effort extraction of JSON objects from a potentially malformed
+   * JSON array string.  Uses brace-depth tracking to isolate individual
+   * `{…}` blocks, then attempts to parse each one.  Objects whose JSON
+   * is broken (e.g. unescaped quotes) are repaired before retrying.
+   */
+  private extractJsonObjects(arrayStr: string): unknown[] {
+    const results: unknown[] = [];
+    let depth = 0;
+    let start = -1;
+    let inString = false;
+    let prevChar = '';
+
+    for (let i = 0; i < arrayStr.length; i++) {
+      const ch = arrayStr[i];
+      if (inString) {
+        if (ch === '"' && prevChar !== '\\') inString = false;
+      } else {
+        if (ch === '"') inString = true;
+        else if (ch === '{') {
+          if (depth === 0) start = i;
+          depth++;
+        } else if (ch === '}') {
+          depth--;
+          if (depth === 0 && start !== -1) {
+            const objStr = arrayStr.substring(start, i + 1);
+            const parsed = this.tryParseObject(objStr);
+            if (parsed !== null) results.push(parsed);
+            start = -1;
+          }
+        }
+      }
+      prevChar = ch;
+    }
+    return results;
+  }
+
+  /**
+   * Try to parse a single JSON object string.  If it fails, attempt to
+   * repair common LLM mistakes (unescaped quotes inside string values)
+   * by escaping interior double-quotes within each value.
+   */
+  private tryParseObject(objStr: string): unknown {
+    try {
+      return JSON.parse(objStr);
+    } catch {
+      // Attempt repair: for each "key": "value" pair, re-escape any
+      // unescaped double-quotes that appear inside the value portion.
+      const repaired = objStr.replace(
+        /"(type|title|description|excerpt|entityName|entityType)"\s*:\s*"([\s\S]*?)(?:"\s*(?=[,}\]]))/g,
+        (match, key: string, val: string) => {
+          const escaped = val.replace(/(?<!\\)"/g, '\\"');
+          return `"${key}": "${escaped}"`;
+        },
+      );
+      try {
+        return JSON.parse(repaired);
+      } catch {
+        return null;
+      }
     }
   }
 }

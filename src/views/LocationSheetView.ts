@@ -214,6 +214,7 @@ export class LocationSheetView extends TextFileView {
           const row = list.createDiv('location-sheet-custom-row');
           const def = this.getPropertyDef(key);
           const propType = def?.type ?? 'string';
+          let currentKey = key;
           
           const keyInput = row.createEl('input', {
             type: 'text',
@@ -221,7 +222,26 @@ export class LocationSheetView extends TextFileView {
             placeholder: t('locSheet.propertyNamePlaceholder')
           });
           keyInput.value = key;
-          keyInput.disabled = true;
+          keyInput.addEventListener('blur', () => {
+            const newKey = keyInput.value.trim();
+            if (newKey && newKey !== currentKey) {
+              if (props[newKey] !== undefined) {
+                new Notice(t('notice.propertyExists', { key: newKey }));
+                keyInput.value = currentKey;
+                return;
+              }
+              const val = props[currentKey];
+              delete props[currentKey];
+              props[newKey] = val;
+              currentKey = newKey;
+              this.render();
+            }
+          });
+          keyInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              keyInput.blur();
+            }
+          });
 
           // Render value control based on property type
           switch (propType) {

@@ -6,7 +6,7 @@
   WorkspaceLeaf
 } from 'obsidian';
 import type NovalistPlugin from '../main';
-import { CharacterData, CharacterChapterInfo, LocationData, PlotBoardColumn } from '../types';
+import { CharacterData, CharacterChapterInfo, LocationData, PlotBoardColumn, CachedAiFinding } from '../types';
 import { normalizeCharacterRole, computeInterval } from '../utils/characterUtils';
 import { t } from '../i18n';
 import type { AiFinding, AiFindingType, OllamaModel, CopilotModelInfo } from '../utils/ollamaService';
@@ -65,12 +65,17 @@ export class NovalistSidebarView extends ItemView {
         if (file && file.extension === 'md' && this.plugin.isFileInProject(file)) {
           this.currentChapterFile = file;
           this.updateCurrentScene();
+          // Clear immediately, then attempt to restore from cache
           this.aiFindings = [];
           this.aiLastAnalysedHash = '';
+          void this.restoreAiCacheOrClear(file).then(() => void this.render());
           void this.render();
           this.plugin.clearAiHighlightsFromEditor();
-          this.scheduleAiAnalysis();
-        } else if (file && !this.plugin.isFileInProject(file)) {
+          if (this.aiAutoAnalyse) {
+            this.scheduleAiAnalysis();
+          }
+        } else {
+          // Non-project file or no file at all (all tabs closed)
           this.currentChapterFile = null;
           this.currentScene = null;
           this.aiFindings = [];
@@ -429,6 +434,51 @@ export class NovalistSidebarView extends ItemView {
     return String(hash);
   }
 
+  /**
+   * Attempt to restore AI findings from the persistent mention cache.
+   * If the cache entry exists and its hash still matches the file content,
+   * the sidebar shows the cached findings immediately.  Otherwise the
+   * fields are cleared so the next scheduled analysis starts fresh.
+   */
+  private async restoreAiCacheOrClear(file: TFile): Promise<void> {
+    const cached = await this.plugin.getCachedAiFindings(file);
+    if (cached) {
+      this.restoreFromCachedFindings(cached);
+      // Compute the same hash that runAiAnalysis uses so its guard
+      // correctly skips re-analysis when the content hasn't changed.
+      const content = await this.app.vault.read(file);
+      this.aiLastAnalysedHash = this.hashText(content);
+    } else {
+      this.aiFindings = [];
+      this.aiExtraEntities = { characters: [], locations: [], items: [], lore: [] };
+      this.aiLastAnalysedHash = '';
+    }
+  }
+
+  /** Populate sidebar state from a set of cached AI findings. */
+  private restoreFromCachedFindings(findings: CachedAiFinding[]): void {
+    const refFindings = findings.filter(f => f.type === 'reference');
+    const nonRefFindings = findings.filter(f => f.type !== 'reference') as AiFinding[];
+
+    // Rebuild extra entity lists from reference findings
+    this.aiExtraEntities = { characters: [], locations: [], items: [], lore: [] };
+    for (const ref of refFindings) {
+      if (!ref.entityName) continue;
+      const etype = ref.entityType || 'character';
+      if (etype === 'character' && !this.aiExtraEntities.characters.includes(ref.entityName)) {
+        this.aiExtraEntities.characters.push(ref.entityName);
+      } else if (etype === 'location' && !this.aiExtraEntities.locations.includes(ref.entityName)) {
+        this.aiExtraEntities.locations.push(ref.entityName);
+      } else if (etype === 'item' && !this.aiExtraEntities.items.includes(ref.entityName)) {
+        this.aiExtraEntities.items.push(ref.entityName);
+      } else if (etype === 'lore' && !this.aiExtraEntities.lore.includes(ref.entityName)) {
+        this.aiExtraEntities.lore.push(ref.entityName);
+      }
+    }
+
+    this.aiFindings = nonRefFindings;
+  }
+
   /** Schedule a debounced AI analysis (5 s after the last call). */
   private scheduleAiAnalysis(): void {
     const isCopilot = this.plugin.settings.ollama.provider === 'copilot';
@@ -536,6 +586,17 @@ export class NovalistSidebarView extends ItemView {
       this.aiFindings = nonRefFindings;
       this.aiLastAnalysedHash = hash;
       this.aiIsAnalysing = false;
+
+      // Persist merged mention results (regex + AI references) into the cache
+      if (this.currentChapterFile) {
+        const merged = {
+          characters: [...mentions.characters, ...this.aiExtraEntities.characters],
+          locations: [...mentions.locations, ...this.aiExtraEntities.locations],
+          items: [...mentions.items, ...this.aiExtraEntities.items],
+          lore: [...mentions.lore, ...this.aiExtraEntities.lore],
+        };
+        await this.plugin.storeMentionCache(this.currentChapterFile, merged, undefined, result.findings);
+      }
 
       // Re-render the full sidebar so merged entities appear in normal sections
       void this.render();

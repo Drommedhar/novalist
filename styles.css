@@ -5746,6 +5746,7 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   gap: 6px;
 }
 
+
 .novalist-ai-sidebar-finding {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
@@ -5753,6 +5754,16 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   background: var(--background-secondary);
   font-size: var(--font-ui-small);
   transition: opacity 0.3s;
+  user-select: text;
+}
+
+.novalist-ai-sidebar-finding-desc,
+.novalist-ai-sidebar-finding-title,
+.novalist-ai-excerpt,
+.novalist-ai-entity-info,
+.novalist-ai-entity-name,
+.novalist-ai-entity-type {
+  user-select: text;
 }
 
 .novalist-ai-sidebar-finding.is-dismissed {
@@ -5936,8 +5947,24 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 
 /* ─── Full Story Analysis Modal ───────────────────────────────── */
 
+.novalist-full-story-modal {
+  width: 90vw !important;
+  max-width: 90vw !important;
+  height: 90vh !important;
+}
+
 .novalist-full-story-modal .modal-content {
-  max-height: 70vh;
+  height: 100%;
+  max-height: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.novalist-full-story-modal .novalist-ai-body {
+  flex: 0 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -5967,6 +5994,177 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   margin: 0 0 8px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--background-modifier-border);
+}
+
+/* ── Full-scan log panel ── */
+
+.novalist-fullscan-log {
+  margin-top: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.novalist-fullscan-log[open] {
+  flex: 1 1 0;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.novalist-fullscan-log-summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  background: var(--background-secondary-alt);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.novalist-fullscan-log-summary:hover {
+  background: var(--background-modifier-hover);
+}
+
+.novalist-fullscan-log-body {
+  padding: 8px 12px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.novalist-fullscan-log-label {
+  font-weight: 600;
+  font-size: var(--font-ui-small);
+  margin-bottom: 6px;
+  color: var(--text-accent);
+}
+
+.novalist-fullscan-log-selectors {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.novalist-fullscan-log-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.novalist-fullscan-log-thinking,
+.novalist-fullscan-log-response {
+  margin-bottom: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+
+.novalist-fullscan-log-thinking > summary,
+.novalist-fullscan-log-response > summary {
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  opacity: 0.7;
+  background: var(--background-secondary-alt);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.novalist-fullscan-log-thinking > summary:hover,
+.novalist-fullscan-log-response > summary:hover {
+  opacity: 1;
+}
+
+/* "Copy All" button inside the thinking block summary */
+.novalist-copy-thinking-btn {
+  margin-left: auto;
+  padding: 1px 8px;
+  font-size: var(--font-ui-smaller);
+  font-weight: 400;
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.novalist-copy-thinking-btn:hover {
+  opacity: 1;
+  background: var(--interactive-hover);
+}
+
+/* Whole Story Analysis Modal */
+.novalist-whole-story-desc {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+
+.novalist-whole-story-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.novalist-whole-story-last-run {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.novalist-fullscan-log-pre {
+  padding: 6px 8px;
+  font-size: var(--font-ui-smaller);
+  font-family: var(--font-monospace);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0.85;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.novalist-fullscan-log-detail {
+  margin-top: 6px;
+}
+
+.novalist-fullscan-log-findings h4 {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  margin: 8px 0 4px;
+}
+
+.novalist-fullscan-log-finding {
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+}
+
+.novalist-fullscan-log-finding strong {
+  display: inline;
+  margin-left: 6px;
+}
+
+.novalist-fullscan-log-finding p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+
+.novalist-fullscan-log-finding blockquote {
+  margin: 4px 0 0 0;
+  padding: 2px 8px;
+  border-left: 2px solid var(--text-faint);
+  font-style: italic;
+  opacity: 0.8;
 }
 
 /* ── AI Chat View ────────────────────────────────────────────────── */
@@ -6295,6 +6493,16 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-dashboard-refresh-btn:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+
+.novalist-dashboard-toolbar {
+  margin-bottom: 16px;
+}
+
+.novalist-dashboard-toolbar .novalist-ribbon {
+  position: static;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
 }
 
 .novalist-dashboard-section {

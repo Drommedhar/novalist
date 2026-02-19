@@ -565,27 +565,43 @@ export class CharacterSheetView extends TextFileView {
         text.setValue(this.getEffectiveValue('age'));
         text.onChange(value => {
           this.setEffectiveValue('age', value);
-          if (isDateMode) void this.render();
+          // Update age pill dynamically instead of re-rendering
+          if (isDateMode && agePillEl) {
+            updateAgePill(value);
+          }
         });
       });
 
     // Show computed age interval for date mode when a chapter is selected
+    let agePillEl: HTMLElement | null = null;
+    const updateAgePill = (ageValue: string) => {
+      const template = this.plugin.getCharacterTemplate(this.data.templateId);
+      if (template.ageMode === 'date' && ageValue && this.currentChapter) {
+        const chapterDate = this.plugin.getDateForChapterScene(this.currentChapter, this.currentScene);
+        if (chapterDate) {
+          const unit = template.ageIntervalUnit ?? 'years';
+          const interval = computeInterval(ageValue, chapterDate, unit);
+          if (interval !== null && interval >= 0) {
+            const unitKey = `charSheet.timespan${capitalize(unit)}` as Parameters<typeof t>[0];
+            if (!agePillEl) {
+              agePillEl = detailsRow1.createDiv('novalist-age-interval');
+            }
+            agePillEl.setText(`\u2192 ${t(unitKey, { count: String(interval) })}`);
+            return;
+          }
+        }
+      }
+      // Clear pill if no valid interval
+      if (agePillEl) {
+        agePillEl.remove();
+        agePillEl = null;
+      }
+    };
     {
       const template = this.plugin.getCharacterTemplate(this.data.templateId);
       if (template.ageMode === 'date') {
         const ageValue = this.getEffectiveValue('age');
-        if (ageValue && this.currentChapter) {
-          const chapterDate = this.plugin.getDateForChapterScene(this.currentChapter, this.currentScene);
-          if (chapterDate) {
-            const unit = template.ageIntervalUnit ?? 'years';
-            const interval = computeInterval(ageValue, chapterDate, unit);
-            if (interval !== null && interval >= 0) {
-              const unitKey = `charSheet.timespan${capitalize(unit)}` as Parameters<typeof t>[0];
-              const agePill = detailsRow1.createDiv('novalist-age-interval');
-              agePill.setText(`\u2192 ${t(unitKey, { count: String(interval) })}`);
-            }
-          }
-        }
+        updateAgePill(ageValue);
       }
     }
 
@@ -1229,7 +1245,22 @@ export class CharacterSheetView extends TextFileView {
           });
         }
         break;
-      case 'timespan':
+      case 'timespan': {
+        // Helper to update timespan description dynamically
+        const updateTimespanDesc = (dateValue: string) => {
+          if (dateValue && this.currentChapter) {
+            const chapterDate = this.plugin.getDateForChapterScene(this.currentChapter, this.currentScene);
+            if (chapterDate) {
+              const interval = computeInterval(dateValue, chapterDate, def?.intervalUnit ?? 'years');
+              if (interval !== null && interval >= 0) {
+                const unitKey = `charSheet.timespan${capitalize(def?.intervalUnit ?? 'years')}` as Parameters<typeof t>[0];
+                valueSetting.setDesc(`\u2192 ${t(unitKey, { count: String(interval) })}`);
+                return;
+              }
+            }
+          }
+          valueSetting.setDesc('');
+        };
         valueSetting.addText(text => {
           text.setPlaceholder(t('charSheet.datePlaceholder'));
           text.setValue(value);
@@ -1237,21 +1268,14 @@ export class CharacterSheetView extends TextFileView {
           text.onChange(newValue => {
             customProps[currentKey] = newValue;
             this.setEffectiveCustomProperties(customProps);
-            void this.render();
+            // Update description dynamically instead of re-rendering
+            updateTimespanDesc(newValue);
           });
         });
         // Show computed interval if a chapter/scene date is available
-        if (value && this.currentChapter) {
-          const chapterDate = this.plugin.getDateForChapterScene(this.currentChapter, this.currentScene);
-          if (chapterDate) {
-            const interval = computeInterval(value, chapterDate, def?.intervalUnit ?? 'years');
-            if (interval !== null && interval >= 0) {
-              const unitKey = `charSheet.timespan${capitalize(def?.intervalUnit ?? 'years')}` as Parameters<typeof t>[0];
-              valueSetting.setDesc(`\u2192 ${t(unitKey, { count: String(interval) })}`);
-            }
-          }
-        }
+        updateTimespanDesc(value);
         break;
+      }
       default: // 'string'
         valueSetting.addText(text => {
           text.setPlaceholder(t('charSheet.valuePlaceholder'));
