@@ -306,6 +306,9 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
     checkSuggestions: true,
     copilotPath: 'copilot',
     copilotModel: '',
+    temperature: 0.7,
+    maxTokens: 8192,
+    disableRegexReferences: false,
   },
   recentEdits: [],
 };

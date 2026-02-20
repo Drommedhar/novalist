@@ -618,6 +618,12 @@ export interface OllamaSettings {
   copilotPath: string;
   /** Copilot model to use (e.g. "gpt-4o"). Empty means Copilot's default. */
   copilotModel: string;
+  /** Temperature for Ollama generation (0 = deterministic, higher = more creative). */
+  temperature: number;
+  /** Maximum number of tokens the model may generate per request. */
+  maxTokens: number;
+  /** When true, skip regex-based entity scanning and rely solely on AI for reference detection. */
+  disableRegexReferences: boolean;
 }
 
 // ─── Timeline ───────────────────────────────────────────────────────

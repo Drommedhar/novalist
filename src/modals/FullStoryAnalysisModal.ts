@@ -196,7 +196,10 @@ export class FullStoryAnalysisModal extends Modal {
         const chapterName = this.plugin.getChapterNameForFileSync(ch.file);
         const actName = this.plugin.getActForFileSync(ch.file) || undefined;
 
-        const mentions = this.plugin.scanMentions(ch.body);
+        const regexDisabled = this.plugin.settings.ollama.disableRegexReferences;
+        const mentions = regexDisabled
+          ? { characters: [] as string[], locations: [] as string[], items: [] as string[], lore: [] as string[] }
+          : this.plugin.scanMentions(ch.body);
         const chapterAllFindings: AiFinding[] = [];
 
         const sceneResults: Record<string, MentionResult> = {};
@@ -210,13 +213,17 @@ export class FullStoryAnalysisModal extends Modal {
           const entities: EntitySummary[] = await this.plugin.collectEntitySummaries(chapterName, sceneName, actName);
           const sceneText = scene.text;
 
-          const sceneMentions = this.plugin.scanMentions(sceneText);
-          const alreadyFound = [
-            ...sceneMentions.characters,
-            ...sceneMentions.locations,
-            ...sceneMentions.items,
-            ...sceneMentions.lore,
-          ];
+          const sceneMentions = regexDisabled
+            ? { characters: [] as string[], locations: [] as string[], items: [] as string[], lore: [] as string[] }
+            : this.plugin.scanMentions(sceneText);
+          const alreadyFound = regexDisabled
+            ? []
+            : [
+                ...sceneMentions.characters,
+                ...sceneMentions.locations,
+                ...sceneMentions.items,
+                ...sceneMentions.lore,
+              ];
 
           // Prepare live-streaming log for this scene
           this.liveThinking = '';
@@ -241,6 +248,7 @@ export class FullStoryAnalysisModal extends Modal {
                 this.autoScroll(this.liveThinkingEl);
               }
             },
+            regexDisabled, // findAllReferences
           );
 
           // Store the log entry

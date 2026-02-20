@@ -515,6 +515,8 @@ export class OllamaService {
   private model: string;
   private provider: AiProvider;
   private analysisMode: AiAnalysisMode;
+  private temperature: number;
+  private maxTokens: number;
   private copilotClient: CopilotAcpClient;
   private abortController: AbortController | null = null;
 
@@ -526,11 +528,15 @@ export class OllamaService {
     copilotPath = 'copilot',
     vaultPath = '',
     copilotModel = '',
+    temperature = 0.7,
+    maxTokens = 8192,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.model = model;
     this.provider = provider;
     this.analysisMode = analysisMode;
+    this.temperature = temperature;
+    this.maxTokens = maxTokens;
     this.copilotClient = new CopilotAcpClient(copilotPath);
     this.copilotClient.vaultPath = vaultPath;
     this.copilotClient.modelId = copilotModel;
@@ -550,6 +556,14 @@ export class OllamaService {
 
   setAnalysisMode(mode: AiAnalysisMode): void {
     this.analysisMode = mode;
+  }
+
+  setTemperature(value: number): void {
+    this.temperature = value;
+  }
+
+  setMaxTokens(value: number): void {
+    this.maxTokens = value;
   }
 
   setCopilotPath(path: string): void {
@@ -698,15 +712,17 @@ export class OllamaService {
 
   private async generate(
     prompt: string,
-    temperature = 0.3,
-    maxTokens = 4096,
+    temperature?: number,
+    maxTokens?: number,
     onChunk?: (token: string) => void,
     onThinkingChunk?: (token: string) => void,
   ): Promise<string> {
+    const temp = temperature ?? this.temperature;
+    const tokens = maxTokens ?? this.maxTokens;
     if (this.provider === 'copilot') {
       return this.copilotClient.generate(prompt);
     }
-    return this.generateOllama(prompt, temperature, maxTokens, onChunk, onThinkingChunk);
+    return this.generateOllama(prompt, temp, tokens, onChunk, onThinkingChunk);
   }
 
   private async generateOllama(
@@ -796,14 +812,16 @@ export class OllamaService {
   async generateChat(
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
     onChunk: (token: string) => void,
-    temperature = 0.7,
-    maxTokens = 8192,
+    temperature?: number,
+    maxTokens?: number,
     onThinkingChunk?: (token: string) => void,
   ): Promise<{ response: string; thinking: string }> {
+    const temp = temperature ?? this.temperature;
+    const tokens = maxTokens ?? this.maxTokens;
     if (this.provider === 'copilot') {
       return this.generateChatCopilot(messages, onChunk, onThinkingChunk);
     }
-    return this.generateChatOllama(messages, onChunk, temperature, maxTokens, onThinkingChunk);
+    return this.generateChatOllama(messages, onChunk, temp, tokens, onThinkingChunk);
   }
 
   private async generateChatOllama(
@@ -965,8 +983,11 @@ export class OllamaService {
     return merged;
   }
 
-  /** Build the task instructions block shared by paragraph and chapter prompts. */
-  private buildTaskInstructions(checks: EnabledChecks, alreadyFound?: string[]): string[] {
+  /** Build the task instructions block shared by paragraph and chapter prompts.
+   *  When `findAllReferences` is true, the AI is asked to report every entity
+   *  reference — both direct name mentions and indirect ones — because the
+   *  regex scanner is disabled. */
+  private buildTaskInstructions(checks: EnabledChecks, alreadyFound?: string[], findAllReferences = false): string[] {
     const tasks: string[] = [];
     let taskNum = 1;
     const doRefs = checks.references;
@@ -974,7 +995,12 @@ export class OllamaService {
     const doSug = checks.suggestions;
 
     if (doRefs) {
-      tasks.push(`${taskNum}. **References** ("type":"reference"): Find places where a known entity is referenced INDIRECTLY — through relationship terms (e.g. "his wife", "her mother"), pronouns that resolve to a specific entity, nicknames, or abbreviated names. Direct name mentions that simple regex matching would catch should NOT be reported.${alreadyFound && alreadyFound.length > 0 ? ' The regex system has already found: ' + alreadyFound.join(', ') + '. Only report references the regex missed.' : ''} Use the relationship data to resolve indirect references to the correct entity. For each reference, set entityName to the full entity name.`);
+      const presenceRule = ' IMPORTANT: Only report entities that are physically PRESENT in the scene or actively participating in the action. Do NOT report entities that are merely talked about, remembered, or referenced in dialogue but are not actually there. For example, if two characters discuss a third character who is not in the room, do NOT include that third character as a reference.';
+      if (findAllReferences) {
+        tasks.push(`${taskNum}. **References** ("type":"reference"): Find ALL known entities that are physically present or actively participating in this scene — both direct name mentions and indirect references (relationship terms like "his wife", pronouns that resolve to a specific entity, nicknames, abbreviated names).${presenceRule} For each reference, set entityName to the full entity name and entityType to "character", "location", "item", or "lore".`);
+      } else {
+        tasks.push(`${taskNum}. **References** ("type":"reference"): Find places where a known entity that is physically present in the scene is referenced INDIRECTLY — through relationship terms (e.g. "his wife", "her mother"), pronouns that resolve to a specific entity, nicknames, or abbreviated names. Direct name mentions that simple regex matching would catch should NOT be reported.${alreadyFound && alreadyFound.length > 0 ? ' The regex system has already found: ' + alreadyFound.join(', ') + '. Only report references the regex missed.' : ''}${presenceRule} Use the relationship data to resolve indirect references to the correct entity. For each reference, set entityName to the full entity name.`);
+      }
       taskNum++;
     }
     if (doIncon) {
@@ -997,6 +1023,7 @@ export class OllamaService {
     alreadyFound?: string[],
     context?: ChapterContext,
     checks?: EnabledChecks,
+    findAllReferences = false,
   ): Promise<AiFinding[]> {
     // Reset the Copilot session so the model has no memory of previous
     // paragraphs / scenes.  No-op for Ollama (stateless HTTP).
@@ -1009,15 +1036,17 @@ export class OllamaService {
 
     const entityBlock = entities.map(e => `- [${e.type}] ${e.name}: ${e.details}`).join('\n');
 
-    const alreadyFoundBlock = alreadyFound && alreadyFound.length > 0
-      ? `\nEntities already detected by regex matching (DO NOT report these as basic name-match references — only report them if you find an INDIRECT reference such as a pronoun, nickname, relationship term, or abbreviated name that the regex cannot catch):\n${alreadyFound.join(', ')}\n`
-      : '';
+    const alreadyFoundBlock = findAllReferences
+      ? ''
+      : (alreadyFound && alreadyFound.length > 0
+        ? `\nEntities already detected by regex matching (DO NOT report these as basic name-match references — only report them if you find an INDIRECT reference such as a pronoun, nickname, relationship term, or abbreviated name that the regex cannot catch):\n${alreadyFound.join(', ')}\n`
+        : '');
 
     const contextBlock = context
       ? `\nChapter context: Chapter "${context.chapterName}"${context.actName ? `, Act "${context.actName}"` : ''}${context.sceneName ? `, Scene "${context.sceneName}"` : ''}${context.date ? `, In-story date: ${context.date}` : ''}. The entity details above already reflect any act/chapter/scene-specific overrides.\n`
       : '';
 
-    const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound);
+    const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound, findAllReferences);
 
     const lang = getLanguageName();
 
@@ -1065,6 +1094,7 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
     checks?: EnabledChecks,
     onResponseChunk?: (token: string) => void,
     onThinkingChunk?: (token: string) => void,
+    findAllReferences = false,
   ): Promise<{ findings: AiFinding[]; rawResponse: string; thinking: string }> {
     // Reset the Copilot session so the model has no memory of previous
     // scenes / chapters.  No-op for Ollama (stateless HTTP).
@@ -1077,15 +1107,17 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
 
     const entityBlock = entities.map(e => `- [${e.type}] ${e.name}: ${e.details}`).join('\n');
 
-    const alreadyFoundBlock = alreadyFound && alreadyFound.length > 0
-      ? `\nEntities already detected by regex matching (DO NOT report these as basic name-match references — only report them if you find an INDIRECT reference such as a pronoun, nickname, relationship term, or abbreviated name that the regex cannot catch):\n${alreadyFound.join(', ')}\n`
-      : '';
+    const alreadyFoundBlock = findAllReferences
+      ? ''
+      : (alreadyFound && alreadyFound.length > 0
+        ? `\nEntities already detected by regex matching (DO NOT report these as basic name-match references — only report them if you find an INDIRECT reference such as a pronoun, nickname, relationship term, or abbreviated name that the regex cannot catch):\n${alreadyFound.join(', ')}\n`
+        : '');
 
     const contextBlock = context
       ? `\nChapter context: Chapter "${context.chapterName}"${context.actName ? `, Act "${context.actName}"` : ''}${context.sceneName ? `, Scene "${context.sceneName}"` : ''}${context.date ? `, In-story date: ${context.date}` : ''}. The entity details above already reflect any act/chapter/scene-specific overrides.\n`
       : '';
 
-    const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound);
+    const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound, findAllReferences);
 
     const lang = getLanguageName();
 
@@ -1161,12 +1193,13 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
     paragraphHashes?: Map<number, string>,
     cachedFindings?: Map<number, AiFinding[]>,
     useWholeChapter?: boolean,
+    findAllReferences = false,
   ): Promise<{ findings: AiFinding[]; hashes: Map<number, string> }> {
     const wholeChapter = useWholeChapter ?? (this.analysisMode === 'chapter');
 
     if (wholeChapter) {
       onProgress?.(0, 1);
-      const result = await this.analyseChapterWhole(chapterText, entities, alreadyFound, context, checks);
+      const result = await this.analyseChapterWhole(chapterText, entities, alreadyFound, context, checks, undefined, undefined, findAllReferences);
       onProgress?.(1, 1);
       return { findings: result.findings, hashes: new Map() };
     }
@@ -1194,7 +1227,7 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
         continue;
       }
 
-      const findings = await this.analyseParagraph(p, entities, alreadyFound, context, checks);
+      const findings = await this.analyseParagraph(p, entities, alreadyFound, context, checks, findAllReferences);
       // Tag findings with paragraph index for caching
       for (const f of findings) {
         (f as AiFinding & { _paraIdx?: number })._paraIdx = i;

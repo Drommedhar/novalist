@@ -523,15 +523,22 @@ export class NovalistSidebarView extends ItemView {
 
       const entities = await this.plugin.collectEntitySummaries(chapterName, sceneName, actName);
 
-      // Get entities already detected by regex so the LLM only reports novel finds
+      // Get entities already detected by regex so the LLM only reports novel finds.
+      // When regex references are disabled, pass an empty list and tell the AI to
+      // detect ALL references (both direct and indirect).
       const body = this.plugin.stripFrontmatter(chapterText);
-      const mentions = this.plugin.scanMentions(body);
-      const alreadyFound = [
-        ...mentions.characters,
-        ...mentions.locations,
-        ...mentions.items,
-        ...mentions.lore,
-      ];
+      const regexDisabled = this.plugin.settings.ollama.disableRegexReferences;
+      const mentions = regexDisabled
+        ? { characters: [] as string[], locations: [] as string[], items: [] as string[], lore: [] as string[] }
+        : this.plugin.scanMentions(body);
+      const alreadyFound = regexDisabled
+        ? []
+        : [
+            ...mentions.characters,
+            ...mentions.locations,
+            ...mentions.items,
+            ...mentions.lore,
+          ];
 
       // Determine which checks are enabled
       const checks = {
@@ -549,6 +556,8 @@ export class NovalistSidebarView extends ItemView {
         },
         this.aiParagraphHashes,
         this.aiParagraphFindings,
+        undefined, // useWholeChapter – use service default
+        regexDisabled, // findAllReferences
       );
 
       // Update caches

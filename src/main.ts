@@ -1942,6 +1942,8 @@ order: ${orderValue}
         this.settings.ollama.copilotPath,
         vaultPath,
         this.settings.ollama.copilotModel,
+        this.settings.ollama.temperature,
+        this.settings.ollama.maxTokens,
       );
     } else {
       this.ollamaService = new OllamaService(
@@ -1952,6 +1954,8 @@ order: ${orderValue}
         this.settings.ollama.copilotPath || 'copilot',
         vaultPath,
         this.settings.ollama.copilotModel || '',
+        this.settings.ollama.temperature ?? 0.7,
+        this.settings.ollama.maxTokens ?? 8192,
       );
     }
   }
@@ -3133,6 +3137,26 @@ order: ${orderValue}
     return this.getChapterIdForFileSync(file);
   }
 
+  /**
+   * Reconstruct a MentionResult from cached AI reference findings only.
+   * Used when regex scanning is disabled.
+   */
+  private buildMentionResultFromAiFindings(aiFindings: CachedAiFinding[]): MentionResult {
+    const characters: string[] = [];
+    const locations: string[] = [];
+    const items: string[] = [];
+    const lore: string[] = [];
+    for (const f of aiFindings) {
+      if (f.type !== 'reference' || !f.entityName) continue;
+      const etype = f.entityType || 'character';
+      if (etype === 'character' && !characters.includes(f.entityName)) characters.push(f.entityName);
+      else if (etype === 'location' && !locations.includes(f.entityName)) locations.push(f.entityName);
+      else if (etype === 'item' && !items.includes(f.entityName)) items.push(f.entityName);
+      else if (etype === 'lore' && !lore.includes(f.entityName)) lore.push(f.entityName);
+    }
+    return { characters, locations, items, lore };
+  }
+
   async parseChapterFile(file: TFile): Promise<MentionResult> {
     const content = await this.app.vault.read(file);
     const hash = await this.hashContent(content);
@@ -3140,6 +3164,21 @@ order: ${orderValue}
     // Check the persistent mention cache
     const cache = this.getMentionCache();
     const entry = cache[file.path];
+
+    // When regex references are disabled, entity detection is handled
+    // exclusively by AI analysis.  If the cache has AI findings whose
+    // hash still matches, reconstruct MentionResult from those findings
+    // only.  Otherwise return empty — the sidebar will populate it after
+    // the next AI analysis run.
+    if (this.settings.ollama.disableRegexReferences) {
+      if (entry && entry.hash === hash && entry.aiFindings && entry.aiFindings.length > 0) {
+        const result = this.buildMentionResultFromAiFindings(entry.aiFindings);
+        return result;
+      }
+      const empty: MentionResult = { characters: [], locations: [], items: [], lore: [] };
+      return { ...empty };
+    }
+
     if (entry && entry.hash === hash) {
       return { ...entry.chapter };
     }
@@ -3185,6 +3224,16 @@ order: ${orderValue}
 
     const cache = this.getMentionCache();
     const entry = cache[file.path];
+
+    // When regex is disabled, return cached scene data only if it was
+    // populated by AI analysis. Otherwise return empty.
+    if (this.settings.ollama.disableRegexReferences) {
+      if (entry && entry.hash === hash && entry.scenes[sceneName]) {
+        return { ...entry.scenes[sceneName] };
+      }
+      return { characters: [], locations: [], items: [], lore: [] };
+    }
+
     if (entry && entry.hash === hash && entry.scenes[sceneName]) {
       return { ...entry.scenes[sceneName] };
     }
@@ -3293,6 +3342,15 @@ order: ${orderValue}
       return pd.mentionCache;
     }
     return {};
+  }
+
+  /** Clear the mention cache for the active project. */
+  clearMentionCache(): void {
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (pd) {
+      pd.mentionCache = {};
+      void this.saveSettings();
+    }
   }
 
   /** Compute a SHA-256 hex digest of a string. */
@@ -5148,24 +5206,36 @@ order: ${orderValue}
       mentions[charName] = [];
     }
 
+    const regexDisabled = this.settings.ollama.disableRegexReferences;
+    const mentionCache = regexDisabled ? this.getMentionCache() : null;
+
     for (let i = 0; i < sortedChapters.length; i++) {
       const ch = sortedChapters[i];
       chapterList.push({ name: ch.name, index: i + 1 });
 
-      const content = await this.app.vault.read(ch.file);
-      const body = this.stripFrontmatter(content);
-
-      for (const charName of trackedCharacters) {
-        const nameParts = charName.split(' ');
-        const variations = [charName];
-        if (nameParts.length > 1) variations.push(nameParts[0]);
-        let found = false;
-        for (const v of variations) {
-          if (v.length < 2) continue;
-          const regex = new RegExp(`\\b${this.escapeRegex(v)}\\b`, 'i');
-          if (regex.test(body)) { found = true; break; }
+      if (regexDisabled && mentionCache) {
+        // Use AI-populated mention cache instead of regex scanning
+        const cacheEntry = mentionCache[ch.file.path];
+        const cachedChars = cacheEntry?.chapter?.characters ?? [];
+        for (const charName of trackedCharacters) {
+          mentions[charName].push(cachedChars.includes(charName));
         }
-        mentions[charName].push(found);
+      } else {
+        const content = await this.app.vault.read(ch.file);
+        const body = this.stripFrontmatter(content);
+
+        for (const charName of trackedCharacters) {
+          const nameParts = charName.split(' ');
+          const variations = [charName];
+          if (nameParts.length > 1) variations.push(nameParts[0]);
+          let found = false;
+          for (const v of variations) {
+            if (v.length < 2) continue;
+            const regex = new RegExp(`\\b${this.escapeRegex(v)}\\b`, 'i');
+            if (regex.test(body)) { found = true; break; }
+          }
+          mentions[charName].push(found);
+        }
       }
     }
 

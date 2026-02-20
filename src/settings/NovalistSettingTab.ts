@@ -518,6 +518,19 @@ export class NovalistSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
+      .setName(t('ollama.disableRegexReferences'))
+      .setDesc(t('ollama.disableRegexReferencesDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.disableRegexReferences)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.disableRegexReferences = value;
+          // Clear the mention cache so stale regex data is discarded.
+          // AI analysis will re-populate it on its next run.
+          this.plugin.clearMentionCache();
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
       .setName(t('ollama.checkInconsistencies'))
       .setDesc(t('ollama.checkInconsistenciesDesc'))
       .addToggle(toggle => toggle
@@ -616,6 +629,42 @@ export class NovalistSettingTab extends PluginSettingTab {
         .onChange(async (value) => {
           this.plugin.settings.ollama.autoManageModel = value;
           await this.plugin.saveSettings();
+        }));
+
+    // Temperature slider (0 – 2, step 0.1)
+    const tempSetting = new Setting(containerEl)
+      .setName(t('ollama.temperature'));
+    const tempValue = tempSetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.temperature ?? 0.7) });
+    tempSetting.setDesc(t('ollama.temperatureDesc'));
+    tempSetting.addSlider(slider => slider
+      .setLimits(0, 2, 0.1)
+      .setValue(this.plugin.settings.ollama.temperature ?? 0.7)
+      .setDynamicTooltip()
+      .onChange(async (value) => {
+        this.plugin.settings.ollama.temperature = value;
+        tempValue.textContent = String(value);
+        await this.plugin.saveSettings();
+        if (this.plugin.ollamaService) {
+          this.plugin.ollamaService.setTemperature(value);
+        }
+      }));
+
+    // Max tokens input
+    new Setting(containerEl)
+      .setName(t('ollama.maxTokens'))
+      .setDesc(t('ollama.maxTokensDesc'))
+      .addText(text => text
+        .setPlaceholder('8192')
+        .setValue(String(this.plugin.settings.ollama.maxTokens ?? 8192))
+        .onChange(async (value) => {
+          const parsed = parseInt(value, 10);
+          if (!isNaN(parsed) && parsed > 0) {
+            this.plugin.settings.ollama.maxTokens = parsed;
+            await this.plugin.saveSettings();
+            if (this.plugin.ollamaService) {
+              this.plugin.ollamaService.setMaxTokens(parsed);
+            }
+          }
         }));
 
     // Load / Unload buttons
