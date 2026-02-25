@@ -61,6 +61,8 @@ export interface ProjectData {
   mentionCache: Record<string, MentionCacheEntry>;
   /** Result of the last whole-story AI analysis (cross-chapter review). */
   wholeStoryAnalysis?: WholeStoryAnalysisResult;
+  /** Cache format version - incremented when scanning logic changes to invalidate old caches. */
+  mentionCacheVersion?: number;
 }
 
 export interface NovalistSettings {

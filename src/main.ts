@@ -115,6 +115,9 @@ export default class NovalistPlugin extends Plugin {
   private cachedProjectOverview = { totalWords: 0, totalChapters: 0, totalCharacters: 0, totalLocations: 0, readingTime: 0, avgChapter: 0, chapters: [] as ChapterOverviewStat[] };
   private projectWordsCacheTimer: number | null = null;
 
+  /** Promise that resolves when entity index is fully built */
+  private entityIndexReady: Promise<void> | null = null;
+
   async onload(): Promise<void> {
     await this.loadSettings();
     initLocale();
@@ -122,7 +125,8 @@ export default class NovalistPlugin extends Plugin {
     // Apply book paragraph spacing if enabled
     this.updateBookParagraphSpacing();
 
-    await this.refreshEntityIndex();
+    this.entityIndexReady = this.refreshEntityIndex();
+    await this.entityIndexReady;
     this.app.workspace.onLayoutReady(async () => {
       if (!this.settings.startupWizardShown || !this.app.vault.getAbstractFileByPath(this.resolvedProjectPath())) {
         new StartupWizardModal(this.app, this).open();
@@ -622,10 +626,10 @@ export default class NovalistPlugin extends Plugin {
     }));
 
     // Index update triggers
-    this.registerEvent(this.app.vault.on('create', () => { void this.refreshEntityIndex(); }));
-    this.registerEvent(this.app.vault.on('delete', () => { void this.refreshEntityIndex(); }));
-    this.registerEvent(this.app.vault.on('rename', () => { void this.refreshEntityIndex(); }));
-    this.registerEvent(this.app.vault.on('modify', () => { void this.refreshEntityIndex(); }));
+    this.registerEvent(this.app.vault.on('create', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
+    this.registerEvent(this.app.vault.on('delete', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
+    this.registerEvent(this.app.vault.on('rename', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
+    this.registerEvent(this.app.vault.on('modify', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
 
     // Update snapshot chapter names when a chapter file is renamed
     this.registerEvent(this.app.vault.on('rename', (file) => {
@@ -641,12 +645,12 @@ export default class NovalistPlugin extends Plugin {
     // Refresh explorer on creation
     this.registerEvent(this.app.vault.on('create', (file) => {
       if (file instanceof TFile && this.isChapterFile(file)) {
-         void this.refreshEntityIndex();
+         this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady;
       }
     }));
     this.registerEvent(this.app.vault.on('delete', (file) => {
       if (file instanceof TFile && this.isChapterFile(file)) {
-         void this.refreshEntityIndex();
+         this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady;
       }
     }));
 
@@ -1022,7 +1026,8 @@ export default class NovalistPlugin extends Plugin {
     }
 
     await this.saveSettings();
-    await this.refreshEntityIndex();
+    this.entityIndexReady = this.refreshEntityIndex();
+    await this.entityIndexReady;
 
     // Refresh views
     for (const leaf of this.app.workspace.getLeavesOfType(NOVELIST_EXPLORER_VIEW_TYPE)) {
@@ -1120,7 +1125,8 @@ export default class NovalistPlugin extends Plugin {
     await this.saveSettings();
 
     // Refresh everything
-    await this.refreshEntityIndex();
+    this.entityIndexReady = this.refreshEntityIndex();
+    await this.entityIndexReady;
     this.refreshProjectWordCount();
 
     for (const leaf of this.app.workspace.getLeavesOfType(NOVELIST_EXPLORER_VIEW_TYPE)) {
@@ -1202,7 +1208,8 @@ export default class NovalistPlugin extends Plugin {
     }
 
     await this.app.fileManager.renameFile(file, newPath);
-    await this.refreshEntityIndex();
+    this.entityIndexReady = this.refreshEntityIndex();
+    await this.entityIndexReady;
     new Notice(t('notice.movedToWorldBible', { name: file.basename }));
   }
 
@@ -1227,7 +1234,8 @@ export default class NovalistPlugin extends Plugin {
     }
 
     await this.app.fileManager.renameFile(file, newPath);
-    await this.refreshEntityIndex();
+    this.entityIndexReady = this.refreshEntityIndex();
+    await this.entityIndexReady;
     new Notice(t('notice.movedToProject', { name: file.basename, project: project.name }));
   }
 
@@ -2833,14 +2841,16 @@ order: ${orderValue}
   }
 
   /** Get the date assigned to a chapter (from frontmatter). */
-  getChapterDateSync(file: TFile): string {
+  getChapterDateSync(file: TFile | null | undefined): string {
+    if (!file) return '';
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
     return this.coerceDateValue(fm?.date);
   }
 
   /** Get the date for a specific scene within a chapter. Falls back to the chapter date. */
-  getSceneDateSync(file: TFile, sceneName: string): string {
+  getSceneDateSync(file: TFile | null | undefined, sceneName: string): string {
+    if (!file) return '';
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
     if (fm?.sceneDates && typeof fm.sceneDates === 'object') {
@@ -3158,8 +3168,14 @@ order: ${orderValue}
   }
 
   async parseChapterFile(file: TFile): Promise<MentionResult> {
+    // Wait for entity index to be ready before scanning
+    if (this.entityIndexReady) {
+      await this.entityIndexReady;
+    }
+    console.log('[Novalist] parseChapterFile called for:', file.path);
     const content = await this.app.vault.read(file);
     const hash = await this.hashContent(content);
+    console.log('[Novalist] Content hash:', hash.substring(0, 16) + '...');
 
     // Check the persistent mention cache
     const cache = this.getMentionCache();
@@ -3180,10 +3196,12 @@ order: ${orderValue}
     }
 
     if (entry && entry.hash === hash) {
+      console.log('[Novalist] Cache hit, returning cached result:', entry.chapter);
       return { ...entry.chapter };
     }
 
     // Cache miss — scan and store
+    console.log('[Novalist] Cache miss, scanning...');
     const body = this.stripFrontmatter(content);
     const mentions = this.scanMentions(body);
     const result: MentionResult = {
@@ -3380,6 +3398,7 @@ order: ${orderValue}
   }
 
   scanMentions(content: string): { characters: string[]; locations: string[]; items: string[]; lore: string[] } {
+    console.log('[Novalist] scanMentions called, content length:', content.length, 'entityIndex size:', this.entityIndex.size);
     const characters: Set<string> = new Set();
     const locations: Set<string> = new Set();
     const items: Set<string> = new Set();
@@ -3397,11 +3416,10 @@ order: ${orderValue}
       let found = false;
       for (const v of variations) {
           if (v.length < 2) continue;
-          // Simple case-insensitive check
-          // Note: This matches "Amy" in "Tammy" potentially. 
-          // For better accuracy we would use regex boundaries, but for now strict includes on lowercase is a good step up.
-          // Using boundaries:
-          const regex = new RegExp(`\\b${this.escapeRegex(v)}\\b`, 'i');
+          // Use Unicode-aware word boundaries: match positions that are either
+          // start of string or preceded by a non-letter character, and either
+          // end of string or followed by a non-letter character
+          const regex = new RegExp(`(?<![\\p{L}\\p{N}_])${this.escapeRegex(v)}(?![\\p{L}\\p{N}_])`, 'iu');
           if (regex.test(content)) {
               found = true;
               break;
@@ -3409,8 +3427,12 @@ order: ${orderValue}
       }
 
       if (found) {
+        console.log('[Novalist] Found entity:', name, 'in path:', info.path);
         const charFolder = this.settings.characterFolder;
-        if (info.path.includes(`/${charFolder}/`) || info.path.startsWith(charFolder + '/')) characters.add(name);
+        if (info.path.includes(`/${charFolder}/`) || info.path.startsWith(charFolder + '/')) {
+          characters.add(name);
+          console.log('[Novalist]  -> Added to characters');
+        }
         const locFolder = this.settings.locationFolder;
         if (info.path.includes(`/${locFolder}/`) || info.path.startsWith(locFolder + '/')) locations.add(name);
         const itemFolder = this.settings.itemFolder;
@@ -3420,7 +3442,9 @@ order: ${orderValue}
       }
     }
 
-    return { characters: Array.from(characters), locations: Array.from(locations), items: Array.from(items), lore: Array.from(lore) };
+    const result = { characters: Array.from(characters), locations: Array.from(locations), items: Array.from(items), lore: Array.from(lore) };
+    console.log('[Novalist] scanMentions result:', result);
+    return result;
   }
 
   parseFrontmatter(content: string): Record<string, string | Record<string, string>> {
@@ -3744,6 +3768,7 @@ order: ${orderValue}
   // ==========================================
 
   async refreshEntityIndex(): Promise<void> {
+    console.log('[Novalist] refreshEntityIndex called');
     this.entityIndex.clear();
     this.knownRelationshipKeys.clear();
 
@@ -3792,7 +3817,9 @@ order: ${orderValue}
     }
 
     const names = Array.from(this.entityIndex.keys());
+    console.log('[Novalist] Indexed', names.length, 'entities:', names);
     this.entityRegex = this.buildEntityRegex(names);
+    console.log('[Novalist] refreshEntityIndex COMPLETE');
   }
 
   buildEntityRegex(names: string[]): RegExp | null {
@@ -3801,7 +3828,10 @@ order: ${orderValue}
       .sort((a, b) => b.length - a.length)
       .map((n) => this.escapeRegex(n))
       .join('|');
-    return new RegExp(`\\b(${escapedNames})\\b`, 'g');
+    // Use Unicode-aware word boundaries: match positions that are either
+    // start of string or preceded by a non-letter character, and either
+    // end of string or followed by a non-letter character
+    return new RegExp(`(?<![\\p{L}\\p{N}_])(${escapedNames})(?![\\p{L}\\p{N}_])`, 'gu');
   }
 
   escapeRegex(text: string): string {
@@ -3809,7 +3839,8 @@ order: ${orderValue}
   }
 
   isWordChar(ch: string): boolean {
-    return /\w/.test(ch);
+    // Use Unicode-aware letter/number detection instead of ASCII-only /\w/
+    return /[\p{L}\p{N}_]/u.test(ch);
   }
 
   getWordAtCursor(editor: Editor): string {

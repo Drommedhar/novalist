@@ -151,7 +151,9 @@ export class NovalistSidebarView extends ItemView {
     }
 
     const contextContent = container.createDiv('novalist-context-content');
+    console.log('[Novalist] Sidebar render: about to call parseChapterFile, entityIndex size:', this.plugin['entityIndex']?.size ?? 'N/A');
     const chapterData = await this.plugin.parseChapterFile(this.currentChapterFile);
+    console.log('[Novalist] Sidebar render: parseChapterFile returned', chapterData);
 
     // Merge AI-discovered entity references into the chapter data so they appear
     // in the normal sidebar entity sections (characters, locations, items, lore).
@@ -169,13 +171,16 @@ export class NovalistSidebarView extends ItemView {
     }
 
     // Show current scene/chapter context with date
-    const contextDate = this.currentScene
-      ? this.plugin.getSceneDateSync(this.currentChapterFile, this.currentScene)
-      : this.plugin.getChapterDateSync(this.currentChapterFile);
+    // Safety check: currentChapterFile may become null between render calls
+    const contextDate = this.currentChapterFile
+      ? (this.currentScene
+        ? this.plugin.getSceneDateSync(this.currentChapterFile, this.currentScene)
+        : this.plugin.getChapterDateSync(this.currentChapterFile))
+      : '';
 
     const contextLabel = this.currentScene
       ? this.currentScene
-      : this.currentChapterFile.basename;
+      : (this.currentChapterFile?.basename ?? '');
 
     if (contextLabel || contextDate) {
       const sceneCtx = contextContent.createDiv('novalist-sidebar-scene-context');
