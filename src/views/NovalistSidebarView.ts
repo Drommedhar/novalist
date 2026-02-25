@@ -151,9 +151,7 @@ export class NovalistSidebarView extends ItemView {
     }
 
     const contextContent = container.createDiv('novalist-context-content');
-    console.log('[Novalist] Sidebar render: about to call parseChapterFile, entityIndex size:', this.plugin['entityIndex']?.size ?? 'N/A');
     const chapterData = await this.plugin.parseChapterFile(this.currentChapterFile);
-    console.log('[Novalist] Sidebar render: parseChapterFile returned', chapterData);
 
     // Merge AI-discovered entity references into the chapter data so they appear
     // in the normal sidebar entity sections (characters, locations, items, lore).
