@@ -327,4 +327,5 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   recentEdits: [],
   chapterNotes: {},
   enableChapterNotes: true,
+  focusPeekSize: null,
 };

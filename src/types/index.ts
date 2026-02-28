@@ -140,6 +140,8 @@ export interface NovalistSettings {
   // Chapter notes panel
   chapterNotes: ChapterNotes;
   enableChapterNotes: boolean;
+  /** Persisted Focus Peek card dimensions. */
+  focusPeekSize: { width: number; height: number } | null;
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────

@@ -2279,10 +2279,7 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   font-size: 10px;
   color: var(--text-muted);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-align: center;
-  max-width: 64px;
   line-height: 1.3;
 }
 

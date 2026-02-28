@@ -110,9 +110,9 @@ export const FOCUS_PEEK_SIZE_STORAGE_KEY = 'novalist-peek-card-size';
 class FocusPeekPlugin implements PluginValue {
   private static readonly PEEK_SIZE_KEY = FOCUS_PEEK_SIZE_STORAGE_KEY;
 
-  private static readonly DEFAULT_WIDTH = 460;
+  private static readonly DEFAULT_WIDTH = 560;
 
-  private static readonly DEFAULT_HEIGHT = 360;
+  private static readonly DEFAULT_HEIGHT = 420;
 
   private static readonly MIN_WIDTH = 280;
 
@@ -345,12 +345,18 @@ class FocusPeekPlugin implements PluginValue {
     document.body.appendChild(card);
     this.card = card;
 
-    // Observe resize to persist size and scale content
-    this.resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          FocusPeekPlugin.savePersistedSize(this.view.state.facet(focusPeekCallbacks), Math.round(width), Math.round(height));
+    // Observe resize to persist size and scale content.
+    // Use offsetWidth/offsetHeight (border-box) so the saved value matches
+    // the CSS width/height we apply — contentRect excludes padding and would
+    // cause a shrinking spiral on every re-open.
+    let resizeInitial = true;
+    this.resizeObserver = new ResizeObserver(() => {
+      if (resizeInitial) { resizeInitial = false; return; }
+      if (this.card) {
+        const w = this.card.offsetWidth;
+        const h = this.card.offsetHeight;
+        if (w > 0 && h > 0) {
+          FocusPeekPlugin.savePersistedSize(this.view.state.facet(focusPeekCallbacks), w, h);
         }
       }
     });

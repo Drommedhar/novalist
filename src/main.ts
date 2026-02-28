@@ -735,6 +735,12 @@ export default class NovalistPlugin extends Plugin {
   }
 
   onunload(): void {
+    // Flush any pending debounced settings save (e.g. peek-card resize)
+    if (this.saveSettingsDebounceTimer) {
+      clearTimeout(this.saveSettingsDebounceTimer);
+      this.saveSettingsDebounceTimer = null;
+      void this.saveSettings();
+    }
     // Clean up paragraph spacing class
     document.body.classList.remove('novalist-book-paragraph-spacing');
     // Unload Ollama model if auto-managed, and stop Copilot process
@@ -855,6 +861,17 @@ export default class NovalistPlugin extends Plugin {
     if (!this.settings.chapterNotes) {
       this.settings.chapterNotes = {};
     }
+    // One-time migration: clear corrupted peek-card sizes caused by the old
+    // ResizeObserver bug (it saved contentRect which excluded padding, so the
+    // card shrank on every open until it hit the minimum).
+    if (this.settings.focusPeekSize) {
+      const { width, height } = this.settings.focusPeekSize;
+      if (width < 560 || height < 420) {
+        this.settings.focusPeekSize = null;
+        // Also clear the localStorage fallback
+        this.app.saveLocalStorage(FOCUS_PEEK_SIZE_STORAGE_KEY, '');
+      }
+    }
     for (const pd of Object.values(this.settings.projectData)) {
       if (!pd.chapterNotes) pd.chapterNotes = {};
     }
@@ -932,6 +949,8 @@ export default class NovalistPlugin extends Plugin {
 
   resetFocusPeekSize(): void {
     this.app.saveLocalStorage(FOCUS_PEEK_SIZE_STORAGE_KEY, '');
+    this.settings.focusPeekSize = null;
+    this.debouncedSaveSettings();
   }
 
   updateBookParagraphSpacing(): void {
@@ -4217,6 +4236,10 @@ order: ${orderValue}
     const existing = this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE);
     if (existing.length > 0) {
       void this.app.workspace.revealLeaf(existing[0]);
+      // Close any duplicates
+      for (let i = 1; i < existing.length; i++) {
+        existing[i].detach();
+      }
       return;
     }
 
@@ -4246,23 +4269,19 @@ order: ${orderValue}
   }
 
   async openDashboardOnStartup(): Promise<void> {
-    // Collect main-area markdown leaves (editor tabs from previous session)
-    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
-      .filter(l => l.getRoot() === this.app.workspace.rootSplit);
-
-    if (markdownLeaves.length > 0) {
-      // Reuse the first leaf for the dashboard to avoid an empty tab group
-      const reuse = markdownLeaves[0];
-      await reuse.setViewState({ type: DASHBOARD_VIEW_TYPE, active: true });
-      void this.app.workspace.revealLeaf(reuse);
-
-      // Detach the remaining leaves
-      for (let i = 1; i < markdownLeaves.length; i++) {
-        markdownLeaves[i].detach();
+    // If a dashboard was already restored from the previous session, reuse it
+    const existing = this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE);
+    if (existing.length > 0) {
+      void this.app.workspace.revealLeaf(existing[0]);
+      // Close any duplicates Obsidian may have restored
+      for (let i = 1; i < existing.length; i++) {
+        existing[i].detach();
       }
-    } else {
-      await this.activateDashboardView();
+      return;
     }
+
+    // No dashboard restored → open a fresh one
+    await this.activateDashboardView();
   }
 
   updateRecentEdit(file: TFile, line: number, ch: number): void {
@@ -4682,9 +4701,26 @@ order: ${orderValue}
         }
       },
       loadLocalStorage: (key: string): string | null => {
+        if (key === FOCUS_PEEK_SIZE_STORAGE_KEY) {
+          if (this.settings.focusPeekSize) {
+            return JSON.stringify(this.settings.focusPeekSize);
+          }
+          // Ignore any stale localStorage value — only trust plugin settings
+          return null;
+        }
         return this.app.loadLocalStorage(key) as string | null;
       },
       saveLocalStorage: (key: string, value: string): void => {
+        if (key === FOCUS_PEEK_SIZE_STORAGE_KEY) {
+          try {
+            const parsed = JSON.parse(value) as { width: number; height: number };
+            if (typeof parsed.width === 'number' && typeof parsed.height === 'number') {
+              this.settings.focusPeekSize = parsed;
+              this.debouncedSaveSettings();
+            }
+          } catch { /* ignore */ }
+          return;
+        }
         this.app.saveLocalStorage(key, value);
       },
       isProjectFile: () => {
