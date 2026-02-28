@@ -83,6 +83,9 @@ function getTopForPos(view: EditorView, pos: number, refEl: HTMLElement): number
 // ─── Left-side Notes Panel ──────────────────────────────────────────
 // Wrapper is appended OUTSIDE the CM6 DOM tree (sibling of .cm-editor)
 // to avoid CM6 mutation-triggered update loops.
+
+/** Minimum container width (px) below which the panel auto-hides to avoid clipping into the editor. */
+const MIN_CONTAINER_WIDTH = 600;
 class ChapterNotesPanelPlugin implements PluginValue {
   private wrapper: HTMLElement;
   private container: HTMLElement;
@@ -91,6 +94,8 @@ class ChapterNotesPanelPlugin implements PluginValue {
   private destroyed = false;
   private timerId: ReturnType<typeof setTimeout> | null = null;
   private heightTimerId: ReturnType<typeof setTimeout> | null = null;
+  private resizeObserver: ResizeObserver;
+  private tooNarrow = false;
   /** Track per-card collapsed state across re-renders. cardKey = '__chapter__' or scene name. */
   private collapsedCards = new Set<string>();
 
@@ -114,6 +119,17 @@ class ChapterNotesPanelPlugin implements PluginValue {
     this.scrollHandler = () => { if (!this.destroyed) this.syncScroll(); };
     view.scrollDOM.addEventListener('scroll', this.scrollHandler, { passive: true });
 
+    // Hide the panel when the editor container is too narrow
+    const observedEl = view.dom.parentElement ?? view.dom;
+    this.resizeObserver = new ResizeObserver((entries) => {
+      if (this.destroyed) return;
+      const width = entries[0]?.contentRect.width ?? observedEl.offsetWidth;
+      const wasNarrow = this.tooNarrow;
+      this.tooNarrow = width < MIN_CONTAINER_WIDTH;
+      if (this.tooNarrow !== wasNarrow) this.scheduleRender();
+    });
+    this.resizeObserver.observe(observedEl);
+
     this.scheduleRender();
   }
 
@@ -131,6 +147,7 @@ class ChapterNotesPanelPlugin implements PluginValue {
     this.destroyed = true;
     if (this.timerId !== null) clearTimeout(this.timerId);
     if (this.heightTimerId !== null) clearTimeout(this.heightTimerId);
+    this.resizeObserver.disconnect();
     this.view.scrollDOM.removeEventListener('scroll', this.scrollHandler);
     this.view.dom.classList.remove('novalist-has-chapter-notes');
     this.wrapper.remove();
@@ -214,7 +231,7 @@ class ChapterNotesPanelPlugin implements PluginValue {
 
   private doRender(): void {
     const cb = this.view.state.facet(chapterNotesCallbacks);
-    const enabled = cb.isEnabled() && cb.isChapterFile();
+    const enabled = cb.isEnabled() && cb.isChapterFile() && !this.tooNarrow;
 
     this.wrapper.classList.toggle('novalist-hidden', !enabled);
     this.view.dom.classList.toggle('novalist-has-chapter-notes', enabled);
