@@ -51,6 +51,9 @@ import { AiChatView, AI_CHAT_VIEW_TYPE } from './views/AiChatView';
 import { DashboardView, DASHBOARD_VIEW_TYPE } from './views/DashboardView';
 import { TimelineView, TIMELINE_VIEW_TYPE } from './views/TimelineView';
 import { NovalistToolbarManager } from './utils/toolbarUtils';
+import { analyseScene, computeChapterAggregate } from './utils/sceneAnalysisUtils';
+import { runValidator } from './utils/validatorUtils';
+import type { SceneMetadataCache, SceneMetadata, SceneMetadataOverrides, ValidationResult, DismissedFinding } from './types';
 
 import { CharacterSuggester } from './suggesters/CharacterSuggester';
 import { RelationshipKeySuggester } from './suggesters/RelationshipKeySuggester';
@@ -568,6 +571,29 @@ export default class NovalistPlugin extends Plugin {
         if (checking) return canRun;
         if (canRun) {
           void this.activateAiChatView();
+        }
+      }
+    });
+
+    // Validate story (rule-based plot validator)
+    this.addCommand({
+      id: 'validate-story',
+      name: t('cmd.validateStory'),
+      callback: () => {
+        void this.openValidatorModal();
+      }
+    });
+
+    // Validate current chapter only
+    this.addCommand({
+      id: 'validate-chapter',
+      name: t('cmd.validateChapter'),
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isChapterFile(file);
+        if (checking) return canRun;
+        if (canRun && file) {
+          void this.openValidatorModal(file);
         }
       }
     });
@@ -5565,5 +5591,221 @@ order: ${orderValue}
     }
 
     return { chapters: chapterList, mentions, currentGap };
+  }
+
+  // ─── Scene Metadata ──────────────────────────────────────────────────
+
+  /** Get the scene metadata cache for the active project (creates if missing). */
+  private getSceneMetadataCache(): Record<string, SceneMetadataCache> {
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (pd) {
+      if (!pd.sceneMetadataCache) pd.sceneMetadataCache = {};
+      return pd.sceneMetadataCache;
+    }
+    return {};
+  }
+
+  /** Get manual overrides map for the active project. */
+  private getSceneMetadataOverrides(): Record<string, Partial<SceneMetadataOverrides>> {
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (pd) {
+      if (!pd.sceneMetadataOverrides) pd.sceneMetadataOverrides = {};
+      return pd.sceneMetadataOverrides;
+    }
+    return {};
+  }
+
+  /**
+   * Analyse all scenes in a chapter file and cache the results.
+   * Uses the same SHA-256 hash-check pattern as parseChapterFile().
+   */
+  async analyseChapterScenes(file: TFile): Promise<SceneMetadataCache> {
+    const content = await this.app.vault.read(file);
+    const hash = await this.hashContent(content);
+
+    const smCache = this.getSceneMetadataCache();
+    const cached = smCache[file.path];
+    if (cached && cached.hash === hash) return cached;
+
+    // Cache miss — run analysis on all scenes
+    const chapterId = this.getChapterIdForFileSync(file);
+    const sceneNames = this.getScenesForChapter(file);
+    const mentionCacheEntry = this.getMentionCache()[file.path];
+    const plotBoard = this.settings.projectData[this.settings.activeProjectId]?.plotBoard ?? { columns: [], cells: {}, labels: [], cardColors: {}, cardLabels: {}, viewMode: 'board' as const, collapsedActs: [] };
+    const chapterNotes = this.settings.projectData[this.settings.activeProjectId]?.chapterNotes?.[chapterId];
+    const overridesMap = this.getSceneMetadataOverrides();
+    const locale = this.settings.language;
+
+    const scenes: Record<string, SceneMetadata> = {};
+
+    for (const sceneName of sceneNames) {
+      const sceneText = this.extractSceneSection(content, sceneName);
+      const overrideKey = `${chapterId}:${sceneName}`;
+      const overrides = overridesMap[overrideKey];
+
+      // Use cached mentions if available, else scan
+      let mentions = mentionCacheEntry?.scenes[sceneName];
+      if (!mentions) {
+        const raw = this.scanMentions(sceneText);
+        mentions = { characters: raw.characters, locations: raw.locations, items: raw.items, lore: raw.lore };
+      }
+
+      scenes[sceneName] = analyseScene(
+        sceneText,
+        sceneName,
+        chapterId,
+        file.path,
+        mentions,
+        chapterNotes,
+        plotBoard,
+        overrides,
+        locale,
+      );
+    }
+
+    const chapterAggregate = computeChapterAggregate(scenes);
+    const entry: SceneMetadataCache = { hash, scenes, chapterAggregate };
+    smCache[file.path] = entry;
+    void this.saveSettings();
+
+    return entry;
+  }
+
+  /** Get the SceneMetadataCache for a chapter, running analysis if stale. */
+  async getSceneMetadata(file: TFile): Promise<SceneMetadataCache> {
+    return this.analyseChapterScenes(file);
+  }
+
+  /** Save a manual override for a specific field on a scene. */
+  async saveSceneMetadataOverride(
+    chapterId: string,
+    sceneName: string,
+    overrides: Partial<SceneMetadataOverrides>,
+  ): Promise<void> {
+    const key = `${chapterId}:${sceneName}`;
+    const overridesMap = this.getSceneMetadataOverrides();
+    overridesMap[key] = { ...overridesMap[key], ...overrides };
+    // Invalidate scene metadata cache for this chapter so it re-runs
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (pd?.sceneMetadataCache) {
+      // Remove all entries for this chapter (chapterId may be derived from file.path)
+      for (const path of Object.keys(pd.sceneMetadataCache)) {
+        const entry = pd.sceneMetadataCache[path];
+        if (Object.values(entry.scenes).some(s => s.chapterId === chapterId)) {
+          delete pd.sceneMetadataCache[path];
+        }
+      }
+    }
+    await this.saveSettings();
+  }
+
+  /** Remove a manual override for a scene (revert to auto-detected value). */
+  async resetSceneMetadataOverride(
+    chapterId: string,
+    sceneName: string,
+    field?: keyof SceneMetadataOverrides,
+  ): Promise<void> {
+    const key = `${chapterId}:${sceneName}`;
+    const overridesMap = this.getSceneMetadataOverrides();
+    if (field) {
+      if (overridesMap[key]) delete (overridesMap[key] as Record<string, unknown>)[field];
+    } else {
+      delete overridesMap[key];
+    }
+    // Invalidate scene metadata cache
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (pd?.sceneMetadataCache) {
+      for (const path of Object.keys(pd.sceneMetadataCache)) {
+        const entry = pd.sceneMetadataCache[path];
+        if (Object.values(entry.scenes).some(s => s.chapterId === chapterId)) {
+          delete pd.sceneMetadataCache[path];
+        }
+      }
+    }
+    await this.saveSettings();
+  }
+
+  // ─── Plot Validator ──────────────────────────────────────────────────
+
+  /**
+   * Run the full story validator across all chapters.
+   * Caches the result in ProjectData and returns it.
+   */
+  async validateStory(singleFile?: TFile): Promise<ValidationResult> {
+    const allChapters = this.getChapterDescriptionsSync();
+    const chapters = singleFile
+      ? allChapters.filter(c => c.file.path === singleFile.path)
+      : allChapters;
+
+    // Ensure scene metadata is up-to-date for all relevant chapters
+    const smCache = this.getSceneMetadataCache();
+    for (const ch of chapters) {
+      try {
+        await this.analyseChapterScenes(ch.file);
+      } catch {
+        // Non-fatal: if a chapter can't be read, skip it
+      }
+    }
+
+    const mentionCache = this.getMentionCache();
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    const dismissedFindings: DismissedFinding[] = pd?.dismissedFindings ?? [];
+    const wholeStoryAnalysis = pd?.wholeStoryAnalysis;
+
+    const result = runValidator({
+      chapters: chapters.map(c => ({
+        id: c.id,
+        name: c.name,
+        order: c.order,
+        status: c.status,
+        act: c.act,
+        date: c.date,
+        filePath: c.file.path,
+        scenes: c.scenes,
+      })),
+      sceneMetadataCache: smCache,
+      mentionCache,
+      dismissedFindings,
+      wholeStoryAnalysis,
+    });
+
+    // Persist if full story validation
+    if (!singleFile && pd) {
+      pd.validationResult = result;
+      void this.saveSettings();
+    }
+
+    return result;
+  }
+
+  /** Dismiss a single finding (persisted across sessions). */
+  async dismissValidatorFinding(fingerprint: string, ruleId: string): Promise<void> {
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (!pd) return;
+    if (!pd.dismissedFindings) pd.dismissedFindings = [];
+    if (!pd.dismissedFindings.some(d => d.fingerprint === fingerprint)) {
+      pd.dismissedFindings.push({ ruleId, fingerprint, timestamp: new Date().toISOString() });
+      await this.saveSettings();
+    }
+  }
+
+  /** Restore a dismissed finding. */
+  async restoreValidatorFinding(fingerprint: string): Promise<void> {
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (!pd?.dismissedFindings) return;
+    pd.dismissedFindings = pd.dismissedFindings.filter(d => d.fingerprint !== fingerprint);
+    await this.saveSettings();
+  }
+
+  /** Get the persisted validation result for the active project. */
+  getValidationResult(): ValidationResult | undefined {
+    return this.settings.projectData[this.settings.activeProjectId]?.validationResult;
+  }
+
+  /** Open the ValidatorModal (lazy-imported to keep initial load fast). */
+  async openValidatorModal(singleFile?: TFile): Promise<void> {
+    const { ValidatorModal } = await import('./modals/ValidatorModal');
+    const modal = new ValidatorModal(this.app, this, singleFile);
+    modal.open();
   }
 }

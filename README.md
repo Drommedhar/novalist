@@ -37,7 +37,7 @@ A World Bible is a shared folder whose characters, locations, items, lore, and i
 An always-visible toolbar is injected into every editor tab header. It provides one-click access to all major actions:
 
 - **Create group** — Add Character, Add Location, Add Item, Add Lore, Add Chapter
-- **Views group** — Explorer, Context Sidebar, Character Map, Plot Board, Image Gallery, Export
+- **Views group** — Explorer, Context Sidebar, Character Map, Plot Board, Image Gallery, Export, Validate
 - **Chapter status dropdown** — Visible on chapter files. Change between Outline (○), First Draft (◔), Revised (◑), Edited (◕), and Final (●). The status is stored in the chapter's frontmatter and reflected in the explorer.
 
 ### Project Explorer
@@ -117,6 +117,36 @@ Templates control the structure of new character, location, item, and lore files
 ### Context Sidebar
 
 A right-panel view that updates automatically when you open a chapter file. It scans the chapter text for mentions of your characters, locations, items, and lore entries, then displays cards with key details at a glance — role, gender, age, relationships, chapter-specific info, location descriptions, item types, and lore categories. Character data reflects the full override cascade (scene > chapter > act > base). When you are inside a scene (an `## heading` section), the sidebar shows the current scene name and applies the most specific matching override. When the plot board has data for the current chapter, the sidebar also shows filled plot board columns inline. A **Mention Frequency** graph shows a heatmap of which chapters each character appears in, with a warning badge when a character has been absent for three or more consecutive chapters. Accessible via the toolbar, ribbon icon, or command palette.
+
+### Scene Analysis
+
+Novalist automatically derives metadata for every scene without requiring any data entry. As you open a chapter file, each scene's prose is scanned and a set of values is computed and cached (re-computed only when the scene text changes):
+
+- **POV** — detected by scoring first-person pronouns vs. named character mentions. The `Auto` source badge indicates a detected value; a `Manual` badge appears when the value has been overridden.
+- **Emotion** — classified into 15 tones (joy, sadness, anger, fear, surprise, anticipation, disgust, trust, love, grief, hope, tension, humor, melancholy, neutral) by a built-in keyword lexicon covering English and German.
+- **Intensity** — a −10..+10 numeric score derived from lexicon base weights, word-count-normalised action-verb density, dialogue ratio, and punctuation pressure (exclamation marks, question marks, ellipsis). Positive scores indicate high energy; negative scores indicate calm or subdued scenes.
+- **Conflict types** — flags present in the scene: Internal, Interpersonal, Societal, Environmental, Supernatural. Detected via role keywords and contextual mentions.
+- **Tags** — extracted from the scene's inline tags (`#tag`), stripped of the `#` prefix.
+- **Stats** — word count, dialogue percentage, and average sentence length.
+
+All detected values are shown in the **Context Sidebar** under a _Scene Analysis_ section when you are inside a scene. An intensity sparkline graphs all scene intensities in the chapter, with the current scene highlighted. Any computed value can be overridden per-scene from the sidebar — the override is saved to the project and does not affect scene text.
+
+### Story Validator
+
+A rule-based consistency checker that analyses your entire manuscript and flags structural, continuity, and pacing issues. Run it from the **Validate** button in the toolbar, from **Settings > Dashboard** (Story Health widget), or from the command palette.
+
+Findings are grouped into six categories:
+
+- **Timeline** — chapters with no date set, scenes with no date set, date regression between consecutive chapters, gaps over 365 days.
+- **Characters** — characters mentioned only once (orphan), absent for five or more consecutive chapters (long absence), without a role assigned, or referenced but not found in the project.
+- **Plotlines** — plot-board columns that are defined but always empty across all chapters, single-chapter plotlines.
+- **Structure** — missing chapter headings, chapters without scenes, extreme scene count imbalance between chapters, chapters with no characters, chapters with no locations, very short chapters (< 200 words), very long chapters (> 10 000 words), missing act assignments.
+- **Continuity** — placeholder for AI-powered checks (runs only when AI assistant is enabled and the rule is toggled on in settings).
+- **Pacing** — five or more consecutive slow-pace scenes, chapters with near-zero dialogue, chapters with very high dialogue (> 80 %), extreme intensity swings between adjacent scenes, flat intensity arc over the whole story, steep drop in word count near the climax.
+
+Findings are rated **Error** (likely breaks the story), **Warning** (worth reviewing), or **Info** (stylistic note). The validator modal shows all findings in a filterable list with category tabs and severity toggles. Each finding card has a **Go to** button that opens the relevant file and scrolls to the scene heading, and a **Dismiss** button to silence a finding permanently (dismissals are stored per-project).
+
+The **Story Health** widget on the Dashboard shows a summary of error, warning, and info counts plus the top five findings. A **Run Validator** button is available there as well.
 
 ### Character Map
 
@@ -319,6 +349,8 @@ A fixed-width panel on the left side of the editor that shows notes and outline 
 | Analyse chapter with AI | Run Ollama-powered reference, consistency, and suggestion analysis on the active chapter |
 | Analyse full story with AI | Analyse every chapter in the project with a progress bar, ETA, and grouped results |
 | Open AI chat | Open the AI chat sidebar for interactive conversation about your novel |
+| Validate story | Run the rule-based plot validator across the full project and open the findings modal |
+| Validate chapter | Run the validator on the active chapter only (available on chapter files) |
 
 ## Internationalization
 

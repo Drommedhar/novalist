@@ -6,7 +6,7 @@
   WorkspaceLeaf
 } from 'obsidian';
 import type NovalistPlugin from '../main';
-import { CharacterData, CharacterChapterInfo, LocationData, PlotBoardColumn, CachedAiFinding } from '../types';
+import { CharacterData, CharacterChapterInfo, LocationData, PlotBoardColumn, CachedAiFinding, SceneMetadataCache, SceneMetadata, SceneMetadataOverrides, SceneEmotion } from '../types';
 import { normalizeCharacterRole, computeInterval } from '../utils/characterUtils';
 import { t } from '../i18n';
 import type { AiFinding, AiFindingType, OllamaModel, CopilotModelInfo } from '../utils/ollamaService';
@@ -407,11 +407,288 @@ export class NovalistSidebarView extends ItemView {
       }
     }
 
+    // Scene Analysis Section
+    await this.renderSceneAnalysis(contextContent);
+
     // AI Assistant Section
     this.renderAiSection(contextContent);
 
     // Restore scroll position after re-render
     container.scrollTop = prevScroll;
+  }
+
+  // ─── Scene Analysis ────────────────────────────────────────────
+
+  private async renderSceneAnalysis(container: HTMLElement): Promise<void> {
+    if (!this.currentChapterFile) return;
+
+    const section = container.createDiv('novalist-overview-section novalist-scene-analysis');
+
+    const renderContent = async (): Promise<void> => {
+      section.empty();
+      section.createEl('div', { text: t('sceneAnalysis.title'), cls: 'novalist-overview-section-title' });
+
+      let cache: SceneMetadataCache;
+      try {
+        cache = await this.plugin.analyseChapterScenes(this.currentChapterFile);
+      } catch {
+        return;
+      }
+
+      const sceneName = this.currentScene;
+      const scenes: SceneMetadata[] = Object.values(cache.scenes);
+      const scene: SceneMetadata | undefined = sceneName ? cache.scenes[sceneName] : undefined;
+
+      if (scene) {
+        const chapterId = this.plugin.getChapterIdForFileSync(this.currentChapterFile);
+
+        const saveOverride = async (overrides: Partial<SceneMetadataOverrides>): Promise<void> => {
+          await this.plugin.saveSceneMetadataOverride(chapterId, sceneName, overrides);
+          await renderContent();
+        };
+
+        const resetOverride = async (field: keyof SceneMetadataOverrides): Promise<void> => {
+          await this.plugin.resetSceneMetadataOverride(chapterId, sceneName, field);
+          await renderContent();
+        };
+
+        const grid = section.createDiv('novalist-sa-grid');
+
+        // ── POV ──────────────────────────────────────────────────
+        const povRow = grid.createDiv('novalist-sa-row');
+        povRow.createEl('span', { text: t('sceneAnalysis.pov'), cls: 'novalist-sa-label' });
+        const povValEl = povRow.createDiv('novalist-sa-value');
+        const povText = scene.pov.value || t('sceneAnalysis.unknown');
+        const povSpan = document.createElement('span');
+        povSpan.textContent = povText;
+        povSpan.className = 'novalist-sa-edit-value';
+        povSpan.title = t('sceneAnalysis.clickToEdit');
+        povSpan.addEventListener('click', () => {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = scene.pov.value;
+          input.className = 'novalist-sa-inline-input';
+          povSpan.replaceWith(input);
+          input.focus(); input.select();
+          const commit = (): void => {
+            const val = input.value.trim();
+            if (val !== scene.pov.value) void saveOverride({ pov: val });
+            else input.replaceWith(povSpan);
+          };
+          input.addEventListener('blur', commit);
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); input.replaceWith(povSpan); }
+          });
+        });
+        povValEl.appendChild(povSpan);
+        if (scene.pov.source === 'manual') {
+          const resetBtn = povValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
+          resetBtn.title = t('sceneAnalysis.resetOverride');
+          resetBtn.addEventListener('click', () => void resetOverride('pov'));
+        } else {
+          povValEl.createSpan({ text: ` (${scene.pov.source})`, cls: 'novalist-sa-source' });
+        }
+
+        // ── Emotion ──────────────────────────────────────────────
+        const emoRow = grid.createDiv('novalist-sa-row');
+        emoRow.createEl('span', { text: t('sceneAnalysis.emotion'), cls: 'novalist-sa-label' });
+        const emoValEl = emoRow.createDiv('novalist-sa-value');
+        const emotionKey = `sceneAnalysis.emotion.${scene.emotion.value}` as Parameters<typeof t>[0];
+        const emotionLabel = t(emotionKey) || scene.emotion.value;
+        const emoBadge = document.createElement('span');
+        emoBadge.textContent = emotionLabel;
+        emoBadge.className = `novalist-sa-emotion-badge novalist-emo-${scene.emotion.value} novalist-sa-edit-value`;
+        emoBadge.title = t('sceneAnalysis.clickToEdit');
+        const emotions: SceneEmotion[] = ['neutral', 'tense', 'joyful', 'melancholic', 'angry', 'fearful', 'romantic', 'mysterious', 'humorous', 'hopeful', 'desperate', 'peaceful', 'chaotic', 'sorrowful', 'triumphant'];
+        emoBadge.addEventListener('click', () => {
+          const sel = document.createElement('select');
+          sel.className = 'novalist-sa-inline-select';
+          for (const emo of emotions) {
+            const opt = document.createElement('option');
+            opt.value = emo;
+            opt.textContent = t(`sceneAnalysis.emotion.${emo}` as Parameters<typeof t>[0]);
+            if (emo === scene.emotion.value) opt.selected = true;
+            sel.appendChild(opt);
+          }
+          emoBadge.replaceWith(sel);
+          sel.focus();
+          const commit = (): void => {
+            const val = sel.value as SceneEmotion;
+            if (val !== scene.emotion.value) void saveOverride({ emotion: val });
+            else sel.replaceWith(emoBadge);
+          };
+          sel.addEventListener('change', commit);
+          sel.addEventListener('blur', () => sel.replaceWith(emoBadge));
+          sel.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); sel.replaceWith(emoBadge); }
+          });
+        });
+        emoValEl.appendChild(emoBadge);
+        if (scene.emotion.source === 'manual') {
+          const resetBtn = emoValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
+          resetBtn.title = t('sceneAnalysis.resetOverride');
+          resetBtn.addEventListener('click', () => void resetOverride('emotion'));
+        }
+
+        // ── Intensity ─────────────────────────────────────────────
+        const intRow = grid.createDiv('novalist-sa-row');
+        intRow.createEl('span', { text: t('sceneAnalysis.intensity'), cls: 'novalist-sa-label' });
+        const intValEl = intRow.createDiv('novalist-sa-value');
+        const intNum = scene.intensity.value;
+        const intBar = intValEl.createDiv('novalist-sa-intensity-bar');
+        const pct = ((intNum + 10) / 20) * 100;
+        const fill = intBar.createDiv('novalist-sa-intensity-fill');
+        fill.style.width = `${Math.abs(pct - 50) * 2}%`;
+        fill.style.marginLeft = intNum < 0 ? `${pct}%` : '50%';
+        fill.addClass(intNum >= 0 ? 'novalist-sa-intensity-pos' : 'novalist-sa-intensity-neg');
+        const intNumSpan = document.createElement('span');
+        intNumSpan.textContent = intNum > 0 ? `+${intNum}` : String(intNum);
+        intNumSpan.className = 'novalist-sa-intensity-num novalist-sa-edit-value';
+        intNumSpan.title = t('sceneAnalysis.clickToEdit');
+        intNumSpan.addEventListener('click', () => {
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.min = '-10'; input.max = '10';
+          input.value = String(intNum);
+          input.className = 'novalist-sa-inline-input novalist-sa-inline-number';
+          intNumSpan.replaceWith(input);
+          input.focus(); input.select();
+          const commit = (): void => {
+            const val = Math.min(10, Math.max(-10, parseInt(input.value, 10) || 0));
+            if (val !== intNum) void saveOverride({ intensity: val });
+            else input.replaceWith(intNumSpan);
+          };
+          input.addEventListener('blur', commit);
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); input.replaceWith(intNumSpan); }
+          });
+        });
+        intValEl.appendChild(intNumSpan);
+        if (scene.intensity.source === 'manual') {
+          const resetBtn = intValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
+          resetBtn.title = t('sceneAnalysis.resetOverride');
+          resetBtn.addEventListener('click', () => void resetOverride('intensity'));
+        }
+
+        // ── Conflict ──────────────────────────────────────────────
+        const conRow = grid.createDiv('novalist-sa-row');
+        conRow.createEl('span', { text: t('sceneAnalysis.conflict'), cls: 'novalist-sa-label' });
+        const conValEl = conRow.createDiv('novalist-sa-value');
+        const conflictSnippet: string = scene.conflict.value;
+        const conSpan = document.createElement('span');
+        conSpan.className = conflictSnippet
+          ? 'novalist-sa-conflict-text novalist-sa-edit-value'
+          : 'novalist-sa-empty novalist-sa-edit-value';
+        conSpan.textContent = conflictSnippet || t('sceneAnalysis.none');
+        conSpan.title = t('sceneAnalysis.clickToEdit');
+        conSpan.addEventListener('click', () => {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = conflictSnippet;
+          input.className = 'novalist-sa-inline-input';
+          conSpan.replaceWith(input);
+          input.focus(); input.select();
+          const commit = (): void => {
+            const val = input.value.trim();
+            if (val !== conflictSnippet) void saveOverride({ conflict: val });
+            else input.replaceWith(conSpan);
+          };
+          input.addEventListener('blur', commit);
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); input.replaceWith(conSpan); }
+          });
+        });
+        conValEl.appendChild(conSpan);
+        if (scene.conflict.source === 'manual') {
+          const resetBtn = conValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
+          resetBtn.title = t('sceneAnalysis.resetOverride');
+          resetBtn.addEventListener('click', () => void resetOverride('conflict'));
+        }
+
+        // ── Tags ──────────────────────────────────────────────────
+        const tagsVal: string[] = scene.tags.value;
+        const tagsRow = grid.createDiv('novalist-sa-row');
+        tagsRow.createEl('span', { text: t('sceneAnalysis.tags'), cls: 'novalist-sa-label' });
+        const tagsValEl = tagsRow.createDiv('novalist-sa-value novalist-sa-tags');
+        if (tagsVal && tagsVal.length > 0) {
+          for (const tag of tagsVal) {
+            tagsValEl.createSpan({ text: tag, cls: 'novalist-sa-tag' });
+          }
+        } else {
+          tagsValEl.createSpan({ text: t('sceneAnalysis.none'), cls: 'novalist-sa-empty' });
+        }
+        const tagsEditBtn = tagsValEl.createSpan({ text: '✎', cls: 'novalist-sa-edit-btn' });
+        tagsEditBtn.title = t('sceneAnalysis.clickToEdit');
+        tagsEditBtn.addEventListener('click', () => {
+          tagsValEl.empty();
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = tagsVal.join(', ');
+          input.placeholder = t('sceneAnalysis.tagsPlaceholder');
+          input.className = 'novalist-sa-inline-input';
+          tagsValEl.appendChild(input);
+          input.focus(); input.select();
+          const commit = (): void => {
+            const newTags = input.value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+            void saveOverride({ tags: newTags });
+          };
+          input.addEventListener('blur', commit);
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); void renderContent(); }
+          });
+        });
+        if (scene.tags.source === 'manual') {
+          const resetBtn = tagsValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
+          resetBtn.title = t('sceneAnalysis.resetOverride');
+          resetBtn.addEventListener('click', () => void resetOverride('tags'));
+        }
+
+        // ── Stats ─────────────────────────────────────────────────
+        const statsRow = grid.createDiv('novalist-sa-row');
+        statsRow.createEl('span', { text: t('sceneAnalysis.stats'), cls: 'novalist-sa-label' });
+        const statsVal = statsRow.createDiv('novalist-sa-value novalist-sa-stats');
+        const wc: number = scene.wordCount;
+        const dr: number = scene.dialogueRatio;
+        const asl: number = scene.avgSentenceLength;
+        statsVal.createSpan({ text: t('sceneAnalysis.words', { n: wc }) });
+        statsVal.createSpan({ text: '·', cls: 'novalist-sa-sep' });
+        statsVal.createSpan({ text: t('sceneAnalysis.dialogue', { pct: Math.round(dr * 100) }) });
+        statsVal.createSpan({ text: '·', cls: 'novalist-sa-sep' });
+        statsVal.createSpan({ text: t('sceneAnalysis.avgSentence', { n: asl }) });
+      }
+
+      // ── Sparkline ─────────────────────────────────────────────
+      if (scenes.length > 1) {
+        const sparklineDiv = section.createDiv('novalist-sa-sparkline');
+        const w = 180;
+        const h = 44;
+        const svg = sparklineDiv.createSvg('svg', {
+          attr: { viewBox: `0 0 ${w} ${h}`, width: String(w), height: String(h), class: 'novalist-sa-sparkline-svg' }
+        });
+        const xs = scenes.map((_, i) => (i / (scenes.length - 1)) * (w - 10) + 5);
+        const ys = scenes.map(s => h / 2 - (s.intensity.value / 10) * (h / 2 - 4));
+        svg.createSvg('line', { attr: { x1: '0', y1: String(h / 2), x2: String(w), y2: String(h / 2), class: 'novalist-sa-sparkline-zero' } });
+        const pts = xs.map((x, i) => `${x},${ys[i]}`).join(' ');
+        svg.createSvg('polyline', { attr: { points: pts, class: 'novalist-sa-sparkline-line', fill: 'none' } });
+        for (let i = 0; i < scenes.length; i++) {
+          const isCurrent = scenes[i].name === sceneName;
+          svg.createSvg('circle', {
+            attr: {
+              cx: String(xs[i]),
+              cy: String(ys[i]),
+              r: isCurrent ? '5' : '3',
+              class: isCurrent ? 'novalist-sa-sparkline-dot-active' : 'novalist-sa-sparkline-dot',
+            }
+          });
+        }
+      }
+    };
+
+    await renderContent();
   }
 
   onClose(): Promise<void> {

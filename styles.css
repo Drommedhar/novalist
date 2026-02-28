@@ -7711,3 +7711,585 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
 .novalist-hidden {
   display: none !important;
 }
+
+/* ════════════════════════════════════════════════════════════════
+   Scene Analysis Section (Sidebar)
+   ════════════════════════════════════════════════════════════════ */
+.novalist-scene-analysis {
+  margin-top: 8px;
+}
+
+.novalist-sa-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.novalist-sa-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.82em;
+}
+
+.novalist-sa-label {
+  color: var(--text-muted);
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.novalist-sa-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-normal);
+}
+
+.novalist-sa-source {
+  color: var(--text-faint);
+  font-size: 0.85em;
+}
+
+.novalist-sa-empty {
+  color: var(--text-faint);
+}
+
+.novalist-sa-conflict-text {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  display: inline-block;
+  vertical-align: bottom;
+}
+
+/* Inline editing */
+.novalist-sa-edit-value {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--text-faint);
+  transition: border-color 0.15s;
+}
+.novalist-sa-edit-value:hover {
+  border-bottom-color: var(--text-accent);
+  color: var(--text-accent);
+}
+
+.novalist-sa-reset {
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 0.9em;
+  margin-left: 4px;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s;
+}
+.novalist-sa-reset:hover {
+  color: var(--color-red);
+  opacity: 1;
+}
+
+.novalist-sa-edit-btn {
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 0.85em;
+  margin-left: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+  vertical-align: middle;
+}
+.novalist-sa-edit-btn:hover {
+  opacity: 1;
+  color: var(--text-accent);
+}
+
+.novalist-sa-inline-input {
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border-focus);
+  border-radius: 3px;
+  color: var(--text-normal);
+  font-size: 0.85em;
+  padding: 1px 4px;
+  width: 100%;
+  max-width: 150px;
+  outline: none;
+}
+.novalist-sa-inline-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.novalist-sa-inline-number {
+  max-width: 52px;
+  text-align: center;
+}
+
+.novalist-sa-inline-select {
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--interactive-accent);
+  border-radius: 3px;
+  color: var(--text-normal);
+  font-size: 0.82em;
+  padding: 1px 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.novalist-sa-tag {
+  background: var(--background-secondary-alt);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.8em;
+}
+
+.novalist-sa-stats {
+  gap: 4px;
+}
+
+.novalist-sa-sep {
+  color: var(--text-faint);
+  margin: 0 2px;
+}
+
+/* Intensity bar */
+.novalist-sa-intensity-bar {
+  position: relative;
+  width: 80px;
+  height: 6px;
+  background: var(--background-secondary-alt);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.novalist-sa-intensity-fill {
+  position: absolute;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.novalist-sa-intensity-pos {
+  background: var(--color-green);
+}
+
+.novalist-sa-intensity-neg {
+  background: var(--color-red);
+}
+
+.novalist-sa-intensity-num {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  min-width: 28px;
+}
+
+/* Emotion badges — one per SceneEmotion value */
+.novalist-sa-emotion-badge {
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.78em;
+  font-weight: 500;
+  cursor: default;
+}
+
+.novalist-emo-neutral     { background: var(--background-secondary-alt); color: var(--text-muted); }
+.novalist-emo-tense       { background: #7f1d1d33; color: #f87171; }
+.novalist-emo-joyful      { background: #1d4e2233; color: #4ade80; }
+.novalist-emo-melancholic { background: #1e3a5f33; color: #60a5fa; }
+.novalist-emo-angry       { background: #7f2c1633; color: #fb923c; }
+.novalist-emo-fearful     { background: #2d1b6933; color: #a78bfa; }
+.novalist-emo-romantic    { background: #6b1a3a33; color: #f472b6; }
+.novalist-emo-mysterious  { background: #1a1a4e33; color: #818cf8; }
+.novalist-emo-humorous    { background: #4d3b0033; color: #fbbf24; }
+.novalist-emo-hopeful     { background: #0f3d2a33; color: #34d399; }
+.novalist-emo-desperate   { background: #4a1a1a33; color: #f87171; }
+.novalist-emo-peaceful    { background: #0e3a4033; color: #67e8f9; }
+.novalist-emo-chaotic     { background: #4a1a4a33; color: #e879f9; }
+.novalist-emo-sorrowful   { background: #1a2a4a33; color: #93c5fd; }
+.novalist-emo-triumphant  { background: #4a3a0033; color: #fde68a; }
+
+/* Intensity sparkline */
+.novalist-sa-sparkline {
+  margin-top: 6px;
+}
+
+.novalist-sa-sparkline-svg {
+  display: block;
+  width: 100%;
+  max-width: 200px;
+}
+
+.novalist-sa-sparkline-zero {
+  stroke: var(--background-modifier-border);
+  stroke-width: 1px;
+  stroke-dasharray: 3 3;
+}
+
+.novalist-sa-sparkline-line {
+  stroke: var(--interactive-accent);
+  stroke-width: 1.5px;
+}
+
+.novalist-sa-sparkline-dot {
+  fill: var(--background-secondary-alt);
+  stroke: var(--interactive-accent);
+  stroke-width: 1.5px;
+}
+
+.novalist-sa-sparkline-dot-active {
+  fill: var(--interactive-accent);
+  stroke: var(--interactive-accent);
+  stroke-width: 1.5px;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Validator Modal
+   ════════════════════════════════════════════════════════════════ */
+.novalist-validator-modal {
+  width: min(860px, 95vw);
+  max-height: 90vh;
+}
+
+.novalist-validator-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.novalist-validator-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.novalist-validator-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 0;
+  gap: 12px;
+}
+
+.novalist-validator-run-btn,
+.novalist-validator-secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.88em;
+}
+
+.novalist-validator-last-run,
+.novalist-validator-empty,
+.novalist-validator-running-label {
+  color: var(--text-muted);
+  font-size: 0.88em;
+}
+
+.novalist-validator-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.novalist-validator-btn-group {
+  display: flex;
+  gap: 6px;
+}
+
+.novalist-validator-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.novalist-validator-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.82em;
+  font-weight: 500;
+}
+
+.novalist-badge-error   { background: #7f1d1d22; color: #f87171; border: 1px solid #f8717133; }
+.novalist-badge-warning { background: #78350f22; color: #fbbf24; border: 1px solid #fbbf2433; }
+.novalist-badge-info    { background: #1e3a5f22; color: #60a5fa; border: 1px solid #60a5fa33; }
+
+.novalist-badge-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.novalist-badge-icon svg { width: 13px; height: 13px; }
+
+/* Severity filter buttons */
+.novalist-validator-sev-filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.novalist-validator-sev-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+  font-size: 0.82em;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.novalist-validator-sev-btn.is-active {
+  opacity: 1;
+}
+
+.novalist-validator-sev-btn.novalist-sev-error   { border-color: #f8717166; }
+.novalist-validator-sev-btn.novalist-sev-warning { border-color: #fbbf2466; }
+.novalist-validator-sev-btn.novalist-sev-info    { border-color: #60a5fa66; }
+.novalist-validator-sev-btn.is-active.novalist-sev-error   { background: #7f1d1d22; color: #f87171; }
+.novalist-validator-sev-btn.is-active.novalist-sev-warning { background: #78350f22; color: #fbbf24; }
+.novalist-validator-sev-btn.is-active.novalist-sev-info    { background: #1e3a5f22; color: #60a5fa; }
+
+.novalist-sev-icon svg { width: 13px; height: 13px; }
+
+/* Category tabs */
+.novalist-validator-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+
+.novalist-validator-tab {
+  padding: 6px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  border-radius: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.novalist-validator-tab:hover {
+  color: var(--text-normal);
+}
+
+.novalist-validator-tab.is-active {
+  color: var(--interactive-accent);
+  border-bottom-color: var(--interactive-accent);
+}
+
+/* Finding list */
+.novalist-validator-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.novalist-validator-card {
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  padding: 10px 14px;
+  background: var(--background-primary-alt);
+  transition: opacity 0.15s;
+}
+
+.novalist-validator-card.is-dismissed {
+  opacity: 0.5;
+}
+
+.novalist-card-error   { border-left: 3px solid #f87171; }
+.novalist-card-warning { border-left: 3px solid #fbbf24; }
+.novalist-card-info    { border-left: 3px solid #60a5fa; }
+
+.novalist-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.novalist-card-sev-icon svg { width: 15px; height: 15px; }
+.novalist-sev-error   svg { color: #f87171; }
+.novalist-sev-warning svg { color: #fbbf24; }
+.novalist-sev-info    svg { color: #60a5fa; }
+
+.novalist-card-title {
+  font-weight: 500;
+  font-size: 0.9em;
+  flex: 1;
+}
+
+.novalist-card-category {
+  font-size: 0.75em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.novalist-card-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.75em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-secondary));
+  color: var(--interactive-accent);
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+}
+
+.novalist-card-ai-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.novalist-card-ai-icon svg {
+  width: 11px;
+  height: 11px;
+}
+
+.novalist-card-desc {
+  font-size: 0.82em;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+
+.novalist-card-entities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.novalist-card-entity {
+  font-size: 0.78em;
+  background: var(--background-secondary-alt);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.novalist-card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.novalist-card-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+}
+
+.novalist-card-action-btn:hover {
+  background: var(--background-secondary);
+}
+
+.novalist-card-dismiss-btn {
+  color: var(--text-muted);
+}
+
+.novalist-btn-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.novalist-btn-icon svg { width: 12px; height: 12px; }
+
+/* Validator spinner */
+.novalist-validator-spinner svg {
+  width: 32px;
+  height: 32px;
+  color: var(--interactive-accent);
+  animation: novalist-spin 1s linear infinite;
+}
+
+@keyframes novalist-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Dashboard — Story Health Section
+   ════════════════════════════════════════════════════════════════ */
+.novalist-dashboard-health .novalist-dashboard-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.novalist-dashboard-health-run-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.84em;
+}
+
+.novalist-dashboard-health-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.novalist-dashboard-health-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.novalist-dashboard-health-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 0.85em;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary-alt);
+}
+
+.novalist-dashboard-health-item-title {
+  color: var(--text-normal);
+}
+
+.novalist-dashboard-health-show-all {
+  font-size: 0.82em;
+  color: var(--text-accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}

@@ -294,6 +294,9 @@ export class NovalistToolbarManager {
     this.createRibbonButton(viewsItems, 'notebook-pen', t('toolbar.chapterNotes'), t('toolbar.chapterNotes'), () => {
       this.plugin.toggleChapterNotes();
     });
+    this.createRibbonButton(viewsItems, 'shield-check', t('toolbar.validate'), t('toolbar.validate'), () => {
+      void this.plugin.openValidatorModal();
+    });
     viewsGroup.createEl('span', { text: t('toolbar.groupViews'), cls: 'novalist-ribbon-group-label' });
 
     // ── AI panel (only if Ollama enabled) ──
@@ -512,6 +515,8 @@ export class NovalistToolbarManager {
       'calendar-range': '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
       'notebook-pen': '<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M18.4 2.6a2.17 2.17 0 0 1 3 3L16 11l-4 1 1-4Z"/>',
       'arrow-left-from-line': '<path d="M3 19V5"/><path d="m13 6-6 6 6 6"/><path d="M7 12h14"/>',
+      'shield-check': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+      'layout-dashboard': '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
     };
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

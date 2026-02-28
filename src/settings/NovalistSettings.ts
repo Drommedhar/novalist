@@ -248,6 +248,9 @@ export function createDefaultProjectData(): ProjectData {
     timeline: createDefaultTimelineData(),
     mentionCache: {},
     chapterNotes: {},
+    sceneMetadataCache: {},
+    sceneMetadataOverrides: {},
+    dismissedFindings: [],
   };
 }
 

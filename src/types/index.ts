@@ -78,6 +78,14 @@ export interface ProjectData {
   mentionCacheVersion?: number;
   /** Chapter and scene notes/outlines, keyed by chapter GUID. */
   chapterNotes: ChapterNotes;
+  /** Cached auto-detected scene metadata, keyed by chapter file path. */
+  sceneMetadataCache: Record<string, SceneMetadataCache>;
+  /** Manual overrides for scene metadata fields, keyed by "chapterId:sceneName". */
+  sceneMetadataOverrides: Record<string, Partial<SceneMetadataOverrides>>;
+  /** Last plot validation result for this project. */
+  validationResult?: ValidationResult;
+  /** Findings the user has explicitly dismissed, persisted across sessions. */
+  dismissedFindings: DismissedFinding[];
 }
 
 export interface NovalistSettings {
@@ -726,4 +734,158 @@ export interface TimelineEvent {
   characters: string[];
   /** Locations detected in the source chapter */
   locations: string[];
+}
+
+// ─── Scene Metadata ─────────────────────────────────────────────────
+
+/** Emotional tone detected or assigned to a scene. */
+export type SceneEmotion =
+  | 'neutral' | 'tense' | 'joyful' | 'melancholic' | 'angry'
+  | 'fearful' | 'romantic' | 'mysterious' | 'humorous' | 'hopeful'
+  | 'desperate' | 'peaceful' | 'chaotic' | 'sorrowful' | 'triumphant';
+
+/** How a metadata field value was determined. */
+export type MetadataSource = 'auto' | 'manual' | 'ai';
+
+/** A metadata value with provenance tracking. */
+export interface TrackedValue<T> {
+  value: T;
+  source: MetadataSource;
+}
+
+/** Rich metadata for a single scene (H2 section within a chapter). */
+export interface SceneMetadata {
+  /** Scene heading text (H2). */
+  name: string;
+  /** Chapter file this scene belongs to (relative vault path). */
+  chapterPath: string;
+  /** Chapter GUID for stable references. */
+  chapterId: string;
+
+  /** Point-of-view character — auto-detected from first/dominant character. */
+  pov: TrackedValue<string>;
+  /** Characters present in this scene (from scanMentions). */
+  characters: TrackedValue<string[]>;
+  /** Locations mentioned in this scene. */
+  locations: TrackedValue<string[]>;
+  /** Items mentioned in this scene. */
+  items: TrackedValue<string[]>;
+  /** Lore entries referenced in this scene. */
+  lore: TrackedValue<string[]>;
+
+  /** Primary emotional tone. */
+  emotion: TrackedValue<SceneEmotion>;
+  /** Narrative intensity (−10 to +10). */
+  intensity: TrackedValue<number>;
+  /** One-line conflict/tension summary. */
+  conflict: TrackedValue<string>;
+  /** Plotline / subplot tags. */
+  tags: TrackedValue<string[]>;
+
+  /** Word count of the scene section. */
+  wordCount: number;
+  /** Dialogue-to-prose ratio (0–1). */
+  dialogueRatio: number;
+  /** Average sentence length in words. */
+  avgSentenceLength: number;
+  /** Exclamation/question density (per 100 words). */
+  punctuationIntensity: number;
+}
+
+/**
+ * Persisted scene metadata cache for a chapter.
+ * Stored in ProjectData.sceneMetadataCache alongside mentionCache.
+ */
+export interface SceneMetadataCache {
+  /** SHA-256 hex digest of chapter content at analysis time. */
+  hash: string;
+  /** Per-scene metadata, keyed by scene heading name. */
+  scenes: Record<string, SceneMetadata>;
+  /** Chapter-level aggregate metadata. */
+  chapterAggregate: ChapterAggregateMetadata;
+}
+
+/** Aggregate metadata computed across all scenes in a chapter. */
+export interface ChapterAggregateMetadata {
+  /** All unique characters across all scenes. */
+  allCharacters: string[];
+  /** All unique locations. */
+  allLocations: string[];
+  /** Dominant POV character (most scenes). */
+  dominantPov: string;
+  /** Average intensity across scenes. */
+  avgIntensity: number;
+  /** Dominant emotion (most common across scenes). */
+  dominantEmotion: SceneEmotion;
+  /** Total word count. */
+  totalWordCount: number;
+  /** Ordered intensity values for each scene (for sparkline). */
+  intensityArc: number[];
+}
+
+/** Fields the user can manually override per scene. */
+export interface SceneMetadataOverrides {
+  pov: string;
+  emotion: SceneEmotion;
+  intensity: number;
+  conflict: string;
+  tags: string[];
+}
+
+// ─── Plot Validator ──────────────────────────────────────────────────
+
+/** Severity of a validation finding. */
+export type ValidatorSeverity = 'error' | 'warning' | 'info';
+
+/** Category a validation rule belongs to. */
+export type ValidatorCategory =
+  | 'timeline'
+  | 'characters'
+  | 'plotlines'
+  | 'structure'
+  | 'continuity'
+  | 'pacing';
+
+/** A single validation finding produced by the rule engine. */
+export interface ValidatorFinding {
+  /** Unique rule identifier (e.g. 'timeline.dateOrder', 'character.orphan'). */
+  ruleId: string;
+  /** Which category this rule belongs to. */
+  category: ValidatorCategory;
+  /** Severity level. */
+  severity: ValidatorSeverity;
+  /** Short human-readable title. */
+  title: string;
+  /** Detailed description with context. */
+  description: string;
+  /** Chapter file path relevant to this finding (for click-to-navigate). */
+  filePath?: string;
+  /** Scene name within the chapter, if applicable. */
+  sceneName?: string;
+  /** Entity names involved (characters, locations etc.). */
+  entities?: string[];
+  /** Stable fingerprint for dismissal matching. */
+  fingerprint: string;
+  /** Whether this finding was produced by a rule engine or AI analysis. */
+  source?: 'rule' | 'ai';
+}
+
+/** Result of a full validation run persisted in ProjectData. */
+export interface ValidationResult {
+  /** ISO timestamp of the validation run. */
+  timestamp: string;
+  /** All findings. */
+  findings: ValidatorFinding[];
+  /** Summary counts by severity. */
+  summary: { errors: number; warnings: number; infos: number };
+}
+
+/** A finding that the user has explicitly dismissed. */
+export interface DismissedFinding {
+  /** Rule ID. */
+  ruleId: string;
+  /** Fingerprint matching ValidatorFinding.fingerprint. */
+  fingerprint: string;
+  /** ISO timestamp of dismissal. */
+  timestamp: string;
 }

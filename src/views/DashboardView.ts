@@ -104,6 +104,9 @@ export class DashboardView extends ItemView {
 
     // Section 6: Goal Tracking
     this.renderGoalTracking(container, dailyProgress, projectProgress, goals);
+
+    // Section 7: Story Health
+    this.renderStoryHealth(container);
   }
 
   private renderRecentFiles(container: HTMLElement, recentEdits: RecentEditEntry[]): void {
@@ -519,5 +522,66 @@ export class DashboardView extends ItemView {
       }
     });
     text.setText(`${percentage}%`);
+  }
+
+  private renderStoryHealth(container: HTMLElement): void {
+    const section = container.createDiv('novalist-dashboard-section novalist-dashboard-health');
+    const titleRow = section.createDiv('novalist-dashboard-section-title-row');
+    titleRow.createEl('h3', { text: t('validator.dashboard.title'), cls: 'novalist-dashboard-section-title' });
+    const validateBtn = titleRow.createEl('button', { cls: 'novalist-dashboard-health-run-btn' });
+    setIcon(validateBtn.createSpan('novalist-btn-icon'), 'shield-check');
+    validateBtn.createSpan({ text: t('validator.run') });
+    validateBtn.addEventListener('click', () => {
+      void this.plugin.validateStory().then(() => void this.render());
+    });
+
+    const result = this.plugin.getValidationResult();
+    if (!result) {
+      section.createEl('p', { text: t('validator.neverRun'), cls: 'novalist-dashboard-empty' });
+      return;
+    }
+
+    // Summary badges row
+    const badges = section.createDiv('novalist-dashboard-health-badges');
+    const { errors, warnings, infos } = result.summary;
+    const badgeDefs: Array<{ count: number; cls: string; icon: string; key: Parameters<typeof t>[0] }> = [
+      { count: errors, cls: 'novalist-badge-error', icon: 'x-circle', key: 'validator.errors' },
+      { count: warnings, cls: 'novalist-badge-warning', icon: 'alert-triangle', key: 'validator.warnings' },
+      { count: infos, cls: 'novalist-badge-info', icon: 'info', key: 'validator.infos' },
+    ];
+    for (const bd of badgeDefs) {
+      const badge = badges.createSpan(`novalist-validator-badge ${bd.cls}`);
+      setIcon(badge.createSpan('novalist-badge-icon'), bd.icon);
+      badge.createSpan({ text: ` ${t(bd.key, { n: bd.count })}` });
+    }
+
+    // Top 5 findings by severity
+    const top = [...result.findings]
+      .sort((a, b) => {
+        const order = { error: 0, warning: 1, info: 2 };
+        return order[a.severity] - order[b.severity];
+      })
+      .slice(0, 5);
+
+    const list = section.createDiv('novalist-dashboard-health-list');
+    for (const f of top) {
+      const item = list.createDiv(`novalist-dashboard-health-item novalist-card-${f.severity}`);
+      const icon = item.createSpan(`novalist-sev-icon novalist-sev-${f.severity}`);
+      if (f.severity === 'error') setIcon(icon, 'x-circle');
+      else if (f.severity === 'warning') setIcon(icon, 'alert-triangle');
+      else setIcon(icon, 'info');
+      item.createSpan({ text: f.title, cls: 'novalist-dashboard-health-item-title' });
+    }
+
+    const totalFindings = result.findings.length;
+    if (totalFindings > 0) {
+      const showAll = section.createEl('button', {
+        text: t('validator.dashboard.showAll', { n: totalFindings }),
+        cls: 'novalist-dashboard-health-show-all',
+      });
+      showAll.addEventListener('click', () => {
+        void this.plugin.openValidatorModal();
+      });
+    }
   }
 }
