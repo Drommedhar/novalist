@@ -65,7 +65,7 @@ import { StartupWizardModal } from './modals/StartupWizardModal';
 import { ProjectSwitcherModal, ProjectRenameModal } from './modals/ProjectModals';
 import { SnapshotNameModal, SnapshotListModal } from './modals/SnapshotModal';
 // import { AiAnalysisModal } from './modals/AiAnalysisModal';
-import { updateSnapshotChapterName } from './utils/snapshotUtils';
+import { updateSnapshotChapterName, createSnapshot } from './utils/snapshotUtils';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole, computeInterval } from './utils/characterUtils';
 import { parseCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
@@ -88,6 +88,8 @@ import {
   type EntityPeekData
 } from './cm/focusPeekExtension';
 import { chapterDateExtension, type ChapterDateCallbacks } from './cm/chapterDateExtension';
+import { chapterNotesExtension, setChapterNotesVisibleEffect, type ChapterNotesCallbacks } from './cm/chapterNotesExtension';
+import { MoveToNotesModal } from './modals/MoveToNotesModal';
 import { countWords, getTodayDate, getOrCreateDailyGoal } from './utils/statisticsUtils';
 import { calculateReadability } from './utils/readabilityUtils';
 import { OllamaService } from './utils/ollamaService';
@@ -114,6 +116,7 @@ export default class NovalistPlugin extends Plugin {
   private annotationExtension: import('@codemirror/state').Extension | null = null;
   private cachedProjectOverview = { totalWords: 0, totalChapters: 0, totalCharacters: 0, totalLocations: 0, readingTime: 0, avgChapter: 0, chapters: [] as ChapterOverviewStat[] };
   private projectWordsCacheTimer: number | null = null;
+  public chapterNotesVisible = true;
 
   /** Promise that resolves when entity index is fully built */
   private entityIndexReady: Promise<void> | null = null;
@@ -233,6 +236,9 @@ export default class NovalistPlugin extends Plugin {
 
     // Register chapter/scene date badge CM6 extension
     this.setupChapterDateBadge();
+
+    // Register chapter notes panel CM6 extension
+    this.setupChapterNotes();
 
     // Command to open current character file in sheet view
     this.addCommand({
@@ -419,7 +425,35 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
-    // Add new chapter command
+    // Toggle chapter notes panel
+    this.addCommand({
+      id: 'toggle-chapter-notes',
+      name: t('cmd.toggleChapterNotes'),
+      callback: () => {
+        this.toggleChapterNotes();
+      }
+    });
+
+    // Move current chapter content to notes
+    this.addCommand({
+      id: 'move-content-to-notes',
+      name: t('cmd.moveContentToNotes'),
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        const canRun = file instanceof TFile && this.isChapterFile(file);
+        if (checking) return canRun;
+        if (canRun) this.moveChapterContentToNotes();
+      }
+    });
+
+    // Move all chapters' content to notes
+    this.addCommand({
+      id: 'move-all-content-to-notes',
+      name: t('cmd.moveAllContentToNotes'),
+      callback: () => {
+        this.moveAllChapterContentToNotes();
+      }
+    });
     this.addCommand({
       id: 'add-chapter-description',
       name: t('cmd.addChapter'),
@@ -814,6 +848,16 @@ export default class NovalistPlugin extends Plugin {
     if (!this.settings.loreFolder) {
       this.settings.loreFolder = 'Lore';
     }
+    // Migrate chapter notes
+    if (this.settings.enableChapterNotes === undefined) {
+      this.settings.enableChapterNotes = true;
+    }
+    if (!this.settings.chapterNotes) {
+      this.settings.chapterNotes = {};
+    }
+    for (const pd of Object.values(this.settings.projectData)) {
+      if (!pd.chapterNotes) pd.chapterNotes = {};
+    }
   }
 
   /** Copy per-project data from the projectData map into top-level settings fields. */
@@ -833,6 +877,7 @@ export default class NovalistPlugin extends Plugin {
       this.settings.timeline = pd.timeline ?? createDefaultProjectData().timeline;
       // mentionCache lives only in projectData — no top-level alias needed
       if (!pd.mentionCache) pd.mentionCache = {};
+      this.settings.chapterNotes = pd.chapterNotes ?? {};
     } else {
       // No projectData entry yet — preserve any top-level data that was
       // loaded from an older version instead of replacing it with empty defaults.
@@ -845,6 +890,7 @@ export default class NovalistPlugin extends Plugin {
         recentEdits: this.settings.recentEdits ?? [],
         timeline: this.settings.timeline ?? createDefaultProjectData().timeline,
         mentionCache: {},
+        chapterNotes: this.settings.chapterNotes ?? {},
       };
       this.settings.projectData[this.settings.activeProjectId] = fallback;
       this.settings.commentThreads = fallback.commentThreads;
@@ -869,6 +915,7 @@ export default class NovalistPlugin extends Plugin {
       recentEdits: this.settings.recentEdits,
       timeline: this.settings.timeline,
       mentionCache: existing?.mentionCache ?? {},
+      chapterNotes: this.settings.chapterNotes,
       // Preserve fields stored directly in projectData (not mirrored at top level)
       wholeStoryAnalysis: existing?.wholeStoryAnalysis,
     };
@@ -1952,6 +1999,10 @@ order: ${orderValue}
         this.settings.ollama.copilotModel,
         this.settings.ollama.temperature,
         this.settings.ollama.maxTokens,
+        this.settings.ollama.topP,
+        this.settings.ollama.minP,
+        this.settings.ollama.frequencyPenalty,
+        this.settings.ollama.repeatLastN,
       );
     } else {
       this.ollamaService = new OllamaService(
@@ -1964,6 +2015,10 @@ order: ${orderValue}
         this.settings.ollama.copilotModel || '',
         this.settings.ollama.temperature ?? 0.7,
         this.settings.ollama.maxTokens ?? 8192,
+        this.settings.ollama.topP ?? 0.9,
+        this.settings.ollama.minP ?? 0.05,
+        this.settings.ollama.frequencyPenalty ?? 1.1,
+        this.settings.ollama.repeatLastN ?? 64,
       );
     }
   }
@@ -4712,7 +4767,214 @@ order: ${orderValue}
     this.registerEditorExtension(chapterDateExtension(callbacks));
   }
 
-  /** Remove a single AI highlight from all editors. */
+  // ─── Chapter Notes panel extension ────────────────────────────────
+
+  private setupChapterNotes(): void {
+    const callbacks: ChapterNotesCallbacks = {
+      isChapterFile: () => {
+        const f = this.app.workspace.getActiveFile();
+        return f ? this.isChapterFile(f) : false;
+      },
+      getChapterGuid: () => {
+        const f = this.app.workspace.getActiveFile();
+        if (!f) return null;
+        return this.getChapterIdForFileSync(f);
+      },
+      getChapterNote: (guid: string) => {
+        return this.settings.chapterNotes[guid]?.chapterNote ?? '';
+      },
+      getSceneNote: (guid: string, sceneName: string) => {
+        return this.settings.chapterNotes[guid]?.sceneNotes[sceneName] ?? '';
+      },
+      saveChapterNote: (guid: string, note: string) => {
+        if (!this.settings.chapterNotes[guid]) {
+          this.settings.chapterNotes[guid] = { chapterNote: '', sceneNotes: {} };
+        }
+        this.settings.chapterNotes[guid].chapterNote = note;
+        void this.saveSettings();
+      },
+      saveSceneNote: (guid: string, sceneName: string, note: string) => {
+        if (!this.settings.chapterNotes[guid]) {
+          this.settings.chapterNotes[guid] = { chapterNote: '', sceneNotes: {} };
+        }
+        this.settings.chapterNotes[guid].sceneNotes[sceneName] = note;
+        void this.saveSettings();
+      },
+      moveContentToNotes: () => { this.moveChapterContentToNotes(); },
+      isEnabled: () => this.settings.enableChapterNotes && this.chapterNotesVisible,
+      t: (key) => t(key),
+      renderMarkdown: (markdown: string, container: HTMLElement) => {
+        const component = new Component();
+        component.load();
+        void MarkdownRenderer.render(this.app, markdown, container, '', component);
+      },
+    };
+    this.registerEditorExtension(chapterNotesExtension(callbacks));
+  }
+
+  /** Toggle the chapter notes panel on/off for all open editors. */
+  toggleChapterNotes(): void {
+    this.chapterNotesVisible = !this.chapterNotesVisible;
+    this.app.workspace.iterateAllLeaves(leaf => {
+      if (leaf.view instanceof MarkdownView) {
+        const cmEditor = (leaf.view.editor as unknown as { cm?: { dispatch: (spec: { effects: unknown }) => void } }).cm;
+        if (cmEditor) {
+          cmEditor.dispatch({ effects: setChapterNotesVisibleEffect.of(this.chapterNotesVisible) });
+        }
+      }
+    });
+  }
+
+  /** Move the active chapter body to notes, leaving only headings in the file. */
+  moveChapterContentToNotes(): void {
+    const file = this.app.workspace.getActiveFile();
+    if (!file || !this.isChapterFile(file)) return;
+
+    new MoveToNotesModal(
+      this.app,
+      file.basename,
+      1,
+      t,
+      async (createSnap: boolean) => {
+        const guid = this.getChapterIdForFileSync(file);
+        const content = await this.app.vault.read(file);
+        const { newFileContent, chapterNote, sceneNotes } = this.parseAndStripChapter(content);
+
+        if (createSnap) {
+          await createSnapshot(
+            this.app.vault,
+            this.resolvedProjectPath(),
+            file,
+            t('chapterNotes.snapshotName'),
+            guid,
+          );
+        }
+
+        // Save notes
+        if (!this.settings.chapterNotes[guid]) {
+          this.settings.chapterNotes[guid] = { chapterNote: '', sceneNotes: {} };
+        }
+        if (chapterNote) this.settings.chapterNotes[guid].chapterNote = chapterNote;
+        Object.assign(this.settings.chapterNotes[guid].sceneNotes, sceneNotes);
+
+        // Rewrite file to only headings
+        await this.app.vault.modify(file, newFileContent);
+        await this.saveSettings();
+
+        new Notice(t('chapterNotes.moveSuccess'));
+      }
+    ).open();
+  }
+
+  /** Move all chapter files' content to notes, leaving only headings. */
+  moveAllChapterContentToNotes(): void {
+    const chapters = this.getChapterDescriptionsSync();
+    if (chapters.length === 0) return;
+
+    new MoveToNotesModal(
+      this.app,
+      null,
+      chapters.length,
+      t,
+      async (createSnap: boolean) => {
+        let moved = 0;
+        for (const chapter of chapters) {
+          const file = chapter.file;
+          const guid = this.getChapterIdForFileSync(file);
+          const content = await this.app.vault.read(file);
+          const { newFileContent, chapterNote, sceneNotes } = this.parseAndStripChapter(content);
+
+          if (createSnap) {
+            await createSnapshot(
+              this.app.vault,
+              this.resolvedProjectPath(),
+              file,
+              t('chapterNotes.snapshotName'),
+              guid,
+            );
+          }
+
+          if (!this.settings.chapterNotes[guid]) {
+            this.settings.chapterNotes[guid] = { chapterNote: '', sceneNotes: {} };
+          }
+          if (chapterNote) this.settings.chapterNotes[guid].chapterNote = chapterNote;
+          Object.assign(this.settings.chapterNotes[guid].sceneNotes, sceneNotes);
+
+          await this.app.vault.modify(file, newFileContent);
+          moved++;
+        }
+        await this.saveSettings();
+        new Notice(t('chapterNotes.moveAllSuccess').replace('{count}', String(moved)));
+      }
+    ).open();
+  }
+
+  /**
+   * Parse a chapter file's content:
+   * - Extract prose under each heading into chapterNote (H1) or sceneNotes (H2).
+   * - Return a stripped version with only frontmatter + headings.
+   */
+  private parseAndStripChapter(content: string): {
+    newFileContent: string;
+    chapterNote: string;
+    sceneNotes: Record<string, string>;
+  } {
+    // Split off frontmatter
+    let frontmatter = '';
+    let body = content;
+    const fmMatch = content.match(/^---\n[\s\S]*?\n---\n/);
+    if (fmMatch) {
+      frontmatter = fmMatch[0];
+      body = content.slice(frontmatter.length);
+    }
+
+    const lines = body.split('\n');
+    const headingLines: number[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (/^#+ /.test(lines[i])) headingLines.push(i);
+    }
+
+    let chapterNote = '';
+    const sceneNotes: Record<string, string> = {};
+    const strippedLines: string[] = [];
+
+    // Process each section between headings
+    const sections: Array<{ headingIdx: number; startBody: number; endBody: number }> = [];
+    for (let i = 0; i < headingLines.length; i++) {
+      const start = headingLines[i];
+      const end = i + 1 < headingLines.length ? headingLines[i + 1] : lines.length;
+      sections.push({ headingIdx: start, startBody: start + 1, endBody: end });
+    }
+
+    // Lines before any heading
+    if (headingLines.length === 0 || headingLines[0] > 0) {
+      const preLines = headingLines.length > 0 ? lines.slice(0, headingLines[0]) : lines;
+      chapterNote = preLines.join('\n').trim();
+    }
+
+    for (const sec of sections) {
+      const headingLine = lines[sec.headingIdx];
+      strippedLines.push(headingLine);
+      const bodyText = lines.slice(sec.startBody, sec.endBody).join('\n').trim();
+      if (!bodyText) continue;
+
+      if (/^# /.test(headingLine) && !/^## /.test(headingLine)) {
+        // H1 chapter heading
+        chapterNote = chapterNote ? chapterNote + '\n\n' + bodyText : bodyText;
+      } else if (/^## /.test(headingLine) && !/^### /.test(headingLine)) {
+        // H2 scene heading
+        const sceneName = headingLine.replace(/^##\s+/, '').trim();
+        sceneNotes[sceneName] = bodyText;
+      }
+      // H3+ headings: include them in stripped output but don't extract
+    }
+
+    // Re-add any lines after the last heading that aren't body content
+    // (already handled in sections above)
+
+    const newFileContent = frontmatter + strippedLines.join('\n');
+    return { newFileContent, chapterNote, sceneNotes };
+  }
   private removeAiHighlight(highlight: AiHighlight): void {
     this.app.workspace.iterateAllLeaves(leaf => {
       if (leaf.view instanceof MarkdownView) {

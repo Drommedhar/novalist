@@ -48,6 +48,19 @@ export interface MentionCacheEntry {
   aiFindings?: CachedAiFinding[];
 }
 
+// ─── Chapter Notes ──────────────────────────────────────────────────
+
+/** Notes stored for a single chapter (keyed by chapter GUID). */
+export interface ChapterNoteData {
+  /** Markdown note for the chapter heading itself. */
+  chapterNote: string;
+  /** Per-scene notes, keyed by scene (H2) heading name. */
+  sceneNotes: Record<string, string>;
+}
+
+/** Map of chapter GUID → notes data, stored in ProjectData. */
+export type ChapterNotes = Record<string, ChapterNoteData>;
+
 /** Per-project data stored alongside global settings. */
 export interface ProjectData {
   commentThreads: CommentThread[];
@@ -63,6 +76,8 @@ export interface ProjectData {
   wholeStoryAnalysis?: WholeStoryAnalysisResult;
   /** Cache format version - incremented when scanning logic changes to invalidate old caches. */
   mentionCacheVersion?: number;
+  /** Chapter and scene notes/outlines, keyed by chapter GUID. */
+  chapterNotes: ChapterNotes;
 }
 
 export interface NovalistSettings {
@@ -122,6 +137,9 @@ export interface NovalistSettings {
   ollama: OllamaSettings;
   /** Recently edited files for Dashboard quick access. */
   recentEdits: RecentEditEntry[];
+  // Chapter notes panel
+  chapterNotes: ChapterNotes;
+  enableChapterNotes: boolean;
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────
@@ -626,6 +644,16 @@ export interface OllamaSettings {
   maxTokens: number;
   /** When true, skip regex-based entity scanning and rely solely on AI for reference detection. */
   disableRegexReferences: boolean;
+  /** Custom system prompt override. If empty, the default prompt is used. */
+  systemPrompt: string;
+  /** Top P sampling (0-1). Lower values make output more focused. */
+  topP: number;
+  /** Min P sampling (0-1). Tokens with probability below this are filtered out. */
+  minP: number;
+  /** Frequency penalty (0-2). Higher values reduce repetition. */
+  frequencyPenalty: number;
+  /** Repeat last N tokens to check for repetition. */
+  repeatLastN: number;
 }
 
 // ─── Timeline ───────────────────────────────────────────────────────

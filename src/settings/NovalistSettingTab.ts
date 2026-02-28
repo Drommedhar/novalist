@@ -17,7 +17,8 @@ import {
   cloneCharacterTemplate,
   cloneLocationTemplate,
   cloneItemTemplate,
-  cloneLoreTemplate
+  cloneLoreTemplate,
+  DEFAULT_SYSTEM_PROMPT
 } from './NovalistSettings';
 import { LanguageKey } from '../types';
 import { t } from '../i18n';
@@ -381,6 +382,16 @@ export class NovalistSettingTab extends PluginSettingTab {
       .setHeading();
 
     new Setting(containerEl)
+      .setName(t('settings.enableChapterNotes'))
+      .setDesc(t('settings.enableChapterNotesDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.enableChapterNotes)
+        .onChange(async (value) => {
+          this.plugin.settings.enableChapterNotes = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
       .setName(t('settings.bookParagraphSpacing'))
       .setDesc(t('settings.bookParagraphSpacingDesc'))
       .addToggle(toggle => toggle
@@ -549,6 +560,71 @@ export class NovalistSettingTab extends PluginSettingTab {
           this.plugin.settings.ollama.checkSuggestions = value;
           await this.plugin.saveSettings();
         }));
+
+    // ── System Prompt ───────────────────────────────────────────────
+    new Setting(containerEl)
+      .setName(t('ollama.systemPrompt'))
+      .setHeading();
+
+    const systemPromptDesc = containerEl.createEl('p', { 
+      text: t('ollama.systemPromptDesc'),
+      cls: 'novalist-setting-description'
+    });
+    systemPromptDesc.setCssProps({ marginBottom: '12px' });
+
+    const promptContainer = containerEl.createDiv('novalist-system-prompt-container');
+    
+    const promptTextarea = promptContainer.createEl('textarea', {
+      cls: 'novalist-system-prompt-textarea',
+      attr: {
+        rows: '12',
+      },
+    });
+    // Show default prompt in textbox so users can copy it
+    promptTextarea.value = this.plugin.settings.ollama.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+    promptTextarea.setCssProps({
+      width: '100%',
+      minHeight: '250px',
+      fontFamily: 'var(--font-monospace)',
+      fontSize: 'var(--font-smaller)',
+      marginBottom: '8px',
+    });
+
+    const promptButtons = promptContainer.createDiv('novalist-system-prompt-buttons');
+    promptButtons.setCssProps({
+      display: 'flex',
+      gap: '8px',
+      marginBottom: '16px',
+    });
+    
+    new ButtonComponent(promptButtons)
+      .setButtonText(t('ollama.resetSystemPrompt'))
+      .setTooltip('Restore the default system prompt')
+      .onClick(() => {
+        void (async () => {
+          promptTextarea.value = DEFAULT_SYSTEM_PROMPT;
+          this.plugin.settings.ollama.systemPrompt = '';
+          await this.plugin.saveSettings();
+        })();
+      });
+
+    // Debounced save
+    let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+    promptTextarea.addEventListener('input', () => {
+      if (saveTimeout) clearTimeout(saveTimeout);
+      saveTimeout = setTimeout(() => {
+        void (async () => {
+          // If the value equals default, store empty string (use default)
+          // Otherwise store the custom prompt
+          if (promptTextarea.value === DEFAULT_SYSTEM_PROMPT) {
+            this.plugin.settings.ollama.systemPrompt = '';
+          } else {
+            this.plugin.settings.ollama.systemPrompt = promptTextarea.value;
+          }
+          await this.plugin.saveSettings();
+        })();
+      }, 500);
+    });
   }
 
   /** Render settings specific to the Ollama provider. */
@@ -663,6 +739,78 @@ export class NovalistSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
             if (this.plugin.ollamaService) {
               this.plugin.ollamaService.setMaxTokens(parsed);
+            }
+          }
+        }));
+
+    // Top P slider (0-1)
+    const topPSetting = new Setting(containerEl)
+      .setName(t('ollama.topP'));
+    const topPValue = topPSetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.topP ?? 0.9) });
+    topPSetting.setDesc(t('ollama.topPDesc'));
+    topPSetting.addSlider(slider => slider
+      .setLimits(0, 1, 0.05)
+      .setValue(this.plugin.settings.ollama.topP ?? 0.9)
+      .setDynamicTooltip()
+      .onChange(async (value) => {
+        this.plugin.settings.ollama.topP = value;
+        topPValue.textContent = String(value);
+        await this.plugin.saveSettings();
+        if (this.plugin.ollamaService) {
+          this.plugin.ollamaService.setTopP(value);
+        }
+      }));
+
+    // Min P slider (0-1)
+    const minPSetting = new Setting(containerEl)
+      .setName(t('ollama.minP'));
+    const minPValue = minPSetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.minP ?? 0.05) });
+    minPSetting.setDesc(t('ollama.minPDesc'));
+    minPSetting.addSlider(slider => slider
+      .setLimits(0, 1, 0.01)
+      .setValue(this.plugin.settings.ollama.minP ?? 0.05)
+      .setDynamicTooltip()
+      .onChange(async (value) => {
+        this.plugin.settings.ollama.minP = value;
+        minPValue.textContent = String(value);
+        await this.plugin.saveSettings();
+        if (this.plugin.ollamaService) {
+          this.plugin.ollamaService.setMinP(value);
+        }
+      }));
+
+    // Frequency Penalty slider (0-2)
+    const freqPenaltySetting = new Setting(containerEl)
+      .setName(t('ollama.frequencyPenalty'));
+    const freqPenaltyValue = freqPenaltySetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.frequencyPenalty ?? 1.1) });
+    freqPenaltySetting.setDesc(t('ollama.frequencyPenaltyDesc'));
+    freqPenaltySetting.addSlider(slider => slider
+      .setLimits(0, 2, 0.1)
+      .setValue(this.plugin.settings.ollama.frequencyPenalty ?? 1.1)
+      .setDynamicTooltip()
+      .onChange(async (value) => {
+        this.plugin.settings.ollama.frequencyPenalty = value;
+        freqPenaltyValue.textContent = String(value);
+        await this.plugin.saveSettings();
+        if (this.plugin.ollamaService) {
+          this.plugin.ollamaService.setFrequencyPenalty(value);
+        }
+      }));
+
+    // Repeat Last N input
+    new Setting(containerEl)
+      .setName(t('ollama.repeatLastN'))
+      .setDesc(t('ollama.repeatLastNDesc'))
+      .addText(text => text
+        .setPlaceholder('64')
+        .setValue(String(this.plugin.settings.ollama.repeatLastN ?? 64))
+        .onChange(async (value) => {
+          const parsed = parseInt(value, 10);
+          if (!isNaN(parsed) && parsed >= 0) {
+            this.plugin.settings.ollama.repeatLastN = parsed;
+            await this.plugin.saveSettings();
+            if (this.plugin.ollamaService) {
+              this.plugin.ollamaService.setRepeatLastN(parsed);
             }
           }
         }));

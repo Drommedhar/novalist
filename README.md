@@ -231,6 +231,18 @@ Snapshot a chapter before a major rewrite and compare versions side-by-side.
 - **Restore** a snapshot to replace the chapter body while preserving frontmatter.
 - **Delete** snapshots you no longer need.
 
+### Chapter Notes Panel
+
+A fixed-width panel on the left side of the editor that shows notes and outline entries alongside each chapter and scene heading while you write.
+
+- Notes are stored per chapter and scene, keyed by the chapter's GUID, so they persist when the file is renamed.
+- Click any note card to open an inline textarea. Press `Ctrl+Enter` to save or `Escape` to cancel. Notes also auto-save on blur.
+- Each card can be collapsed to reduce visual noise. Collapse state is preserved while the file is open.
+- Cards scroll in sync with the editor content so the relevant notes always appear next to the corresponding heading.
+- **Move content to notes** (`Move chapter content to notes` command or the arrow button in the chapter card header): extracts the prose under each heading into the notes panel and rewrites the chapter file to headings only, optionally creating a snapshot first.
+- **Move all** (`Move all chapter content to notes`): runs the same extraction for every chapter in the project at once.
+- Toggle the panel with the `Toggle chapter notes panel` command or the notebook button in the toolbar. Disable it entirely in settings.
+
 ## Settings
 
 | Setting | Description | Default |
@@ -258,6 +270,7 @@ Snapshot a chapter before a major rewrite and compare versions side-by-side.
 | Language | Auto-replacement language preset | `de-low` |
 | Auto-replacements | Editable token → replacement pairs (in Custom mode) | Language-dependent |
 | Book paragraph spacing | Toggle book-style paragraph gaps in edit mode | Off |
+| Enable chapter notes panel | Show a notes/outline panel on the left side of the editor for chapter files | On |
 | Enable annotations | Toggle the inline comment system | On |
 | Daily word goal | Target words per day | 1000 |
 | Project word goal | Target total word count | 50000 |
@@ -300,6 +313,9 @@ Snapshot a chapter before a major rewrite and compare versions side-by-side.
 | Rename active project | Rename the active project and its vault folder |
 | Snapshot chapter | Save a named snapshot of the current chapter |
 | View chapter snapshots | List, compare, restore, or delete snapshots for the current chapter |
+| Toggle chapter notes panel | Show or hide the chapter notes panel in the editor |
+| Move chapter content to notes | Extract chapter and scene prose into the notes panel, leaving only headings |
+| Move all chapter content to notes | Run the extraction for every chapter in the project |
 | Analyse chapter with AI | Run Ollama-powered reference, consistency, and suggestion analysis on the active chapter |
 | Analyse full story with AI | Analyse every chapter in the project with a progress bar, ETA, and grouped results |
 | Open AI chat | Open the AI chat sidebar for interactive conversation about your novel |

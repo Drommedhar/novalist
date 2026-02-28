@@ -7468,3 +7468,249 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
     margin: 0 8px;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Chapter Notes Panel
+   ─────────────────────────────────────────────────────────────────────────
+   The wrapper is a sibling of .cm-editor, positioned absolutely so it sits
+   to the left of the editor canvas. .novalist-has-chapter-notes adds padding
+   to the scroller so text doesn't hide behind the panel.
+───────────────────────────────────────────────────────────────────────── */
+
+/* Shift the editor text right to make room for the panel */
+.novalist-has-chapter-notes .cm-scroller {
+  padding-left: 292px !important;
+}
+
+/* Outer wrapper — same height as the editor, lives outside the CM DOM */
+.novalist-chapter-notes-wrapper {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 284px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.novalist-chapter-notes-wrapper.novalist-hidden {
+  display: none;
+}
+
+/* Scrolling container — translated by -scrollTop to track editor */
+.novalist-chapter-notes-container {
+  position: relative;
+  width: 100%;
+  pointer-events: all;
+}
+
+/* Individual note card */
+.novalist-chapter-note-card {
+  position: absolute;
+  left: 4px;
+  width: calc(100% - 12px);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: var(--font-ui-small);
+  transition: box-shadow 0.15s ease;
+}
+
+.novalist-chapter-note-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Sticky card — pinned to top of visible area when its heading has scrolled off */
+.novalist-chapter-note-card.is-sticky {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  border-color: var(--interactive-accent);
+  z-index: 5;
+}
+
+/* Card header */
+.novalist-chapter-note-card-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--background-secondary-alt);
+  border-bottom: 1px solid var(--background-modifier-border);
+  cursor: default;
+  user-select: none;
+}
+
+/* Collapse toggle */
+.novalist-chapter-note-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 3px;
+}
+
+.novalist-chapter-note-toggle-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* Icon + title */
+.novalist-chapter-note-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  color: var(--text-muted);
+}
+
+.novalist-chapter-note-title > .svg-icon,
+.novalist-chapter-note-title > svg {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+
+.novalist-chapter-note-title-text {
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+}
+
+/* Action buttons (header right side) */
+.novalist-chapter-note-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.novalist-chapter-note-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 3px;
+}
+
+.novalist-chapter-note-action-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-accent);
+}
+
+.novalist-chapter-note-action-btn > .svg-icon,
+.novalist-chapter-note-action-btn > svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Card body */
+.novalist-chapter-note-card-body {
+  padding: 6px 8px;
+}
+
+.novalist-chapter-note-card.is-collapsed .novalist-chapter-note-card-body {
+  display: none;
+}
+
+/* Rendered markdown view */
+.novalist-chapter-note-render {
+  cursor: text;
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  color: var(--text-normal);
+  min-height: 28px;
+}
+
+.novalist-chapter-note-render p {
+  margin: 0 0 4px;
+}
+
+.novalist-chapter-note-render p:last-child {
+  margin-bottom: 0;
+}
+
+/* Placeholder when note is empty */
+.novalist-chapter-note-placeholder {
+  color: var(--text-faint);
+  font-style: italic;
+  font-size: var(--font-ui-small);
+  pointer-events: none;
+}
+
+/* Textarea */
+.novalist-chapter-note-textarea {
+  width: 100%;
+  min-height: 60px;
+  max-height: 200px;
+  resize: vertical;
+  font-family: var(--font-text);
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  color: var(--text-normal);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border-focus);
+  border-radius: 4px;
+  padding: 4px 6px;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.novalist-chapter-note-textarea:focus {
+  border-color: var(--interactive-accent);
+}
+
+/* Save / Cancel action bar */
+.novalist-chapter-note-action-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.novalist-chapter-note-save-btn,
+.novalist-chapter-note-cancel-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Move-to-notes modal extras */
+.novalist-move-to-notes-snapshot-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0;
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+}
+
+.novalist-move-to-notes-btn-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Utility */
+.novalist-hidden {
+  display: none !important;
+}

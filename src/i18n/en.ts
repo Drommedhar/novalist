@@ -27,6 +27,9 @@ export default {
   'cmd.viewSnapshots': 'View chapter snapshots',
   'cmd.openDashboard': 'Open dashboard',
   'cmd.openTimeline': 'Open timeline view',
+  'cmd.toggleChapterNotes': 'Toggle chapter notes panel',
+  'cmd.moveContentToNotes': 'Move chapter content to notes',
+  'cmd.moveAllContentToNotes': 'Move all chapter content to notes',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Please set a project path in settings first.',
@@ -121,6 +124,8 @@ export default {
   'settings.addReplacement': 'Add replacement',
   'settings.removeReplacement': 'Remove replacement',
   'settings.formatting': 'Formatting',
+  'settings.enableChapterNotes': 'Enable chapter notes panel',
+  'settings.enableChapterNotesDesc': 'Show a notes/outline panel on the left side of the editor for chapter files.',
   'settings.bookParagraphSpacing': 'Book paragraph spacing',
   'settings.bookParagraphSpacingDesc': 'Adds a gap between paragraphs like in printed books. Only works in edit mode.',
   'settings.writingGoals': 'Writing goals',
@@ -504,6 +509,25 @@ export default {
   'annotation.hoursAgo': '{n}h ago',
   'annotation.daysAgo': '{n}d ago',
 
+  // ── Chapter notes panel ───────────────────────────────────────────
+  'chapterNotes.chapterLabel': 'Chapter Notes',
+  'chapterNotes.sceneLabel': 'Scene Notes',
+  'chapterNotes.placeholder': 'Click to add notes…',
+  'chapterNotes.save': 'Save',
+  'chapterNotes.cancel': 'Cancel',
+  'chapterNotes.collapse': 'Collapse',
+  'chapterNotes.expand': 'Expand',
+  'chapterNotes.moveToNotes': 'Move content to notes',
+  'chapterNotes.moveConfirmTitle': 'Move Content to Notes',
+  'chapterNotes.moveConfirmMessage': 'This will overwrite existing notes with the current chapter content and leave only headings in the file. This cannot be undone.',
+  'chapterNotes.moveSnapshotCheckbox': 'Create a snapshot before moving',
+  'chapterNotes.moveSuccess': 'Chapter content moved to notes.',
+  'chapterNotes.moveAllConfirmTitle': 'Move All Content to Notes',
+  'chapterNotes.moveAllConfirmMessage': 'This will move content from all {count} chapters into notes and leave only headings. This cannot be undone.',
+  'chapterNotes.moveAllSnapshotCheckbox': 'Create snapshots before moving',
+  'chapterNotes.moveAllSuccess': 'Moved content from {count} chapters to notes.',
+  'chapterNotes.snapshotName': 'Before Move to Notes',
+
   // ── Focus peek extension ───────────────────────────────────────────
   'peek.character': 'Character',
   'peek.location': 'Location',
@@ -615,6 +639,7 @@ export default {
   'toolbar.gallery': 'Gallery',
   'toolbar.dashboard': 'Dashboard',
   'toolbar.timeline': 'Timeline',
+  'toolbar.chapterNotes': 'Chapter Notes',
   'toolbar.collapseRibbon': 'Collapse ribbon',
   'toolbar.expandRibbon': 'Expand ribbon',
 
@@ -881,6 +906,17 @@ export default {
   'ollama.wholeStoryNeverRun': 'No whole-story analysis yet. Click "Run Analysis" to begin.',
   'ollama.wholeStoryDesc': 'Sends all chapters together with the full detect cache to the AI for a cross-story consistency review.',
   'ollama.copyThinking': 'Copy All',
+  'ollama.topP': 'Top P',
+  'ollama.topPDesc': 'Nucleus sampling threshold. Lower values make output more focused and deterministic.',
+  'ollama.minP': 'Min P',
+  'ollama.minPDesc': 'Minimum probability for token filtering. Tokens with probability below this are filtered out. Key for model stability.',
+  'ollama.frequencyPenalty': 'Frequency penalty',
+  'ollama.frequencyPenaltyDesc': 'Penalizes repeated tokens. Higher values (e.g. 1.1-1.5) reduce repetition.',
+  'ollama.repeatLastN': 'Repeat last N',
+  'ollama.repeatLastNDesc': 'Number of recent tokens to check for repetition.',
+  'ollama.systemPrompt': 'System prompt',
+  'ollama.systemPromptDesc': 'Custom system prompt for the AI Assistant. Leave empty to use the default prompt. Use {{LANGUAGE}} as placeholder for the UI language.',
+  'ollama.resetSystemPrompt': 'Reset to default',
 
   // ── Timeline view ──────────────────────────────────────────────────
   'timeline.displayName': 'Timeline',

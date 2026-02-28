@@ -10,6 +10,7 @@ import {
 import type NovalistPlugin from '../main';
 import { t, getLanguageName } from '../i18n';
 import type { EntitySummary, OllamaModel, CopilotModelInfo } from '../utils/ollamaService';
+import { DEFAULT_SYSTEM_PROMPT } from '../settings/NovalistSettings';
 
 export const AI_CHAT_VIEW_TYPE = 'novalist-ai-chat';
 
@@ -345,36 +346,65 @@ export class AiChatView extends ItemView {
         `.novalist-ai-chat-msg[data-index="${msgIdx}"] .novalist-ai-chat-thinking`
       );
 
-      const result = await this.plugin.ollamaService.generateChat(
-        apiMessages,
-        (token: string) => {
-          this.messages[msgIdx].content += token;
+      // Retry loop for repetitive thinking detection
+      const maxRetries = 2;
+      let result: { response: string; thinking: string } | null = null;
+      let attempts = 0;
+      
+      while (attempts <= maxRetries) {
+        // Reset message content for retry
+        this.messages[msgIdx].content = '';
+        this.messages[msgIdx].thinking = '';
+        
+        if (attempts > 0) {
+          new Notice(`Retrying due to repetitive thinking... (attempt ${attempts + 1}/${maxRetries + 1})`);
+        }
 
-          // Keep as text during streaming — render Markdown once complete.
-          if (assistantBubble) {
-            assistantBubble.textContent = this.messages[msgIdx].content;
-          }
-          this.scrollToBottom();
-        },
-        undefined,
-        undefined,
-        (thinkToken: string) => {
-          this.messages[msgIdx].thinking = (this.messages[msgIdx].thinking ?? '') + thinkToken;
+        result = await this.plugin.ollamaService.generateChat(
+          apiMessages,
+          (token: string) => {
+            this.messages[msgIdx].content += token;
 
-          if (thinkingWrapper) {
-            thinkingWrapper.removeClass('is-hidden');
-          }
-          if (thinkingBubble) {
-            thinkingBubble.textContent = this.messages[msgIdx].thinking ?? '';
-            // Auto-scroll thinking content unless the user scrolled up.
-            this.autoScrollElement(thinkingBubble);
-          }
-          this.scrollToBottom();
-        },
-      );
+            // Keep as text during streaming — render Markdown once complete.
+            if (assistantBubble) {
+              assistantBubble.textContent = this.messages[msgIdx].content;
+            }
+            this.scrollToBottom();
+          },
+          undefined,
+          undefined,
+          (thinkToken: string) => {
+            this.messages[msgIdx].thinking = (this.messages[msgIdx].thinking ?? '') + thinkToken;
+
+            if (thinkingWrapper) {
+              thinkingWrapper.removeClass('is-hidden');
+            }
+            if (thinkingBubble) {
+              thinkingBubble.textContent = this.messages[msgIdx].thinking ?? '';
+              // Auto-scroll thinking content unless the user scrolled up.
+              this.autoScrollElement(thinkingBubble);
+            }
+            this.scrollToBottom();
+          },
+        );
+
+        // Check if thinking is repetitive
+        if (!this.isThinkingRepetitive(result.thinking)) {
+          break; // Success - not repetitive
+        }
+
+        attempts++;
+        if (attempts <= maxRetries) {
+          // Small delay before retry
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
 
       // Final update — parse the response for edit blocks and render
       // the text portion as Markdown.
+      if (!result) {
+        throw new Error('Failed to generate response after retries');
+      }
       this.messages[msgIdx].content = result.response;
       this.messages[msgIdx].thinking = result.thinking || undefined;
       // Also strip <think> tags from the content in case the model
@@ -419,24 +449,52 @@ export class AiChatView extends ItemView {
     this.plugin.ollamaService?.cancel();
   }
 
+  /**
+   * Detect if the thinking content is repetitive/stuck.
+   * Returns true if the same sentence is repeated at the end.
+   */
+  private isThinkingRepetitive(thinking: string): boolean {
+    if (!thinking || thinking.length < 50) return false;
+    
+    // Normalize: remove extra whitespace and convert to lowercase
+    const normalized = thinking.toLowerCase().replace(/\s+/g, ' ').trim();
+    
+    // Split into sentences (rough approximation)
+    const sentences = normalized.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 10);
+    if (sentences.length < 2) return false;
+    
+    // Check if the last 2 sentences are the same
+    const lastSentence = sentences[sentences.length - 1];
+    const secondLastSentence = sentences[sentences.length - 2];
+    
+    if (lastSentence === secondLastSentence) {
+      return true;
+    }
+    
+    // Check if the last sentence is repeated 3+ times in the last 200 chars
+    const last200Chars = normalized.slice(-200);
+    const lastSentenceShort = lastSentence.slice(0, 50);
+    const occurrences = (last200Chars.match(new RegExp(lastSentenceShort.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) ?? []).length;
+    if (occurrences >= 3) {
+      return true;
+    }
+    
+    return false;
+  }
+
   // ─── System prompt construction ──────────────────────────────────
 
   private async buildSystemPrompt(chapterFile: TFile | null): Promise<string> {
     const parts: string[] = [];
 
-    parts.push(
-      'You are a creative writing assistant for a novel-writing project. ' +
-      'The user is working in an Obsidian-based writing environment called Novalist. ' +
-      'Below you will find all known project entities (characters, locations, items, lore) ' +
-      'and the content of the chapter the user is currently editing (if any).\n' +
-      'Answer questions, offer plot advice, suggest improvements, and help with writing tasks. ' +
-      'Be concise but thorough. Respect the established world and characters.\n\n' +
-      `IMPORTANT: Always respond in ${getLanguageName()}. ` +
-      'The user\'s Obsidian UI is set to this language and they expect answers in it.\n\n' +
-      'IMPORTANT: The entity data below has already been adjusted for the current chapter and scene. ' +
-      'Character ages, roles, appearances, and other properties reflect their state at this point in the story. ' +
-      'You MUST treat these values as authoritative — do NOT invent different values.\n'
-    );
+    // Use custom system prompt if set, otherwise use default
+    const customPrompt = this.plugin.settings.ollama.systemPrompt?.trim();
+    if (customPrompt) {
+      parts.push(customPrompt);
+    } else {
+      // Use default prompt with language placeholder replaced
+      parts.push(DEFAULT_SYSTEM_PROMPT.replace('{{LANGUAGE}}', getLanguageName()));
+    }
 
     // Entity summaries
     let chapterName: string | undefined;

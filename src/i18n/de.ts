@@ -27,6 +27,9 @@ export default {
   'cmd.viewSnapshots': 'Kapitel-Snapshots anzeigen',
   'cmd.openDashboard': 'Dashboard öffnen',
   'cmd.openTimeline': 'Zeitleiste öffnen',
+  'cmd.toggleChapterNotes': 'Kapitelnotizen-Panel umschalten',
+  'cmd.moveContentToNotes': 'Kapitelinhalt in Notizen verschieben',
+  'cmd.moveAllContentToNotes': 'Alle Kapitelinhalte in Notizen verschieben',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Bitte zuerst einen Projektpfad in den Einstellungen festlegen.',
@@ -121,6 +124,8 @@ export default {
   'settings.addReplacement': 'Ersetzung hinzufügen',
   'settings.removeReplacement': 'Ersetzung entfernen',
   'settings.formatting': 'Formatierung',
+  'settings.enableChapterNotes': 'Kapitelnotizen-Panel aktivieren',
+  'settings.enableChapterNotesDesc': 'Zeigt ein Notiz-/Gliederungsbereich auf der linken Seite des Editors für Kapiteldateien an.',
   'settings.bookParagraphSpacing': 'Buchabsatzabstand',
   'settings.bookParagraphSpacingDesc': 'Fügt einen Abstand zwischen Absätzen wie in gedruckten Büchern hinzu. Funktioniert nur im Bearbeitungsmodus.',
   'settings.writingGoals': 'Schreibziele',
@@ -500,6 +505,25 @@ export default {
   'annotation.hoursAgo': 'vor {n} Std.',
   'annotation.daysAgo': 'vor {n} T.',
 
+  // ── Kapitelnotizen-Panel ───────────────────────────────────────────
+  'chapterNotes.chapterLabel': 'Kapitelnotizen',
+  'chapterNotes.sceneLabel': 'Szenennotizen',
+  'chapterNotes.placeholder': 'Klicken zum Hinzufügen von Notizen…',
+  'chapterNotes.save': 'Speichern',
+  'chapterNotes.cancel': 'Abbrechen',
+  'chapterNotes.collapse': 'Einklappen',
+  'chapterNotes.expand': 'Ausklappen',
+  'chapterNotes.moveToNotes': 'Inhalt in Notizen verschieben',
+  'chapterNotes.moveConfirmTitle': 'Inhalt in Notizen verschieben',
+  'chapterNotes.moveConfirmMessage': 'Dadurch werden die vorhandenen Notizen mit dem aktuellen Kapitelinhalt überschrieben und nur die Überschriften in der Datei belassen. Dies kann nicht rückgängig gemacht werden.',
+  'chapterNotes.moveSnapshotCheckbox': 'Snapshot vor dem Verschieben erstellen',
+  'chapterNotes.moveSuccess': 'Kapitelinhalt in Notizen verschoben.',
+  'chapterNotes.moveAllConfirmTitle': 'Alle Inhalte in Notizen verschieben',
+  'chapterNotes.moveAllConfirmMessage': 'Dadurch werden Inhalte aus allen {count} Kapiteln in Notizen verschoben und nur die Überschriften beibehalten. Dies kann nicht rückgängig gemacht werden.',
+  'chapterNotes.moveAllSnapshotCheckbox': 'Snapshots vor dem Verschieben erstellen',
+  'chapterNotes.moveAllSuccess': 'Inhalt aus {count} Kapiteln in Notizen verschoben.',
+  'chapterNotes.snapshotName': 'Vor Verschieben in Notizen',
+
   // ── Focus peek extension ───────────────────────────────────────────
   'peek.character': 'Charakter',
   'peek.location': 'Ort',
@@ -611,6 +635,7 @@ export default {
   'toolbar.gallery': 'Galerie',
   'toolbar.dashboard': 'Dashboard',
   'toolbar.timeline': 'Zeitleiste',
+  'toolbar.chapterNotes': 'Kapitelnotizen',
   'toolbar.collapseRibbon': 'Ribbon einklappen',
   'toolbar.expandRibbon': 'Ribbon ausklappen',
 
@@ -876,6 +901,17 @@ export default {
   'ollama.wholeStoryNeverRun': 'Noch keine Gesamtanalyse. Klicke auf „Analyse starten" um zu beginnen.',
   'ollama.wholeStoryDesc': 'Sendet alle Kapitel zusammen mit dem vollständigen Erkennungs-Cache an die KI für eine kapitelübergreifende Konsistenzprüfung.',
   'ollama.copyThinking': 'Alles kopieren',
+  'ollama.topP': 'Top P',
+  'ollama.topPDesc': 'Nucleus-Sampling-Schwelle. Niedrigere Werte machen die Ausgabe fokussierter und deterministischer.',
+  'ollama.minP': 'Min P',
+  'ollama.minPDesc': 'Mindestwahrscheinlichkeit für Token-Filterung. Tokens mit geringerer Wahrscheinlichkeit werden herausgefiltert. Schlüssel für Modellstabilität.',
+  'ollama.frequencyPenalty': 'Frequenzstrafe',
+  'ollama.frequencyPenaltyDesc': 'Bestraft wiederholte Tokens. Höhere Werte (z. B. 1,1–1,5) reduzieren Wiederholungen.',
+  'ollama.repeatLastN': 'Wiederhole letzte N',
+  'ollama.repeatLastNDesc': 'Anzahl der letzten Tokens, die auf Wiederholung geprüft werden.',
+  'ollama.systemPrompt': 'System-Prompt',
+  'ollama.systemPromptDesc': 'Benutzerdefinierter System-Prompt für den KI-Assistenten. Leer lassen, um den Standard-Prompt zu verwenden. {{LANGUAGE}} als Platzhalter für die UI-Sprache verwenden.',
+  'ollama.resetSystemPrompt': 'Auf Standard zurücksetzen',
 
   // ── Zeitleiste ─────────────────────────────────────────────────────
   'timeline.displayName': 'Zeitleiste',

@@ -291,6 +291,9 @@ export class NovalistToolbarManager {
     this.createRibbonButton(viewsItems, 'calendar-range', t('toolbar.timeline'), t('toolbar.timeline'), () => {
       void this.plugin.activateTimelineView();
     });
+    this.createRibbonButton(viewsItems, 'notebook-pen', t('toolbar.chapterNotes'), t('toolbar.chapterNotes'), () => {
+      this.plugin.toggleChapterNotes();
+    });
     viewsGroup.createEl('span', { text: t('toolbar.groupViews'), cls: 'novalist-ribbon-group-label' });
 
     // ── AI panel (only if Ollama enabled) ──
@@ -507,6 +510,8 @@ export class NovalistToolbarManager {
       'book-marked': '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><polyline points="10 2 10 10 13 7 16 10 16 2"/>',
       'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
       'calendar-range': '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>',
+      'notebook-pen': '<path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M18.4 2.6a2.17 2.17 0 0 1 3 3L16 11l-4 1 1-4Z"/>',
+      'arrow-left-from-line': '<path d="M3 19V5"/><path d="m13 6-6 6 6 6"/><path d="M7 12h14"/>',
     };
 
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

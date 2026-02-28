@@ -357,7 +357,7 @@ export class FullStoryAnalysisModal extends Modal {
 
     const progressWrap = wrap.createDiv('novalist-ai-progress');
     const fill = progressWrap.createDiv('novalist-ai-progress-fill');
-    fill.style.width = `${total > 0 ? Math.round((done / total) * 100) : 0}%`;
+    fill.setCssProps({ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` });
 
     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
     const etaStr = etaSeconds > 0 ? this.formatEta(etaSeconds) : '…';

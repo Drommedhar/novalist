@@ -247,8 +247,17 @@ export function createDefaultProjectData(): ProjectData {
     recentEdits: [],
     timeline: createDefaultTimelineData(),
     mentionCache: {},
+    chapterNotes: {},
   };
 }
+
+/** Default system prompt for the AI Assistant. */
+export const DEFAULT_SYSTEM_PROMPT = `You are a creative writing assistant for a novel-writing project. The user is working in an Obsidian-based writing environment called Novalist. Below you will find all known project entities (characters, locations, items, lore) and the content of the chapter the user is currently editing (if any).
+Answer questions, offer plot advice, suggest improvements, and help with writing tasks. Be concise but thorough. Respect the established world and characters.
+
+IMPORTANT: Always respond in {{LANGUAGE}}. The user's Obsidian UI is set to this language and they expect answers in it.
+
+IMPORTANT: The entity data below has already been adjusted for the current chapter and scene. Character ages, roles, appearances, and other properties reflect their state at this point in the story. You MUST treat these values as authoritative — do NOT invent different values.`;
 
 export const DEFAULT_SETTINGS: NovalistSettings = {
   novalistRoot: '',
@@ -309,6 +318,13 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
     temperature: 0.7,
     maxTokens: 8192,
     disableRegexReferences: false,
+    systemPrompt: '',
+    topP: 0.9,
+    minP: 0.05,
+    frequencyPenalty: 1.1,
+    repeatLastN: 64,
   },
   recentEdits: [],
+  chapterNotes: {},
+  enableChapterNotes: true,
 };

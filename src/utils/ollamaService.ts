@@ -517,6 +517,10 @@ export class OllamaService {
   private analysisMode: AiAnalysisMode;
   private temperature: number;
   private maxTokens: number;
+  private topP: number;
+  private minP: number;
+  private frequencyPenalty: number;
+  private repeatLastN: number;
   private copilotClient: CopilotAcpClient;
   private abortController: AbortController | null = null;
 
@@ -530,6 +534,10 @@ export class OllamaService {
     copilotModel = '',
     temperature = 0.7,
     maxTokens = 8192,
+    topP = 0.9,
+    minP = 0.05,
+    frequencyPenalty = 1.1,
+    repeatLastN = 64,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.model = model;
@@ -537,6 +545,10 @@ export class OllamaService {
     this.analysisMode = analysisMode;
     this.temperature = temperature;
     this.maxTokens = maxTokens;
+    this.topP = topP;
+    this.minP = minP;
+    this.frequencyPenalty = frequencyPenalty;
+    this.repeatLastN = repeatLastN;
     this.copilotClient = new CopilotAcpClient(copilotPath);
     this.copilotClient.vaultPath = vaultPath;
     this.copilotClient.modelId = copilotModel;
@@ -564,6 +576,22 @@ export class OllamaService {
 
   setMaxTokens(value: number): void {
     this.maxTokens = value;
+  }
+
+  setTopP(value: number): void {
+    this.topP = value;
+  }
+
+  setMinP(value: number): void {
+    this.minP = value;
+  }
+
+  setFrequencyPenalty(value: number): void {
+    this.frequencyPenalty = value;
+  }
+
+  setRepeatLastN(value: number): void {
+    this.repeatLastN = value;
   }
 
   setCopilotPath(path: string): void {
@@ -740,7 +768,14 @@ export class OllamaService {
       model: this.model,
       messages: [{ role: 'user', content: prompt }],
       stream: true,
-      options: { temperature, num_predict: maxTokens },
+      options: {
+        temperature,
+        num_predict: maxTokens,
+        top_p: this.topP,
+        min_p: this.minP,
+        frequency_penalty: this.frequencyPenalty,
+        repeat_last_n: this.repeatLastN,
+      },
     };
 
     const response = await fetch(`${this.baseUrl}/api/chat`, {
@@ -836,7 +871,14 @@ export class OllamaService {
       model: this.model,
       messages,
       stream: true,
-      options: { temperature, num_predict: maxTokens },
+      options: {
+        temperature,
+        num_predict: maxTokens,
+        top_p: this.topP,
+        min_p: this.minP,
+        frequency_penalty: this.frequencyPenalty,
+        repeat_last_n: this.repeatLastN,
+      },
     };
 
     const response = await fetch(`${this.baseUrl}/api/chat`, {
