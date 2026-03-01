@@ -62,6 +62,10 @@ export interface EntityPeekData {
   // Location fields
   locationType?: string;
   description?: string;
+  locationParent?: string;
+  locationChildCount?: number;
+  // Character group
+  characterGroup?: string;
   // Item fields
   itemType?: string;
   origin?: string;
@@ -497,6 +501,12 @@ class FocusPeekPlugin implements PluginValue {
         const pill = props.createDiv('novalist-peek-pill');
         pill.createEl('span', { text: t('peek.age', { age: data.age }), cls: 'novalist-peek-pill-value' });
       }
+      if (data.characterGroup) {
+        const pill = props.createDiv('novalist-peek-pill novalist-peek-pill--dim');
+        const icon = pill.createEl('span', { cls: 'novalist-peek-pill-icon' });
+        setIcon(icon, 'users');
+        pill.createEl('span', { text: t('peek.charGroup', { group: data.characterGroup }), cls: 'novalist-peek-pill-value' });
+      }
       if (data.relationships && data.relationships.length > 0) {
         const pill = props.createDiv('novalist-peek-pill novalist-peek-pill--dim');
         const relIcon = pill.createEl('span', { cls: 'novalist-peek-pill-icon' });
@@ -510,6 +520,14 @@ class FocusPeekPlugin implements PluginValue {
       if (data.locationType) {
         const pill = props.createDiv('novalist-peek-pill');
         pill.createEl('span', { text: data.locationType, cls: 'novalist-peek-pill-value' });
+      }
+      if (data.locationParent) {
+        const pill = props.createDiv('novalist-peek-pill novalist-peek-pill--dim');
+        pill.createEl('span', { text: t('peek.locParent', { parent: data.locationParent }), cls: 'novalist-peek-pill-value' });
+      }
+      if (data.locationChildCount && data.locationChildCount > 0) {
+        const pill = props.createDiv('novalist-peek-pill novalist-peek-pill--dim');
+        pill.createEl('span', { text: t('peek.subLocations', { count: data.locationChildCount }), cls: 'novalist-peek-pill-value' });
       }
     } else if (data.type === 'item') {
       if (data.itemType) {

@@ -30,6 +30,10 @@ export default {
   'cmd.toggleChapterNotes': 'Kapitelnotizen-Panel umschalten',
   'cmd.moveContentToNotes': 'Kapitelinhalt in Notizen verschieben',
   'cmd.moveAllContentToNotes': 'Alle Kapitelinhalte in Notizen verschieben',
+  'cmd.migrateFamilyGroups': 'Familiengruppen aus Beziehungen migrieren',
+
+  // German-specific family terms (English terms are always included automatically).
+  'familyTerms': 'mutter,mutti,vater,vati,sohn,tochter,schwester,bruder,oma,grossmutter,großmutter,opa,grossvater,großvater,enkelin,enkel,tante,onkel,cousine,vetter,kusine,nichte,neffe,ehefrau,ehemann,frau,mann,stiefmutter,stiefvater,stiefschwester,stiefbruder,halbschwester,halbbruder,schwiegermutter,schwiegervater,schwager,schwägerin,schwaegerin,schwiegersohn,schwiegertochter,zwilling,geschwister,elternteil,kind',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Bitte zuerst einen Projektpfad in den Einstellungen festlegen.',
@@ -58,6 +62,7 @@ export default {
   'notice.locationFileExists': 'Eine Ortsdatei mit diesem Namen existiert bereits.',
   'notice.addedImages': '{count} Bild(er) hinzugefügt',
   'notice.addedInverseRelationship': 'Beziehung „{role}" zu {name} hinzugefügt',
+  'notice.migrateFamilyGroups': '{count} Charakter(e) mit Familiengruppen aktualisiert.',
   'notice.failedInverseRelationship': 'Umkehrbeziehung zu {name} konnte nicht hinzugefügt werden',
   'notice.propertyExists': "Eigenschaft '{key}' existiert bereits.",
   'notice.enterRelationshipLabel': 'Bitte geben Sie eine Beziehungsbezeichnung ein.',
@@ -99,6 +104,9 @@ export default {
   'settings.folderStructure': 'Ordnerstruktur',
   'settings.characterFolder': 'Charakterordner',
   'settings.characterFolderDesc': 'Ordner für Charakterdateien',
+  'settings.migrateFamilyGroups': 'Familiengruppen automatisch zuweisen',
+  'settings.migrateFamilyGroupsDesc': 'Scannt Charakterbeziehungen nach Familienbezeichnungen (Mutter, Vater, Sohn, Tochter usw. auf Deutsch und Englisch) und weist zusammengehörenden Charakteren automatisch dieselbe Gruppe zu. Nur Charaktere ohne bestehende Gruppe werden verändert.',
+  'settings.migrateFamilyGroupsBtn': 'Migration ausführen',
   'settings.locationFolder': 'Ortsordner',
   'settings.locationFolderDesc': 'Ordner für Ortsdateien',
   'settings.itemFolder': 'Objektordner',
@@ -257,6 +265,8 @@ export default {
   'sidebar.gender': 'Geschlecht',
   'sidebar.age': 'Alter',
   'sidebar.rel': 'Bez',
+  'sidebar.locParent': 'in {parent}',
+  'sidebar.charGroup': 'Gruppe: {group}',
   'sidebar.plotBoard': 'Handlungstafel',
 
   // ── Explorer view ──────────────────────────────────────────────────
@@ -283,6 +293,20 @@ export default {
   'explorer.editChapter': 'Kapitel bearbeiten',
   'explorer.editScene': 'Szene bearbeiten',
   'explorer.genderTooltip': 'Geschlecht: {gender}',
+  'explorer.groupByRole': 'Rolle',
+  'explorer.groupByGroup': 'Familie / Gruppe',
+  'explorer.locationRoot': 'Root (kein Elternteil)',
+  'explorer.setParent': 'Elternteil festlegen…',
+  'explorer.removeParent': 'Elternteil entfernen',
+  'explorer.setGroup': 'Gruppe festlegen…',
+  'explorer.removeGroup': 'Gruppe entfernen',
+  'explorer.cycleError': 'Elternteil kann nicht gesetzt werden: würde einen Zyklus erzeugen.',
+  'explorer.subLocationCount': '{count} Unterort(e)',
+  'explorer.pickParentPlaceholder': 'Elternort auswählen…',
+  'explorer.setGroupTitle': 'Charaktergruppe festlegen',
+  'explorer.groupLabel': 'Gruppe',
+  'explorer.groupPlaceholder': 'Familie, Klan, Organisation…',
+  'explorer.applyGroup': 'Anwenden',
 
   // ── Character map view ─────────────────────────────────────────────
   'charMap.displayName': 'Figurenkarte',
@@ -311,6 +335,8 @@ export default {
   'charSheet.gender': 'Geschlecht',
   'charSheet.age': 'Alter',
   'charSheet.role': 'Rolle',
+  'charSheet.group': 'Familie / Gruppe',
+  'charSheet.groupPlaceholder': 'Familienname, Klan, usw.',
   'charSheet.eyeColor': 'Augenfarbe',
   'charSheet.hairColor': 'Haarfarbe',
   'charSheet.hairLength': 'Haarlänge',
@@ -544,6 +570,9 @@ export default {
   'peek.more': '+{n} weitere',
   'peek.imageNotFound': 'Bild nicht gefunden',
   'peek.noContent': 'Kein Inhalt.',
+  'peek.subLocations': '{count} Unterort(e)',
+  'peek.locParent': 'In: {parent}',
+  'peek.charGroup': 'Gruppe: {group}',
 
   // ── Statistics panel extension ─────────────────────────────────────
   'stats.chapterBreakdown': 'Kapitelübersicht',

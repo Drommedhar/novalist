@@ -30,6 +30,12 @@ export default {
   'cmd.toggleChapterNotes': 'Toggle chapter notes panel',
   'cmd.moveContentToNotes': 'Move chapter content to notes',
   'cmd.moveAllContentToNotes': 'Move all chapter content to notes',
+  'cmd.migrateFamilyGroups': 'Migrate character family groups from relationships',
+
+  // Family relationship terms used for the group-migration feature.
+  // Comma-separated, lower-case. Each locale should list terms for its own
+  // language only; English terms are always included as a base.
+  'familyTerms': 'mother,mom,mum,mama,mam,father,dad,papa,pa,son,daughter,sister,sis,brother,bro,grandmother,grandma,granny,gran,nana,grandfather,grandpa,grandad,gramps,granddaughter,grandson,aunt,auntie,uncle,cousin,niece,nephew,wife,husband,stepsister,stepbrother,stepmother,stepfather,half sister,half brother,mother in law,father in law,sister in law,brother in law,daughter in law,son in law,twin,sibling,parent,child',
 
   // ── Notice / toast messages ────────────────────────────────────────
   'notice.setProjectPath': 'Please set a project path in settings first.',
@@ -58,6 +64,7 @@ export default {
   'notice.locationFileExists': 'A location file with that name already exists.',
   'notice.addedImages': 'Added {count} image(s)',
   'notice.addedInverseRelationship': 'Added "{role}" relationship to {name}',
+  'notice.migrateFamilyGroups': 'Updated {count} character(s) with family groups.',
   'notice.failedInverseRelationship': 'Failed to add inverse relationship to {name}',
   'notice.propertyExists': "Property '{key}' already exists.",
   'notice.enterRelationshipLabel': 'Please enter a relationship label.',
@@ -99,6 +106,9 @@ export default {
   'settings.folderStructure': 'Folder structure',
   'settings.characterFolder': 'Character folder',
   'settings.characterFolderDesc': 'Folder for character files',
+  'settings.migrateFamilyGroups': 'Auto-assign family groups',
+  'settings.migrateFamilyGroupsDesc': 'Scan character relationships for family terms (mother, father, son, daughter, etc. in English and German) and automatically assign matching characters to the same group. Only characters without an existing group are modified.',
+  'settings.migrateFamilyGroupsBtn': 'Run migration',
   'settings.locationFolder': 'Location folder',
   'settings.locationFolderDesc': 'Folder for location files',
   'settings.itemFolder': 'Item folder',
@@ -261,6 +271,8 @@ export default {
   'sidebar.gender': 'Gender',
   'sidebar.age': 'Age',
   'sidebar.rel': 'Rel',
+  'sidebar.locParent': 'in {parent}',
+  'sidebar.charGroup': 'Group: {group}',
   'sidebar.plotBoard': 'Plot board',
 
   // ── Explorer view ──────────────────────────────────────────────────
@@ -287,6 +299,20 @@ export default {
   'explorer.editChapter': 'Edit chapter',
   'explorer.editScene': 'Edit scene',
   'explorer.genderTooltip': 'Gender: {gender}',
+  'explorer.groupByRole': 'Role',
+  'explorer.groupByGroup': 'Family / Group',
+  'explorer.locationRoot': 'Root (no parent)',
+  'explorer.setParent': 'Set parent…',
+  'explorer.removeParent': 'Remove parent',
+  'explorer.setGroup': 'Set group…',
+  'explorer.removeGroup': 'Remove group',
+  'explorer.cycleError': 'Cannot set parent: would create a cycle.',
+  'explorer.subLocationCount': '{count} sub-location(s)',
+  'explorer.pickParentPlaceholder': 'Pick a parent location…',
+  'explorer.setGroupTitle': 'Set character group',
+  'explorer.groupLabel': 'Group',
+  'explorer.groupPlaceholder': 'Family, clan, organisation…',
+  'explorer.applyGroup': 'Apply',
 
   // ── Character map view ─────────────────────────────────────────────
   'charMap.displayName': 'Character map',
@@ -315,6 +341,8 @@ export default {
   'charSheet.gender': 'Gender',
   'charSheet.age': 'Age',
   'charSheet.role': 'Role',
+  'charSheet.group': 'Family / Group',
+  'charSheet.groupPlaceholder': 'Family name, clan, etc.',
   'charSheet.eyeColor': 'Eye color',
   'charSheet.hairColor': 'Hair color',
   'charSheet.hairLength': 'Hair length',
@@ -390,6 +418,9 @@ export default {
   'locSheet.propertyNamePlaceholder': 'Property name',
   'locSheet.valuePlaceholder': 'Value',
   'locSheet.dropImages': 'Drag and drop images here or click add image',
+  'locSheet.parent': 'Parent',
+  'locSheet.parentPlaceholder': 'Parent location…',
+  'locSheet.cycleError': 'Cannot set parent: would create a cycle.',
 
   // ── Item sheet view ────────────────────────────────────────────────
   'itemSheet.fallbackTitle': 'Item Sheet',
@@ -548,6 +579,9 @@ export default {
   'peek.more': '+{n} more',
   'peek.imageNotFound': 'Image not found',
   'peek.noContent': 'No content.',
+  'peek.subLocations': '{count} sub-location(s)',
+  'peek.locParent': 'In: {parent}',
+  'peek.charGroup': 'Group: {group}',
 
   // ── Statistics panel extension ─────────────────────────────────────
   'stats.chapterBreakdown': 'Chapter breakdown',

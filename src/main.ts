@@ -35,6 +35,7 @@ import {
   MentionResult,
   CachedAiFinding,
   WholeStoryAnalysisResult,
+  EntityHierarchyCache,
 } from './types';
 import { DEFAULT_SETTINGS, cloneAutoReplacements, LANGUAGE_DEFAULTS, DEFAULT_CHARACTER_TEMPLATE, DEFAULT_LOCATION_TEMPLATE, DEFAULT_ITEM_TEMPLATE, DEFAULT_LORE_TEMPLATE, cloneCharacterTemplate, cloneLocationTemplate, cloneItemTemplate, cloneLoreTemplate, createDefaultProject, createDefaultProjectData, migrateTemplateDefs } from './settings/NovalistSettings';
 import { NovalistSidebarView, NOVELIST_SIDEBAR_VIEW_TYPE } from './views/NovalistSidebarView';
@@ -71,11 +72,11 @@ import { SnapshotNameModal, SnapshotListModal } from './modals/SnapshotModal';
 import { updateSnapshotChapterName, createSnapshot } from './utils/snapshotUtils';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole, computeInterval } from './utils/characterUtils';
-import { parseCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
-import { parseLocationSheet } from './utils/locationSheetUtils';
+import { parseCharacterSheet, serializeCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
+import { parseLocationSheet, serializeLocationSheet } from './utils/locationSheetUtils';
 import { parseItemSheet } from './utils/itemSheetUtils';
 import { parseLoreSheet } from './utils/loreSheetUtils';
-import { initLocale, t } from './i18n';
+import { initLocale, t, getFamilyTerms } from './i18n';
 import {
   annotationExtension,
   setThreadsEffect,
@@ -140,6 +141,7 @@ export default class NovalistPlugin extends Plugin {
         // Auto-open Dashboard on startup
         await this.openDashboardOnStartup();
       }
+      await this.rebuildEntityHierarchyCache();
     });
     
     // Register Editor Suggester
@@ -598,6 +600,17 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
+    // Migrate character family groups from relationships
+    this.addCommand({
+      id: 'migrate-family-groups',
+      name: t('cmd.migrateFamilyGroups'),
+      callback: () => {
+        void this.migrateCharacterFamilyGroups().then(count => {
+          new Notice(t('notice.migrateFamilyGroups', { count: String(count) }));
+        });
+      }
+    });
+
     // Register settings tab
     this.addSettingTab(new NovalistSettingTab(this.app, this));
 
@@ -690,6 +703,46 @@ export default class NovalistPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
     this.registerEvent(this.app.vault.on('rename', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
     this.registerEvent(this.app.vault.on('modify', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
+
+    // Hierarchy cache: update on modify
+    this.registerEvent(this.app.vault.on('modify', (file) => {
+      if (!(file instanceof TFile) || file.extension !== 'md') return;
+      if (this.isLocationFile(file)) {
+        void this.updateLocationHierarchyCacheEntry(file);
+      } else if (this.isCharacterFile(file)) {
+        void this.updateCharacterHierarchyCacheEntry(file);
+      }
+    }));
+
+    // Hierarchy cache: remove on delete
+    this.registerEvent(this.app.vault.on('delete', (file) => {
+      if (!(file instanceof TFile)) return;
+      const pd = this.getProjectData();
+      if (!pd.entityHierarchy) return;
+      delete pd.entityHierarchy.locations[file.path];
+      delete pd.entityHierarchy.characters[file.path];
+    }));
+
+    // Hierarchy cache: migrate path on rename
+    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+      if (!(file instanceof TFile)) return;
+      const pd = this.getProjectData();
+      if (!pd.entityHierarchy) return;
+      if (pd.entityHierarchy.locations[oldPath]) {
+        pd.entityHierarchy.locations[file.path] = {
+          ...pd.entityHierarchy.locations[oldPath],
+          name: file.basename,
+        };
+        delete pd.entityHierarchy.locations[oldPath];
+      }
+      if (pd.entityHierarchy.characters[oldPath]) {
+        pd.entityHierarchy.characters[file.path] = {
+          ...pd.entityHierarchy.characters[oldPath],
+          name: file.basename,
+        };
+        delete pd.entityHierarchy.characters[oldPath];
+      }
+    }));
 
     // Update snapshot chapter names when a chapter file is renamed
     this.registerEvent(this.app.vault.on('rename', (file) => {
@@ -934,6 +987,10 @@ export default class NovalistPlugin extends Plugin {
         timeline: this.settings.timeline ?? createDefaultProjectData().timeline,
         mentionCache: {},
         chapterNotes: this.settings.chapterNotes ?? {},
+        sceneMetadataCache: {},
+        sceneMetadataOverrides: {},
+        dismissedFindings: [],
+        entityHierarchy: { locations: {}, characters: {} },
       };
       this.settings.projectData[this.settings.activeProjectId] = fallback;
       this.settings.commentThreads = fallback.commentThreads;
@@ -961,6 +1018,11 @@ export default class NovalistPlugin extends Plugin {
       chapterNotes: this.settings.chapterNotes,
       // Preserve fields stored directly in projectData (not mirrored at top level)
       wholeStoryAnalysis: existing?.wholeStoryAnalysis,
+      sceneMetadataCache: existing?.sceneMetadataCache ?? {},
+      sceneMetadataOverrides: existing?.sceneMetadataOverrides ?? {},
+      validationResult: existing?.validationResult,
+      dismissedFindings: existing?.dismissedFindings ?? [],
+      entityHierarchy: existing?.entityHierarchy ?? { locations: {}, characters: {} },
     };
     const activeProject = this.getActiveProject();
     if (activeProject) {
@@ -1017,6 +1079,17 @@ export default class NovalistPlugin extends Plugin {
 
   getActiveProject(): NovalistProject | undefined {
     return this.settings.projects.find(p => p.id === this.settings.activeProjectId);
+  }
+
+  /** Returns the ProjectData for the currently active project (creating it if absent). */
+  getProjectData(): import('./types').ProjectData {
+    const id = this.settings.activeProjectId;
+    if (!this.settings.projectData[id]) {
+      this.settings.projectData[id] = createDefaultProjectData();
+    }
+    const pd = this.settings.projectData[id];
+    if (!pd.entityHierarchy) pd.entityHierarchy = { locations: {}, characters: {} };
+    return pd;
   }
 
   getProjects(): NovalistProject[] {
@@ -1642,7 +1715,7 @@ export default class NovalistPlugin extends Plugin {
     return lines.join('\n');
   }
 
-  generateLocationContent(name: string, description: string, template: LocationTemplate): string {
+  generateLocationContent(name: string, description: string, template: LocationTemplate, parentName?: string): string {
     const lines: string[] = [
       `# ${name}`,
       '',
@@ -1651,13 +1724,23 @@ export default class NovalistPlugin extends Plugin {
       `Name: ${name}`,
     ];
 
+    let insertedParent = false;
     for (const field of template.fields) {
+      if (field.key === 'Type' && parentName && !insertedParent) {
+        lines.push(`Type: ${field.defaultValue}`);
+        lines.push(`Parent: [[${parentName}]]`);
+        insertedParent = true;
+        continue;
+      }
       if (field.key === 'Description') {
         lines.push('Description:');
         lines.push(description || field.defaultValue || '');
       } else {
         lines.push(`${field.key}: ${field.defaultValue}`);
       }
+    }
+    if (parentName && !insertedParent) {
+      lines.push(`Parent: [[${parentName}]]`);
     }
 
     // If template doesn't have a Description field, add description inline if provided
@@ -1709,7 +1792,7 @@ export default class NovalistPlugin extends Plugin {
     new Notice(t('notice.characterCreated', { name: fileName }));
   }
 
-  async createLocation(name: string, description: string, templateId?: string, useWorldBible?: boolean): Promise<void> {
+  async createLocation(name: string, description: string, templateId?: string, useWorldBible?: boolean, parentName?: string): Promise<void> {
     const root = useWorldBible && this.settings.worldBiblePath ? this.resolvedWorldBiblePath() : this.resolvedProjectPath();
     const folder = `${root}/${this.settings.locationFolder}`;
     const path = `${folder}/${name}.md`;
@@ -1720,9 +1803,19 @@ export default class NovalistPlugin extends Plugin {
     }
 
     const template = this.getLocationTemplate(templateId);
-    const content = this.generateLocationContent(name, description, template);
+    const content = this.generateLocationContent(name, description, template, parentName);
+
+    // Ensure folder exists
+    if (!this.app.vault.getAbstractFileByPath(folder)) {
+      await this.app.vault.createFolder(folder);
+    }
 
     await this.app.vault.create(path, content);
+    if (parentName) {
+      // update cache for the new file
+      const newFile = this.app.vault.getAbstractFileByPath(path);
+      if (newFile instanceof TFile) await this.updateLocationHierarchyCacheEntry(newFile);
+    }
     new Notice(t('notice.locationCreated', { name }));
   }
 
@@ -2395,7 +2488,7 @@ order: ${orderValue}
     };
   }
 
-  parseCharacterSheetForSidebar(content: string): { name: string; surname: string; gender: string; age: string; role: string; templateId: string; customProperties: Record<string, string> } | null {
+  parseCharacterSheetForSidebar(content: string): { name: string; surname: string; gender: string; age: string; role: string; group: string; templateId: string; customProperties: Record<string, string> } | null {
     const sheetLines = this.getSectionLines(content, 'CharacterSheet');
     if (sheetLines.length === 0) return null;
     
@@ -2408,7 +2501,7 @@ order: ${orderValue}
       const value = match[1].trim();
       // Check for corrupted data
       // Images: is a section, not a field.
-      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'FaceShot:', 'EyeColor:', 'HairColor:', 'HairLength:', 'Height:', 'Build:', 'SkinTone:', 'DistinguishingFeatures:', 'Relationships:', 'Images:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:', 'TemplateId:'];
+      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'Group:', 'FaceShot:', 'EyeColor:', 'HairColor:', 'HairLength:', 'Height:', 'Build:', 'SkinTone:', 'DistinguishingFeatures:', 'Relationships:', 'Images:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:', 'TemplateId:'];
       for (const field of knownFields) {
         if (value.includes(field)) return '';
       }
@@ -2445,6 +2538,7 @@ order: ${orderValue}
       gender: parseField('Gender'),
       age: parseField('Age'),
       role: parseField('Role'),
+      group: parseField('Group'),
       templateId: parseField('TemplateId'),
       customProperties
     };
@@ -3037,6 +3131,7 @@ order: ${orderValue}
       (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
     );
 
+    const hierarchyCache = this.getProjectData().entityHierarchy?.characters ?? {};
     const chars: CharacterListData[] = [];
     for (const file of files) {
       const content = await this.app.vault.read(file);
@@ -3045,12 +3140,17 @@ order: ${orderValue}
       const sheetData = this.parseCharacterSheetForSidebar(content);
       const role = sheetData?.role || this.detectCharacterRole(content, frontmatter);
       const gender = sheetData?.gender || frontmatter.gender || '';
+      const entry = hierarchyCache[file.path];
+      const group = entry?.group ?? sheetData?.group ?? '';
+      const surname = entry?.surname ?? sheetData?.surname ?? '';
 
       chars.push({
         name: file.basename,
         file,
         role,
-        gender
+        gender,
+        group,
+        surname,
       });
     }
 
@@ -3179,6 +3279,235 @@ order: ${orderValue}
     return { guid, updated: true };
   }
 
+  // ─── Entity Hierarchy Cache ───────────────────────────────────────
+
+  /** Rebuild the entity hierarchy cache from all location and character files. */
+  async rebuildEntityHierarchyCache(): Promise<void> {
+    const pd = this.getProjectData();
+    if (!pd.entityHierarchy) pd.entityHierarchy = { locations: {}, characters: {} };
+
+    const root = this.resolvedProjectPath();
+    const wb = this.resolvedWorldBiblePath();
+    const locFolder = `${root}/${this.settings.locationFolder}/`;
+    const charFolder = `${root}/${this.settings.characterFolder}/`;
+    const wbLocFolder = wb ? `${wb}/${this.settings.locationFolder}/` : '';
+    const wbCharFolder = wb ? `${wb}/${this.settings.characterFolder}/` : '';
+
+    const files = this.app.vault.getFiles().filter(f => f.extension === 'md');
+    const locFiles = files.filter(f =>
+      f.path.startsWith(locFolder) || (wbLocFolder && f.path.startsWith(wbLocFolder))
+    );
+    const charFiles = files.filter(f =>
+      f.path.startsWith(charFolder) || (wbCharFolder && f.path.startsWith(wbCharFolder))
+    );
+
+    pd.entityHierarchy.locations = {};
+    for (const file of locFiles) {
+      await this.updateLocationHierarchyCacheEntry(file, pd.entityHierarchy);
+    }
+
+    pd.entityHierarchy.characters = {};
+    for (const file of charFiles) {
+      await this.updateCharacterHierarchyCacheEntry(file, pd.entityHierarchy);
+    }
+  }
+
+  private async updateLocationHierarchyCacheEntry(
+    file: TFile,
+    hierarchy?: EntityHierarchyCache
+  ): Promise<void> {
+    const h = hierarchy ?? this.getProjectData().entityHierarchy;
+    try {
+      const content = await this.app.vault.cachedRead(file);
+      const entry = this.extractLocationHierarchyFields(content);
+      h.locations[file.path] = { name: file.basename, ...entry };
+    } catch {
+      // ignore unreadable files
+    }
+  }
+
+  private async updateCharacterHierarchyCacheEntry(
+    file: TFile,
+    hierarchy?: EntityHierarchyCache
+  ): Promise<void> {
+    const h = hierarchy ?? this.getProjectData().entityHierarchy;
+    try {
+      const content = await this.app.vault.cachedRead(file);
+      const entry = this.extractCharacterHierarchyFields(content);
+      h.characters[file.path] = { name: file.basename, ...entry };
+    } catch {
+      // ignore unreadable files
+    }
+  }
+
+  private extractLocationHierarchyFields(content: string): { type: string; parent: string } {
+    const sheetMatch = content.match(/## LocationSheet\n([\s\S]*?)(?=\n## |$)/);
+    if (!sheetMatch) return { type: '', parent: '' };
+    const sheet = sheetMatch[1];
+    const getField = (name: string): string => {
+      const m = sheet.match(new RegExp(`^[ \\t]*${name}:[ \\t]*(.*?)$`, 'm'));
+      return m ? m[1].trim() : '';
+    };
+    return { type: getField('Type'), parent: getField('Parent') };
+  }
+
+  private extractCharacterHierarchyFields(content: string): { surname: string; group: string } {
+    const sheetMatch = content.match(/## CharacterSheet\n([\s\S]*?)(?=\n## |$)/);
+    if (!sheetMatch) return { surname: '', group: '' };
+    const sheet = sheetMatch[1];
+    const getField = (name: string): string => {
+      const m = sheet.match(new RegExp(`^[ \\t]*${name}:[ \\t]*(.*?)$`, 'm'));
+      return m ? m[1].trim() : '';
+    };
+    return { surname: getField('Surname'), group: getField('Group') };
+  }
+
+  /** Strip [[...]] wikilink brackets from a parent field value. */
+  stripWikilink(raw: string): string {
+    return raw.replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
+  }
+
+  /**
+   * Detect if setting child's parent to proposedParent would create a cycle.
+   * Traverses the parent chain upward from proposedParent.
+   */
+  wouldCreateCycle(
+    allLocations: LocationListData[],
+    childName: string,
+    proposedParentName: string,
+  ): boolean {
+    const parentMap = new Map(allLocations.map(l => [l.name, this.stripWikilink(l.parent)]));
+    let cursor = proposedParentName;
+    const visited = new Set<string>();
+    while (cursor) {
+      if (cursor === childName) return true;
+      if (visited.has(cursor)) return false;
+      visited.add(cursor);
+      cursor = parentMap.get(cursor) ?? '';
+    }
+    return false;
+  }
+
+  /** Set the parent of a location file (persists to disk + updates cache). */
+  async setLocationParent(file: TFile, parentName: string): Promise<void> {
+    const all = this.getLocationList();
+    if (parentName && this.wouldCreateCycle(all, file.basename, parentName)) {
+      new Notice(t('explorer.cycleError'));
+      return;
+    }
+    const content = await this.app.vault.read(file);
+    const sheet = parseLocationSheet(content);
+    sheet.parent = parentName ? `[[${parentName}]]` : '';
+    const updated = serializeLocationSheet(sheet);
+    await this.app.vault.modify(file, updated);
+    await this.updateLocationHierarchyCacheEntry(file);
+    this.debouncedSaveSettings();
+  }
+
+  /** Set the group of a character file (persists to disk + updates cache). */
+  async setCharacterGroup(file: TFile, group: string): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const sheet = parseCharacterSheet(content);
+    sheet.group = group;
+    const updated = serializeCharacterSheet(sheet);
+    await this.app.vault.modify(file, updated);
+    await this.updateCharacterHierarchyCacheEntry(file);
+    this.debouncedSaveSettings();
+  }
+
+  /**
+   * Auto-assign character groups based on family relationships.
+   * Characters connected by family-term relationship labels are placed in the same group.
+   * The group name is derived from the most common surname (or existing group label)
+   * within each connected family component. Only characters with no current group are updated.
+   * Returns the number of characters updated.
+   */
+  async migrateCharacterFamilyGroups(): Promise<number> {
+    const root = this.resolvedProjectPath();
+    const folder = `${root}/${this.settings.characterFolder}/`;
+    const wb = this.resolvedWorldBiblePath();
+    const wbFolder = wb ? `${wb}/${this.settings.characterFolder}/` : '';
+    const files = this.app.vault.getFiles().filter(f =>
+      (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
+    );
+
+    const familyTerms = getFamilyTerms();
+    interface CharInfo { file: TFile; surname: string; group: string; neighbors: string[] }
+    const chars = new Map<string, CharInfo>();
+
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const sheet = parseCharacterSheet(content);
+      const neighbors: string[] = [];
+      for (const rel of sheet.relationships) {
+        const labelNorm = rel.role.toLowerCase().replace(/[-_]/g, ' ').trim();
+        if (familyTerms.has(labelNorm)) {
+          const charName = rel.character.replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
+          if (charName) neighbors.push(charName);
+        }
+      }
+      chars.set(file.basename, { file, surname: sheet.surname, group: sheet.group, neighbors });
+    }
+
+    // Union-Find to cluster family members
+    const parentMap = new Map<string, string>();
+    const find = (x: string): string => {
+      if (!parentMap.has(x)) parentMap.set(x, x);
+      const p = parentMap.get(x) ?? x;
+      if (p !== x) parentMap.set(x, find(p));
+      return parentMap.get(x) ?? x;
+    };
+    const union = (a: string, b: string): void => {
+      const ra = find(a), rb = find(b);
+      if (ra !== rb) parentMap.set(ra, rb);
+    };
+    for (const [name, info] of chars) {
+      for (const neighbor of info.neighbors) {
+        if (chars.has(neighbor)) union(name, neighbor);
+      }
+    }
+
+    // Group names by component root
+    const components = new Map<string, string[]>();
+    for (const name of chars.keys()) {
+      const r = find(name);
+      if (!components.has(r)) components.set(r, []);
+      components.get(r)?.push(name);
+    }
+
+    let updatedCount = 0;
+    for (const members of components.values()) {
+      if (members.length < 2) continue;
+
+      // Tally candidate names: prefer existing group label, fall back to surname
+      const nameFreq = new Map<string, number>();
+      for (const memberName of members) {
+        const info = chars.get(memberName);
+        if (!info) continue;
+        const candidate = info.group || info.surname;
+        if (candidate) nameFreq.set(candidate, (nameFreq.get(candidate) ?? 0) + 1);
+      }
+      if (nameFreq.size === 0) continue;
+
+      let familyName = '';
+      let maxFreq = 0;
+      for (const [candidate, freq] of nameFreq) {
+        if (freq > maxFreq) { maxFreq = freq; familyName = candidate; }
+      }
+      if (!familyName) continue;
+
+      for (const memberName of members) {
+        const info = chars.get(memberName);
+        if (!info || info.group) continue;
+        await this.setCharacterGroup(info.file, familyName);
+        updatedCount++;
+      }
+    }
+
+    await this.rebuildEntityHierarchyCache();
+    return updatedCount;
+  }
+
   getLocationList(): LocationListData[] {
     const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.locationFolder}/`;
@@ -3187,11 +3516,16 @@ order: ${orderValue}
     const files = this.app.vault.getFiles().filter((f) =>
       (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
     );
-
-    return files.map((file) => ({
-      name: file.basename,
-      file
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    const cache = this.getProjectData().entityHierarchy?.locations ?? {};
+    return files.map((file) => {
+      const entry = cache[file.path];
+      return {
+        name: file.basename,
+        file,
+        type: entry?.type ?? '',
+        parent: entry?.parent ?? '',
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   getItemList(): ItemListData[] {
@@ -4646,6 +4980,7 @@ order: ${orderValue}
             role: displayRole,
             roleColor,
             genderColor,
+            characterGroup: charSheet.group || undefined,
             relationships: (chapterOverrideMatch?.overrides.relationships ?? charSheet.relationships).map(r => ({ role: r.role, character: r.character })),
             customProperties: displayCustomProps,
             chapterInfo,
@@ -4690,6 +5025,12 @@ order: ${orderValue}
 
           // Parse sections from full location sheet
           const locSheet = parseLocationSheet(content);
+          const locParentRaw = locSheet.parent || '';
+          const locParentName = locParentRaw.replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
+          const locHierarchy = this.getProjectData()?.entityHierarchy?.locations ?? {};
+          const locChildCount = Object.values(locHierarchy).filter(
+            e => e.parent.replace(/^\[\[/, '').replace(/\]\]$/, '').trim() === locationName
+          ).length;
 
           return {
             type: 'location',
@@ -4697,6 +5038,8 @@ order: ${orderValue}
             entityFilePath: file.path,
             images: locSheet.images.map(i => ({ name: i.name, path: i.path })),
             locationType: locSheet.type,
+            locationParent: locParentName || undefined,
+            locationChildCount: locChildCount > 0 ? locChildCount : undefined,
             description: locSheet.description,
             customProperties: locSheet.customProperties,
             sections: locSheet.sections.map(s => ({ title: s.title, content: s.content }))

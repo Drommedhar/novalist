@@ -172,6 +172,7 @@ export class CharacterMapView extends ItemView {
             public role: string,
             public gender: string,
             public surname: string = '',
+            public group: string = '',
             public family: Set<string> = new Set(),
             public connections: Map<string, string[]> = new Map() 
         ) {}
@@ -191,8 +192,9 @@ export class CharacterMapView extends ItemView {
         const role = sheetData.role || 'Side';
         const gender = sheetData.gender || '';
         const surname = sheetData.surname || '';
+        const group = sheetData.group || '';
         
-        allCharData.set(id, new CharData(id, file.basename, file, role, gender, surname));
+        allCharData.set(id, new CharData(id, file.basename, file, role, gender, surname, group));
     }
 
     const resolveTarget = (targetName: string): string | null => {
@@ -356,7 +358,7 @@ export class CharacterMapView extends ItemView {
         });
     }
 
-    // Pass 3: Group by surname
+    // Pass 3: Group by group field or surname
     const connectedIds = new Set<string>();
     for (const edge of rawEdges) {
         connectedIds.add(edge.source);
@@ -366,7 +368,7 @@ export class CharacterMapView extends ItemView {
     const surnameGroups = new Map<string, string[]>();
     for (const char of allCharData.values()) {
         if (!connectedIds.has(char.id)) continue;
-        const key = char.surname.trim();
+        const key = (char.group.trim() || char.surname.trim());
         if (key) {
             if (!surnameGroups.has(key)) surnameGroups.set(key, []);
             surnameGroups.get(key).push(char.id);

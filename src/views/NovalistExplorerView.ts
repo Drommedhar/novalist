@@ -1,4 +1,6 @@
 ﻿import {
+  App,
+  FuzzySuggestModal,
   ItemView,
   Modal,
   Notice,
@@ -10,7 +12,7 @@
 } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { normalizeCharacterRole } from '../utils/characterUtils';
-import { ChapterListData, CharacterListData, CHAPTER_STATUSES, ChapterStatus } from '../types';
+import { ChapterListData, CharacterListData, LocationListData, CHAPTER_STATUSES, ChapterStatus } from '../types';
 import { ChapterEditData } from '../modals/ChapterDescriptionModal';
 import { SceneNameModal } from '../modals/SceneNameModal';
 import { SnapshotNameModal, SnapshotListModal } from '../modals/SnapshotModal';
@@ -31,6 +33,9 @@ export class NovalistExplorerView extends ItemView {
   private filterBarEl: HTMLElement | null = null;
   private filterInputEl: HTMLInputElement | null = null;
   private suggestionsEl: HTMLElement | null = null;
+  private characterGroupMode: 'role' | 'group' = 'role';
+  private draggingLocationPath: string | null = null;
+  private locationTreeCollapsed: Set<string> = new Set();
 
   constructor(leaf: WorkspaceLeaf, plugin: NovalistPlugin) {
     super(leaf);
@@ -144,6 +149,24 @@ export class NovalistExplorerView extends ItemView {
         const filtered = this.filteredPaths;
         characters = characters.filter(c => filtered.has(c.file.path));
       }
+      // Group-mode toggle
+      const toggleBar = list.createDiv('novalist-group-mode-toggle');
+      const roleBtn = toggleBar.createEl('button', {
+        text: t('explorer.groupByRole'),
+        cls: `novalist-group-mode-btn ${this.characterGroupMode === 'role' ? 'is-active' : ''}`,
+      });
+      const groupBtn = toggleBar.createEl('button', {
+        text: t('explorer.groupByGroup'),
+        cls: `novalist-group-mode-btn ${this.characterGroupMode === 'group' ? 'is-active' : ''}`,
+      });
+      roleBtn.addEventListener('click', () => {
+        this.characterGroupMode = 'role';
+        void this.refreshListOnly();
+      });
+      groupBtn.addEventListener('click', () => {
+        this.characterGroupMode = 'group';
+        void this.refreshListOnly();
+      });
       if (this.propertyFilter && characters.length === 0) {
         list.createEl('p', { text: t('explorer.filterNoResults'), cls: 'novalist-empty' });
       } else {
@@ -158,7 +181,7 @@ export class NovalistExplorerView extends ItemView {
       if (this.propertyFilter && locations.length === 0) {
         list.createEl('p', { text: t('explorer.filterNoResults'), cls: 'novalist-empty' });
       } else {
-        this.renderList(list, locations, t('explorer.noLocations'));
+        this.renderLocationTree(list, locations, t('explorer.noLocations'));
       }
     } else if (this.activeTab === 'items') {
       let items = this.plugin.getItemList();
@@ -431,7 +454,7 @@ export class NovalistExplorerView extends ItemView {
     void this.refreshListOnly();
   }
 
-  private handleContextMenu(evt: MouseEvent, file: TFile) {
+  private async handleContextMenu(evt: MouseEvent, file: TFile): Promise<void> {
     evt.preventDefault();
     const menu = new Menu();
 
@@ -549,6 +572,67 @@ export class NovalistExplorerView extends ItemView {
               });
           });
         }
+      }
+    }
+
+    // ── Location hierarchy ──────────────────────────────────────────
+    if (this.plugin.isLocationFile(file)) {
+      const locationEntry = this.plugin.getLocationList().find(l => l.file.path === file.path);
+      const hasParent = !!(locationEntry?.parent);
+      const allLocations = this.plugin.getLocationList().filter(l => l.file.path !== file.path);
+
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item
+          .setTitle(t('explorer.setParent'))
+          .setIcon('git-branch')
+          .onClick(() => {
+            new LocationParentPickerModal(this.app, allLocations, (chosen) => {
+              void this.plugin.setLocationParent(file, chosen.name).then(() => { void this.render(); });
+            }).open();
+          });
+      });
+      if (hasParent) {
+        menu.addItem((item) => {
+          item
+            .setTitle(t('explorer.removeParent'))
+            .setIcon('x')
+            .onClick(async () => {
+              await this.plugin.setLocationParent(file, '');
+              void this.render();
+            });
+        });
+      }
+    }
+
+    // ── Character group ──────────────────────────────────────────────
+    if (this.plugin.isCharacterFile(file)) {
+      const charList = await this.plugin.getCharacterList();
+      const charEntry = charList.find(c => c.file.path === file.path);
+      const hasGroup = !!(charEntry?.group);
+      const existingGroups = [...new Set(charList.map(c => c.group).filter(g => !!g))];
+
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item
+          .setTitle(t('explorer.setGroup'))
+          .setIcon('users')
+          .onClick(() => {
+            new GroupInputModal(this.app, existingGroups, charEntry?.group ?? '', (value) => {
+              void this.plugin.setCharacterGroup(file, value).then(() => { void this.render(); });
+            }).open();
+          });
+      });
+      if (hasGroup) {
+        menu.addItem((item) => {
+          item
+            .setTitle(t('explorer.removeGroup'))
+            .setIcon('x')
+            .onClick(async () => {
+              await this.plugin.setCharacterGroup(file, '');
+              void this.render();
+            });
+        });
       }
     }
 
@@ -726,7 +810,7 @@ export class NovalistExplorerView extends ItemView {
       });
 
       row.addEventListener('contextmenu', (evt) => {
-        this.handleContextMenu(evt, item.file);
+        void this.handleContextMenu(evt, item.file);
       });
 
       row.addEventListener('dragstart', (evt) => {
@@ -886,6 +970,170 @@ export class NovalistExplorerView extends ItemView {
     modal.open();
   }
 
+  // ─── Location Tree ────────────────────────────────────────────────────────
+
+  private renderLocationTree(list: HTMLElement, items: LocationListData[], emptyMessage: string): void {
+    if (items.length === 0) {
+      list.createEl('p', { text: emptyMessage, cls: 'novalist-empty' });
+      return;
+    }
+
+    // Build name → item map and children map
+    const byName = new Map<string, LocationListData>();
+    for (const item of items) byName.set(item.name, item);
+
+    const childMap = new Map<string, LocationListData[]>(); // parentName → children
+    const roots: LocationListData[] = [];
+
+    for (const item of items) {
+      const rawParent = item.parent ?? '';
+      const parentName = rawParent.replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
+      if (!parentName || !byName.has(parentName)) {
+        roots.push(item);
+      } else {
+        if (!childMap.has(parentName)) childMap.set(parentName, []);
+        childMap.get(parentName)?.push(item);
+      }
+    }
+
+    // Sort children within each group
+    for (const children of childMap.values()) {
+      children.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    roots.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Root drop zone (only visible while dragging)
+    const treeContainer = list.createDiv('novalist-tree-container');
+    const rootDrop = treeContainer.createDiv('novalist-tree-root-drop');
+    rootDrop.setText(t('explorer.locationRoot'));
+
+    rootDrop.addEventListener('dragover', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      rootDrop.addClass('drag-over');
+    });
+    rootDrop.addEventListener('dragleave', () => rootDrop.removeClass('drag-over'));
+    rootDrop.addEventListener('drop', (evt) => {
+      evt.preventDefault();
+      rootDrop.removeClass('drag-over');
+      treeContainer.removeClass('is-dragging');
+      const path = evt.dataTransfer?.getData('text/plain') ?? '';
+      if (!path) return;
+      const file = this.app.vault.getAbstractFileByPath(path);
+      if (file instanceof TFile) {
+        void this.plugin.setLocationParent(file, '').then(() => void this.render());
+      }
+    });
+
+    // Detect drag enter/leave on the whole tree to show/hide root drop zone
+    treeContainer.addEventListener('dragenter', () => treeContainer.addClass('is-dragging'));
+    treeContainer.addEventListener('dragleave', (evt) => {
+      if (!treeContainer.contains(evt.relatedTarget as Node)) {
+        treeContainer.removeClass('is-dragging');
+      }
+    });
+    treeContainer.addEventListener('dragend', () => treeContainer.removeClass('is-dragging'));
+
+    // Render tree nodes recursively
+    const renderNode = (container: HTMLElement, item: LocationListData, depth: number) => {
+      const row = container.createDiv('novalist-tree-item');
+      row.dataset.path = item.file.path;
+      row.dataset.depth = String(depth);
+      row.style.setProperty('--tree-depth', String(depth));
+      row.setAttribute('draggable', 'true');
+
+      const children = childMap.get(item.name) ?? [];
+      const hasChildren = children.length > 0;
+
+      // Collapse toggle
+      const toggleBtn = row.createEl('span', { cls: 'novalist-tree-toggle' });
+      if (hasChildren) {
+        const isCollapsed = this.locationTreeCollapsed.has(item.file.path);
+        toggleBtn.addClass(isCollapsed ? 'is-collapsed' : 'is-expanded');
+        toggleBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (this.locationTreeCollapsed.has(item.file.path)) {
+            this.locationTreeCollapsed.delete(item.file.path);
+          } else {
+            this.locationTreeCollapsed.add(item.file.path);
+          }
+          void this.refreshListOnly();
+        });
+      }
+
+      // World Bible badge
+      if (this.plugin.isWorldBiblePath(item.file.path)) {
+        row.createEl('span', { text: t('project.wbBadge'), cls: 'novalist-explorer-badge novalist-wb-badge' });
+      }
+
+      row.createEl('span', { text: item.name, cls: 'novalist-explorer-label' });
+
+      if (item.type) {
+        row.createEl('span', { text: item.type, cls: 'novalist-explorer-badge novalist-type-badge' });
+      }
+
+      if (hasChildren) {
+        row.createEl('span', {
+          text: String(children.length),
+          cls: 'novalist-explorer-badge novalist-children-badge',
+          attr: { title: t('explorer.subLocationCount', { count: children.length }) },
+        });
+      }
+
+      // Open on click
+      row.addEventListener('click', () => void this.openFileInExplorer(item.file));
+      row.addEventListener('contextmenu', (evt) => { void this.handleContextMenu(evt, item.file); });
+
+      // Drag-to-reparent
+      row.addEventListener('dragstart', (evt) => {
+        this.draggingLocationPath = item.file.path;
+        row.addClass('is-dragging');
+        if (evt.dataTransfer) {
+          evt.dataTransfer.effectAllowed = 'move';
+          evt.dataTransfer.setData('text/plain', item.file.path);
+        }
+      });
+      row.addEventListener('dragend', () => {
+        this.draggingLocationPath = null;
+        row.removeClass('is-dragging');
+        treeContainer.querySelectorAll('.drag-over').forEach(el => el.removeClass('drag-over'));
+        treeContainer.removeClass('is-dragging');
+      });
+      row.addEventListener('dragover', (evt) => {
+        evt.preventDefault();
+        evt.stopPropagation();
+        if (this.draggingLocationPath !== item.file.path) {
+          row.addClass('drag-over');
+        }
+      });
+      row.addEventListener('dragleave', () => row.removeClass('drag-over'));
+      row.addEventListener('drop', (evt) => {
+        evt.preventDefault();
+        evt.stopPropagation();
+        row.removeClass('drag-over');
+        treeContainer.removeClass('is-dragging');
+        const srcPath = evt.dataTransfer?.getData('text/plain') ?? '';
+        if (!srcPath || srcPath === item.file.path) return;
+        const srcFile = this.app.vault.getAbstractFileByPath(srcPath);
+        if (srcFile instanceof TFile) {
+          void this.plugin.setLocationParent(srcFile, item.name).then(() => void this.render());
+        }
+      });
+
+      // Render children (if not collapsed)
+      if (hasChildren && !this.locationTreeCollapsed.has(item.file.path)) {
+        const childContainer = container.createDiv('novalist-tree-children');
+        for (const child of children) {
+          renderNode(childContainer, child, depth + 1);
+        }
+      }
+    };
+
+    for (const root of roots) {
+      renderNode(treeContainer, root, 0);
+    }
+  }
+
   private renderCharacterGroupedList(
     list: HTMLElement,
     items: CharacterListData[],
@@ -898,22 +1146,23 @@ export class NovalistExplorerView extends ItemView {
 
     const groups: Record<string, CharacterListData[]> = {};
     const unassignedLabel = t('explorer.unassigned');
-    
-    // Distribute items
+    const isGroupMode = this.characterGroupMode === 'group';
+
+    // Distribute items by role or by group depending on toggle state
     for (const item of items) {
-      const roleLabel = item.role?.trim() || unassignedLabel;
-      
-      if (!groups[roleLabel]) {
-        groups[roleLabel] = [];
-      }
-      groups[roleLabel].push(item);
+      const label = isGroupMode
+        ? (item.group?.trim() || unassignedLabel)
+        : (item.role?.trim() || unassignedLabel);
+
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(item);
     }
 
     const existingRoles = Object.keys(groups)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     const rolesToRender = existingRoles.filter(r => r !== unassignedLabel);
     if (groups[unassignedLabel]) {
-      rolesToRender.unshift(unassignedLabel);
+      rolesToRender.push(unassignedLabel);
     }
 
     // Create a flattened visual order list for range selection logic
@@ -981,9 +1230,15 @@ export class NovalistExplorerView extends ItemView {
         
         for (const path of paths) {
            const sourceItem = items.find(i => i.file.path === path);
-           if (sourceItem && sourceItem.role !== roleLabel) {
-             const nextRole = roleLabel === unassignedLabel ? '' : roleLabel;
-             void this.plugin.updateCharacterRole(sourceItem.file, nextRole);
+           if (!sourceItem) continue;
+           if (isGroupMode) {
+             const nextGroup = roleLabel === unassignedLabel ? '' : roleLabel;
+             if (sourceItem.group !== nextGroup) void this.plugin.setCharacterGroup(sourceItem.file, nextGroup);
+           } else {
+             if (sourceItem.role !== roleLabel) {
+               const nextRole = roleLabel === unassignedLabel ? '' : roleLabel;
+               void this.plugin.updateCharacterRole(sourceItem.file, nextRole);
+             }
            }
         }
       });
@@ -1022,7 +1277,7 @@ export class NovalistExplorerView extends ItemView {
         }
 
         row.addEventListener('contextmenu', (evt) => {
-            this.handleContextMenu(evt, item.file);
+            void this.handleContextMenu(evt, item.file);
         });
 
         row.addEventListener('click', (e) => {
@@ -1244,7 +1499,7 @@ export class NovalistExplorerView extends ItemView {
         void this.openFileInExplorer(item.file);
       });
       row.addEventListener('contextmenu', (evt) => {
-        this.handleContextMenu(evt, item.file);
+        void this.handleContextMenu(evt, item.file);
       });
     }
   }
@@ -1303,5 +1558,98 @@ export class NovalistExplorerView extends ItemView {
         }
       }
     }
+  }
+}
+
+// ─── Helper Modals ────────────────────────────────────────────────────────────
+
+/** A fuzzy picker for selecting a parent location. */
+class LocationParentPickerModal extends FuzzySuggestModal<LocationListData> {
+  private _items: LocationListData[];
+  private _onChoose: (item: LocationListData) => void;
+
+  constructor(
+    app: App,
+    locations: LocationListData[],
+    onChoose: (item: LocationListData) => void,
+  ) {
+    super(app);
+    this._items = locations;
+    this._onChoose = onChoose;
+    this.setPlaceholder(t('explorer.pickParentPlaceholder'));
+  }
+
+  getItems(): LocationListData[] {
+    return this._items;
+  }
+
+  getItemText(item: LocationListData): string {
+    return item.name;
+  }
+
+  onChooseItem(item: LocationListData): void {
+    this._onChoose(item);
+  }
+}
+
+/** A simple modal with a text input for entering / choosing a character group. */
+class GroupInputModal extends Modal {
+  private _existingGroups: string[];
+  private _current: string;
+  private _onSubmit: (value: string) => void;
+
+  constructor(
+    app: App,
+    existingGroups: string[],
+    current: string,
+    onSubmit: (value: string) => void,
+  ) {
+    super(app);
+    this._existingGroups = existingGroups;
+    this._current = current;
+    this._onSubmit = onSubmit;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl('h3', { text: t('explorer.setGroupTitle') });
+
+    new Setting(contentEl)
+      .setName(t('explorer.groupLabel'))
+      .addText((text) => {
+        text.setValue(this._current);
+        text.inputEl.placeholder = t('explorer.groupPlaceholder');
+
+        // Datalist for autocomplete
+        const listId = 'novalist-group-datalist';
+        const datalist = contentEl.createEl('datalist');
+        datalist.id = listId;
+        for (const g of this._existingGroups) {
+          datalist.createEl('option', { value: g });
+        }
+        text.inputEl.setAttribute('list', listId);
+
+        text.inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+          if (e.key === 'Enter') {
+            this._onSubmit(text.getValue().trim());
+            this.close();
+          }
+        });
+
+        new Setting(contentEl).addButton((btn) =>
+          btn
+            .setButtonText(t('explorer.applyGroup'))
+            .setCta()
+            .onClick(() => {
+              this._onSubmit(text.getValue().trim());
+              this.close();
+            })
+        );
+      });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }

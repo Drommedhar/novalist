@@ -86,6 +86,8 @@ export interface ProjectData {
   validationResult?: ValidationResult;
   /** Findings the user has explicitly dismissed, persisted across sessions. */
   dismissedFindings: DismissedFinding[];
+  /** Cached parent/type/group hierarchy info for locations and characters. */
+  entityHierarchy: EntityHierarchyCache;
 }
 
 export interface NovalistSettings {
@@ -248,11 +250,19 @@ export interface CharacterListData {
   file: TFile;
   role: string;
   gender: string;
+  /** Explicit family/group name (empty string if not set). */
+  group: string;
+  /** Character surname (empty string if not set). */
+  surname: string;
 }
 
 export interface LocationListData {
   name: string;
   file: TFile;
+  /** Location type (City, Building, etc.) — empty string if not set. */
+  type: string;
+  /** Raw wikilink to parent location, e.g. [[Hillsford]], or empty string. */
+  parent: string;
 }
 
 // Character Sheet Data Structure
@@ -318,6 +328,8 @@ export interface CharacterSheetData {
   gender: string;
   age: string;
   role: string;
+  /** Family / clan / organisation name used to group characters in explorer and map. */
+  group: string;
   faceShot: string; // wikilink to image (deprecated, kept for compatibility)
   // Physical attributes
   eyeColor: string;
@@ -344,6 +356,8 @@ export interface LocationRelationship {
 export interface LocationSheetData {
   name: string;
   type: string;
+  /** Raw wikilink to parent location, e.g. [[Hillsford]], or empty string. */
+  parent: string;
   description: string;
   images: CharacterImage[];
   relationships: LocationRelationship[]; // Kept for compatibility or future use, though UI removed
@@ -888,4 +902,28 @@ export interface DismissedFinding {
   fingerprint: string;
   /** ISO timestamp of dismissal. */
   timestamp: string;
+}
+
+// ─── Entity Hierarchy Cache ──────────────────────────────────────────
+
+export interface LocationHierarchyEntry {
+  name: string;
+  /** Location type value (City, Building, etc.) */
+  type: string;
+  /** Raw wikilink [[ParentName]] or empty string. */
+  parent: string;
+}
+
+export interface CharacterHierarchyEntry {
+  name: string;
+  surname: string;
+  /** Explicit family/group name or empty string. */
+  group: string;
+}
+
+export interface EntityHierarchyCache {
+  /** keyed by file path (vault-relative) */
+  locations: Record<string, LocationHierarchyEntry>;
+  /** keyed by file path (vault-relative) */
+  characters: Record<string, CharacterHierarchyEntry>;
 }

@@ -621,6 +621,23 @@ export class CharacterSheetView extends TextFileView {
           void this.populateDatalist(roleDatalist, this.getKnownRoles(value));
         });
       });
+
+    // Family / Group row
+    const groupRow = section.createDiv('character-sheet-row character-sheet-role-row');
+    const groupListId = `novalist-group-suggestions-${this.suggestionId}`;
+    const groupDatalist = section.createEl('datalist', { attr: { id: groupListId } });
+    new Setting(groupRow)
+      .setName(t('charSheet.group'))
+      .addText(text => {
+        text.setValue(this.data.group ?? '');
+        text.setPlaceholder(t('charSheet.groupPlaceholder'));
+        text.inputEl.setAttr('list', groupListId);
+        void this.populateDatalist(groupDatalist, this.getKnownGroups(text.getValue()));
+        text.onChange(value => {
+          this.data.group = value;
+          void this.populateDatalist(groupDatalist, this.getKnownGroups(value));
+        });
+      });
   }
 
   private renderPhysicalAttributesSection(container: HTMLElement): void {
@@ -699,6 +716,20 @@ export class CharacterSheetView extends TextFileView {
     }
 
     return Array.from(roles).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
+
+  private async getKnownGroups(currentValue: string): Promise<string[]> {
+    const groups = new Set<string>();
+    const trimmedCurrent = currentValue.trim();
+    if (trimmedCurrent) groups.add(trimmedCurrent);
+
+    const characters = await this.plugin.getCharacterList();
+    for (const character of characters) {
+      const trimmed = character.group?.trim();
+      if (trimmed) groups.add(trimmed);
+    }
+
+    return Array.from(groups).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }
 
   private async getKnownGenders(currentValue: string): Promise<string[]> {

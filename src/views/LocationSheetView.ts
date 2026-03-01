@@ -185,6 +185,59 @@ export class LocationSheetView extends TextFileView {
         });
       });
 
+    // Parent
+    const allLocations = this.plugin.getLocationList().filter(l => l.name !== this.data.name);
+    const parentRaw = this.data.parent ?? '';
+    const parentDisplay = parentRaw.replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
+
+    new Setting(section)
+      .setName(t('locSheet.parent'))
+      .addText(text => {
+        text.setValue(parentDisplay);
+        text.setPlaceholder(t('locSheet.parentPlaceholder'));
+
+        // datalist for autocomplete
+        const listId = 'novalist-ls-parent-datalist';
+        let datalist = section.querySelector<HTMLDataListElement>(`#${listId}`);
+        if (!datalist) {
+          datalist = section.createEl('datalist');
+          datalist.id = listId;
+          for (const loc of allLocations) {
+            datalist.createEl('option', { value: loc.name });
+          }
+        }
+        text.inputEl.setAttribute('list', listId);
+
+        text.onChange(value => {
+          const trimmed = value.trim();
+          if (!trimmed) {
+            this.data.parent = '';
+            return;
+          }
+          // Check for cycle before updating
+          if (this.plugin.wouldCreateCycle(this.plugin.getLocationList(), this.data.name, trimmed)) {
+            new Notice(t('locSheet.cycleError'));
+            text.setValue(parentDisplay);
+            return;
+          }
+          this.data.parent = `[[${trimmed}]]`;
+        });
+      })
+      .addExtraButton(btn => {
+        btn.setIcon('x')
+           .setTooltip(t('explorer.removeParent'))
+           .onClick(() => {
+             this.data.parent = '';
+             section.querySelectorAll('.setting-item').forEach(el => {
+               const nameEl = el.querySelector('.setting-item-name');
+               if (nameEl?.textContent === t('locSheet.parent')) {
+                 const input = el.querySelector('input');
+                 if (input) input.value = '';
+               }
+             });
+           });
+      });
+
     // Description
     new Setting(section)
       .setName(t('locSheet.description'))

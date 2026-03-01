@@ -15,6 +15,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
     gender: '',
     age: '',
     role: '',
+    group: '',
     faceShot: '',
     eyeColor: '',
     hairColor: '',
@@ -50,7 +51,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
       if (!match) return '';
       const value = match[1].trim();
       // Check if the value contains another known field name (corrupted data)
-      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'FaceShot:', 'EyeColor:', 'HairColor:', 'HairLength:', 'Height:', 'Build:', 'SkinTone:', 'DistinguishingFeatures:', 'Relationships:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:', 'TemplateId:'];
+      const knownFields = ['Name:', 'Surname:', 'Gender:', 'Age:', 'Role:', 'Group:', 'FaceShot:', 'EyeColor:', 'HairColor:', 'HairLength:', 'Height:', 'Build:', 'SkinTone:', 'DistinguishingFeatures:', 'Relationships:', 'CustomProperties:', 'Sections:', 'ChapterOverrides:', 'TemplateId:'];
       for (const field of knownFields) {
         if (value.includes(field)) {
           // Value is corrupted, return empty
@@ -66,6 +67,7 @@ export function parseCharacterSheet(content: string): CharacterSheetData {
     data.gender = parseField(sheetContent, 'Gender');
     data.age = parseField(sheetContent, 'Age');
     data.role = parseField(sheetContent, 'Role');
+    data.group = parseField(sheetContent, 'Group');
     data.faceShot = parseField(sheetContent, 'FaceShot');
     data.eyeColor = parseField(sheetContent, 'EyeColor');
     data.hairColor = parseField(sheetContent, 'HairColor');
@@ -396,6 +398,9 @@ export function serializeCharacterSheet(data: CharacterSheetData): string {
   result += `Gender: ${sanitize(data.gender)}\n`;
   result += `Age: ${sanitize(data.age)}\n`;
   result += `Role: ${sanitize(data.role)}\n`;
+  if (data.group) {
+    result += `Group: ${sanitize(data.group)}\n`;
+  }
   if (data.faceShot) {
     result += `FaceShot: ${sanitize(data.faceShot)}\n`;
   }

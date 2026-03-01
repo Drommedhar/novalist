@@ -190,6 +190,17 @@ export class NovalistSettingTab extends PluginSettingTab {
             }));
 
     new Setting(containerEl)
+      .setName(t('settings.migrateFamilyGroups'))
+      .setDesc(t('settings.migrateFamilyGroupsDesc'))
+      .addButton(btn => btn
+        .setButtonText(t('settings.migrateFamilyGroupsBtn'))
+        .onClick(() => {
+          void this.plugin.migrateCharacterFamilyGroups().then(count => {
+            new Notice(t('notice.migrateFamilyGroups', { count: String(count) }));
+          });
+        }));
+
+    new Setting(containerEl)
         .setName(t('settings.locationFolder'))
         .setDesc(t('settings.locationFolderDesc'))
         .addText(text => text

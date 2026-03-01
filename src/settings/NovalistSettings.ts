@@ -251,6 +251,7 @@ export function createDefaultProjectData(): ProjectData {
     sceneMetadataCache: {},
     sceneMetadataOverrides: {},
     dismissedFindings: [],
+    entityHierarchy: { locations: {}, characters: {} },
   };
 }
 

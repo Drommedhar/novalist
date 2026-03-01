@@ -10,6 +10,7 @@ export function parseLocationSheet(content: string): LocationSheetData {
   const data: LocationSheetData = {
     name: '',
     type: '',
+    parent: '',
     description: '',
     images: [],
     relationships: [], // Still parsed, even if UI is hidden, to avoid data loss
@@ -33,7 +34,7 @@ export function parseLocationSheet(content: string): LocationSheetData {
       const match = content.match(pattern);
       if (!match) return '';
       const value = match[1].trim();
-      const knownFields = ['Name:', 'Type:', 'Description:', 'Relationships:', 'CustomProperties:', 'Sections:', 'TemplateId:', 'Images:'];
+      const knownFields = ['Name:', 'Type:', 'Parent:', 'Description:', 'Relationships:', 'CustomProperties:', 'Sections:', 'TemplateId:', 'Images:'];
       for (const field of knownFields) {
         if (value.includes(field)) {
           return value.substring(0, value.indexOf(field)).trim();
@@ -46,6 +47,7 @@ export function parseLocationSheet(content: string): LocationSheetData {
     if (parsedName) data.name = parsedName;
     
     data.type = parseField(sheetContent, 'Type');
+    data.parent = parseField(sheetContent, 'Parent');
     data.templateId = parseField(sheetContent, 'TemplateId') || undefined;
 
     // Parse description (multi-line)
@@ -199,6 +201,9 @@ export function serializeLocationSheet(data: LocationSheetData): string {
   }
   result += `Name: ${sanitize(data.name)}\n`;
   result += `Type: ${sanitize(data.type)}\n`;
+  if (data.parent) {
+    result += `Parent: ${sanitize(data.parent)}\n`;
+  }
 
   if (data.description) {
     result += 'Description:\n';

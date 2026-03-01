@@ -45,8 +45,8 @@ An always-visible toolbar is injected into every editor tab header. It provides 
 A specialized file explorer in the left panel with five tabs:
 
 - **Chapters** — Listed in order, grouped by act when acts are defined. Drag and drop to reorder (updates frontmatter automatically). Status icons indicate progress. Scenes within each chapter are listed as nested sub-items. Right-click a chapter to edit its metadata (name, order, status, act, date), add a scene, assign to an act, or delete. Right-click a scene to edit its name and date. An `Add act` button lets you create new acts, and act headers support right-click to rename or delete.
-- **Characters** — Grouped by role with collapsible sections. Drag characters between groups to reassign roles. Multi-select with Ctrl/Shift+click. Gender badges shown with configurable colors. A property filter bar lets you search by any built-in or custom property (e.g. `Eye Color: Blue`, `Role: Protagonist`). Results update as you type.
-- **Locations** — A simple navigable list. Click to open, right-click to delete. Supports the same property filter bar (e.g. `Type: Tavern`).
+- **Characters** — Grouped by role with collapsible sections. Drag characters between groups to reassign roles. A **Group/Role toggle** switches between grouping by story Role (Protagonist, Antagonist, etc.) and by custom Group (family, faction, or any freeform grouping). Multi-select with Ctrl/Shift+click. Gender badges shown with configurable colors. A property filter bar lets you search by any built-in or custom property (e.g. `Eye Color: Blue`, `Role: Protagonist`). Results update as you type.
+- **Locations** — A collapsible **tree view** built from parent/child relationships. Locations with a parent are indented under it; top-level locations appear at the root. Drag a location onto another to reparent it; drag to the root zone to detach it from its parent. Each node shows a type badge and a sub-location count badge when it has children. Right-click to set or remove a parent. Supports the same property filter bar (e.g. `Type: Tavern`).
 - **Items** — Lists all items/artifacts across the project and World Bible. Click to open in the Item Sheet View. Supports the property filter bar.
 - **Lore** — Lists all lore/encyclopedia entries. Click to open in the Lore Sheet View. Supports the property filter bar.
 
@@ -56,7 +56,7 @@ Clicking any character, location, item, or lore entry opens it in its dedicated 
 
 A structured form editor that replaces the raw Markdown view for character files. Fields include:
 
-- **Basic info** — Name, surname, gender, age, role. The age field can optionally act as a birthdate picker (configurable per template) that automatically computes the character's age relative to the current chapter or scene date.
+- **Basic info** — Name, surname, gender, age, role, group. The **group** field is a freeform label (family name, faction, or any grouping) used to cluster characters in the Character Map and as the grouping key in the explorer's Group mode. The age field can optionally act as a birthdate picker (configurable per template) that automatically computes the character's age relative to the current chapter or scene date.
 - **Physical attributes** — Eye color, hair color/length, height, build, skin tone, distinguishing features
 - **Images** — Named image slots with drag-and-drop upload, an image browser, and thumbnail previews. Duplicates are detected via SHA-256 hashing.
 - **Relationships** — Character links with role labels. An inline suggester helps you pick characters, and the plugin automatically prompts you to define the inverse relationship on the target character.
@@ -68,7 +68,7 @@ Renaming a character in the sheet automatically renames the underlying file. A *
 
 ### Location Sheet View
 
-A structured form editor for location files with fields for name, type, description, custom properties, images, and free-form sections. Works the same way as the character sheet.
+A structured form editor for location files with fields for name, type, **parent**, description, custom properties, images, and free-form sections. The **parent** field links a location to another, building the hierarchy shown in the explorer tree. Autocomplete suggests existing locations and cycle detection prevents invalid chains. Works the same way as the character sheet.
 
 ### Item Sheet View
 
@@ -150,7 +150,7 @@ The **Story Health** widget on the Dashboard shows a summary of error, warning, 
 
 ### Character Map
 
-An interactive graph visualization of character relationships powered by Cytoscape.js. Characters are sized and colored by role. Shared surnames are grouped into family clusters. Mutual relationships (e.g. three siblings) are collapsed into shared hub nodes to reduce visual clutter. Edges show labeled roles, and multiple relationships between the same pair are merged into a single edge. Click a node to open that character's file. Pan, zoom, and drag to rearrange.
+An interactive graph visualization of character relationships powered by Cytoscape.js. Characters are sized and colored by role. The **group** field (if set) is used as the family clustering key; when group is not set, the surname is used instead. Mutual relationships (e.g. three siblings) are collapsed into shared hub nodes to reduce visual clutter. Edges show labeled roles, and multiple relationships between the same pair are merged into a single edge. Click a node to open that character's file. Pan, zoom, and drag to rearrange.
 
 ### Plot Board
 
@@ -183,7 +183,7 @@ A Google Docs-style commenting system. Select text in the editor, click the "+" 
 
 ### Focus Peek
 
-Hover your cursor over a character or location name in the editor and an inline card appears after a short delay showing the entity's details — portrait, attributes, relationships, and more. Pin the card to keep it visible while you write. Click character links inside a peek to navigate between entities with breadcrumb back-navigation. The card is resizable with a stable default size, remembers custom size, inherits the current editor font size, and keeps section content filling the available height as you resize. If needed, reset the saved card size from Settings. The peek card applies character overrides with the full cascade: scene > chapter > act > base data.
+Hover your cursor over a character or location name in the editor and an inline card appears after a short delay showing the entity's details — portrait, attributes, relationships, and more. Character cards include a **group pill** when a group is assigned. Location cards show a **parent pill** and a **sub-location count pill** to indicate their place in the hierarchy. Pin the card to keep it visible while you write. Click character links inside a peek to navigate between entities with breadcrumb back-navigation. The card is resizable with a stable default size, remembers custom size, inherits the current editor font size, and keeps section content filling the available height as you resize. If needed, reset the saved card size from Settings. The peek card applies character overrides with the full cascade: scene > chapter > act > base data.
 
 ### Statistics Panel
 
@@ -351,6 +351,7 @@ A fixed-width panel on the left side of the editor that shows notes and outline 
 | Open AI chat | Open the AI chat sidebar for interactive conversation about your novel |
 | Validate story | Run the rule-based plot validator across the full project and open the findings modal |
 | Validate chapter | Run the validator on the active chapter only (available on chapter files) |
+| Migrate character family groups from relationships | Scan all character relationship labels for family terms (mother, father, son, daughter, etc. in English and German), group connected characters into the same family group, and auto-populate the group field for characters that don’t have one yet |
 
 ## Internationalization
 

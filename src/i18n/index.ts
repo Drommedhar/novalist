@@ -86,3 +86,18 @@ export function t(
   }
   return value;
 }
+
+/**
+ * Return the set of family relationship terms (lower-case) for the current
+ * locale. Always includes English terms as a base; the current locale's own
+ * terms are added on top, allowing per-language extension.
+ */
+export function getFamilyTerms(): ReadonlySet<string> {
+  const split = (s: string): string[] => s.split(',').map(w => w.trim()).filter(w => w.length > 0);
+  const terms = split(locales['en']['familyTerms']);
+  if (currentLang !== 'en') {
+    const local = locales[currentLang]?.['familyTerms'];
+    if (local) split(local).forEach(w => terms.push(w));
+  }
+  return new Set(terms);
+}

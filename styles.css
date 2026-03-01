@@ -8293,3 +8293,143 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   padding: 0;
   text-decoration: underline;
 }
+
+/* ─── Hierarchical Location Tree ─────────────────────────────────────────── */
+
+.novalist-tree-container {
+  position: relative;
+}
+
+.novalist-tree-root-drop {
+  padding: 4px 12px;
+  font-size: 0.75em;
+  color: var(--text-faint);
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: 4px;
+  margin-bottom: 4px;
+  text-align: center;
+  display: none;
+  cursor: default;
+}
+
+.novalist-tree-container.is-dragging .novalist-tree-root-drop {
+  display: block;
+}
+
+.novalist-tree-root-drop.drag-over {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: var(--interactive-accent-hover);
+}
+
+.novalist-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  padding-left: calc(6px + var(--tree-depth, 0) * 16px);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.novalist-tree-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.novalist-tree-item.drag-over {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.novalist-tree-item.is-dragging {
+  opacity: 0.5;
+}
+
+.novalist-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.novalist-tree-toggle::before {
+  content: '';
+  display: block;
+  border: 4px solid transparent;
+  border-left-color: currentColor;
+  border-right-width: 0;
+  transition: transform 0.15s;
+  transform: rotate(0deg);
+}
+
+.novalist-tree-toggle.is-expanded::before {
+  transform: rotate(90deg);
+}
+
+.novalist-tree-toggle.is-collapsed::before {
+  transform: rotate(0deg);
+}
+
+.novalist-tree-children {
+  /* children are indented via --tree-depth on .novalist-tree-item */
+}
+
+.novalist-type-badge {
+  font-size: 0.72em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.novalist-children-badge {
+  font-size: 0.72em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  white-space: nowrap;
+}
+
+/* ─── Character Group Mode Toggle ────────────────────────────────────────── */
+
+.novalist-group-mode-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.novalist-group-mode-btn {
+  flex: 1;
+  padding: 3px 8px;
+  font-size: 0.8em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.novalist-group-mode-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* ─── Sidebar hierarchy badges ───────────────────────────────────────────── */
+
+.novalist-group-badge,
+.novalist-parent-badge {
+  font-size: 0.72em;
+  opacity: 0.75;
+}

@@ -11,13 +11,15 @@ export class LocationModal extends Modal {
   plugin: NovalistPlugin;
   name: string = '';
   description: string = '';
+  parentName: string = '';
   templateId: string;
   useWorldBible: boolean = false;
 
-  constructor(app: App, plugin: NovalistPlugin) {
+  constructor(app: App, plugin: NovalistPlugin, initialParentName?: string) {
     super(app);
     this.plugin = plugin;
     this.templateId = plugin.settings.activeLocationTemplateId;
+    if (initialParentName) this.parentName = initialParentName;
   }
 
   onOpen() {
@@ -31,6 +33,24 @@ export class LocationModal extends Modal {
       .addText(text => text
         .setValue(this.name)
         .onChange(value => this.name = value));
+
+    // Parent location selector
+    const allLocations = this.plugin.getLocationList();
+    const setting = new Setting(contentEl)
+      .setName(t('locSheet.parent'));
+    setting.addText(text => {
+      text.setValue(this.parentName)
+          .setPlaceholder(t('locSheet.parentPlaceholder'))
+          .onChange(value => { this.parentName = value; });
+      // datalist for autocomplete
+      const listId = 'novalist-loc-parent-datalist';
+      const datalist = contentEl.createEl('datalist');
+      datalist.id = listId;
+      for (const loc of allLocations) {
+        datalist.createEl('option', { value: loc.name });
+      }
+      text.inputEl.setAttribute('list', listId);
+    });
     
     const descArea = contentEl.createEl('textarea', {
       cls: 'novalist-modal-description',
@@ -73,7 +93,7 @@ export class LocationModal extends Modal {
       .setButtonText(t('modal.create'))
       .setCta()
       .onClick(async () => {
-        await this.plugin.createLocation(this.name, this.description, this.templateId, this.useWorldBible);
+        await this.plugin.createLocation(this.name, this.description, this.templateId, this.useWorldBible, this.parentName.trim() || undefined);
         this.close();
       });
   }

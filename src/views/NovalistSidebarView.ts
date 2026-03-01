@@ -193,6 +193,7 @@ export class NovalistSidebarView extends ItemView {
       const characterItems: Array<{
         data: CharacterData;
         chapterInfo: CharacterChapterInfo | undefined;
+        group: string;
       }> = [];
 
       const chapterId = this.currentChapterFile ? this.plugin.getChapterIdForFileSync(this.currentChapterFile) : '';
@@ -237,7 +238,7 @@ export class NovalistSidebarView extends ItemView {
           }
         }
 
-        characterItems.push({ data: charData, chapterInfo });
+        characterItems.push({ data: charData, chapterInfo, group: this.plugin.getProjectData()?.entityHierarchy?.characters[charFile.path]?.group ?? '' });
       }
 
       if (characterItems.length > 0) {
@@ -246,7 +247,7 @@ export class NovalistSidebarView extends ItemView {
 
         const charList = charSection.createDiv('novalist-overview-list');
         for (const itemData of characterItems) {
-          const { data: charData, chapterInfo } = itemData;
+          const { data: charData, chapterInfo, group } = itemData;
           const card = charList.createDiv('novalist-overview-card');
 
           // Top row: name + role badge
@@ -256,6 +257,9 @@ export class NovalistSidebarView extends ItemView {
             const roleBadge = topRow.createEl('span', { text: charData.role, cls: 'novalist-overview-card-role' });
             const roleColor = this.getRoleColor(charData.role);
             if (roleColor) roleBadge.style.setProperty('--novalist-role-color', roleColor);
+          }
+          if (group) {
+            topRow.createEl('span', { text: t('sidebar.charGroup', { group }), cls: 'novalist-overview-card-role novalist-group-badge' });
           }
 
           // Properties as pills
@@ -316,13 +320,15 @@ export class NovalistSidebarView extends ItemView {
 
     // Locations Section
     if (chapterData.locations.length > 0) {
-      const locationItems: Array<LocationData> = [];
+      const locationItems: Array<{ data: LocationData; parent: string }> = [];
 
       for (const locName of chapterData.locations) {
         const locFile = this.plugin.findLocationFile(locName);
         if (!locFile) continue;
         const locData = await this.plugin.parseLocationFile(locFile);
-        locationItems.push(locData);
+        const parentRaw = this.plugin.getProjectData()?.entityHierarchy?.locations[locFile.path]?.parent ?? '';
+        const parentName = parentRaw.replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
+        locationItems.push({ data: locData, parent: parentName });
       }
 
       if (locationItems.length > 0) {
@@ -330,11 +336,14 @@ export class NovalistSidebarView extends ItemView {
         locSection.createEl('div', { text: t('sidebar.locations'), cls: 'novalist-overview-section-title' });
 
         const locList = locSection.createDiv('novalist-overview-list');
-        for (const locData of locationItems) {
+        for (const { data: locData, parent } of locationItems) {
           const card = locList.createDiv('novalist-overview-card');
 
           const topRow = card.createDiv('novalist-overview-card-top');
           topRow.createEl('span', { text: locData.name, cls: 'novalist-overview-card-name' });
+          if (parent) {
+            topRow.createEl('span', { text: t('sidebar.locParent', { parent }), cls: 'novalist-overview-card-role novalist-parent-badge' });
+          }
 
           if (locData.description) {
             card.createEl('p', { text: locData.description, cls: 'novalist-overview-card-desc' });
