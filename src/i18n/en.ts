@@ -303,6 +303,7 @@ export default {
   'explorer.groupByRole': 'Role',
   'explorer.groupByGroup': 'Family / Group',
   'explorer.locationRoot': 'Root (no parent)',
+  'explorer.worldBadge': 'World',
   'explorer.setParent': 'Set parent…',
   'explorer.removeParent': 'Remove parent',
   'explorer.setGroup': 'Set group…',

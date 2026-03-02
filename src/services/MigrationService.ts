@@ -240,30 +240,14 @@ export async function analyseProject(
     f.path.startsWith(charDir + '/') && f.extension === 'md'
   ).length;
 
-  // Count locations + detect worlds
+  // Count locations
   const locFiles = vault.getFiles().filter(f =>
     f.path.startsWith(locDir + '/') && f.extension === 'md'
   );
   analysis.locationCount = locFiles.length;
 
-  // Detect potential worlds: locations that are parents of other locations
-  const parentNames = new Set<string>();
-  const allLocNames = new Set<string>();
-  for (const file of locFiles) {
-    try {
-      const content = await vault.read(file);
-      const sheet = parseLocationSheet(content);
-      allLocNames.add(sheet.name);
-      if (sheet.parent) {
-        const cleaned = sheet.parent.replace(/\[\[|\]\]/g, '').trim();
-        if (cleaned) parentNames.add(cleaned);
-      }
-    } catch {
-      // skip
-    }
-  }
-  // Top-level parents that exist as locations become worlds
-  analysis.worldCount = [...parentNames].filter(p => allLocNames.has(p)).length;
+  // A default world is always created when there are locations
+  analysis.worldCount = locFiles.length > 0 ? 1 : 0;
 
   // Count items
   analysis.itemCount = vault.getFiles().filter(f =>
@@ -411,6 +395,10 @@ export async function migrateProject(
     // ── Step 3: Convert chapters → scenes ──────────────────────────
     progress('Converting chapters to scenes');
     const sceneFolder = `${targetRoot}/Scenes`;
+
+    // Clean up stale files from previous migration runs
+    await purgeStaleEntityFiles(app, sceneFolder);
+
     const chapterDir = `${backupPath}/${settings.chapterFolder}`;
     const chapterFiles = vault.getFiles()
       .filter(f => f.path.startsWith(chapterDir + '/') && f.extension === 'md')
@@ -504,6 +492,10 @@ export async function migrateProject(
     progress('Converting characters');
     const charDir = `${backupPath}/${settings.characterFolder}`;
     const charFolder = `${targetRoot}/Characters`;
+
+    // Clean up stale files from previous migration runs
+    await purgeStaleEntityFiles(app, charFolder);
+
     const charFiles = vault.getFiles().filter(f =>
       f.path.startsWith(charDir + '/') && f.extension === 'md'
     );
@@ -528,46 +520,35 @@ export async function migrateProject(
       f.path.startsWith(locDir + '/') && f.extension === 'md'
     );
 
-    // First pass: identify worlds (top-level parents)
-    const worldNames = identifyWorlds(vault, locFiles);
-    const createdWorldNames = new Set<string>();
+    // Clean up stale files from previous migration runs
+    await purgeStaleEntityFiles(app, locFolder);
 
-    // Create world entities
-    for (const file of locFiles) {
+    // Always create a default world so that all locations belong to one.
+    // Storyline requires locations to reside in a world for parent
+    // hierarchies to work correctly.
+    const defaultWorldName = projectName;
+    if (locFiles.length > 0) {
       try {
-        const content = await vault.read(file);
-        const sheet = parseLocationSheet(content);
-        if (worldNames.has(sheet.name) && !createdWorldNames.has(sheet.name)) {
-          await createWorld(vault, locFolder, sheet.name, {
-            description: sheet.description,
-            notes: buildSectionsBody(sheet.sections),
-          });
-          createdWorldNames.add(sheet.name);
-          result.summary.push(`World "${sheet.name}" auto-created from top-level location`);
-        }
+        await createWorld(vault, locFolder, defaultWorldName, {
+          description: '',
+        });
+        result.summary.push(`World "${defaultWorldName}" created as default container`);
       } catch (err) {
-        result.errors.push(`Failed to create world from ${file.path}: ${err}`);
+        result.errors.push(`Failed to create default world: ${err}`);
       }
     }
 
-    // Second pass: create locations
+    // Create all locations, assigning them to the default world
     for (const file of locFiles) {
       try {
         const content = await vault.read(file);
         const sheet = parseLocationSheet(content);
-
-        // Skip if this was already converted to a world. Note: worlds that
-        // also have their own location data still get a location file.
-        if (createdWorldNames.has(sheet.name) && !sheet.parent) {
-          // This location was promoted to world; skip creating a location.
-          continue;
-        }
 
         const parentClean = sheet.parent.replace(/\[\[|\]\]/g, '').trim();
         const locOpts: Partial<NovalistLocation> = {
           locationType: sheet.type || undefined,
           parent: parentClean || undefined,
-          world: determineWorld(sheet.name, parentClean, worldNames),
+          world: defaultWorldName,
           description: sheet.description,
           image: sheet.images?.[0]?.path?.replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim() || undefined,
           novalist_images: sheet.images
@@ -593,6 +574,10 @@ export async function migrateProject(
     progress('Converting items');
     const itemDir = `${backupPath}/${settings.itemFolder}`;
     const itemFolder = `${targetRoot}/Items`;
+
+    // Clean up stale files from previous migration runs
+    await purgeStaleEntityFiles(app, itemFolder);
+
     const itemFiles = vault.getFiles().filter(f =>
       f.path.startsWith(itemDir + '/') && f.extension === 'md'
     );
@@ -624,6 +609,10 @@ export async function migrateProject(
     progress('Converting lore');
     const loreDirPath = `${backupPath}/${settings.loreFolder}`;
     const loreFolderTarget = `${targetRoot}/Lore`;
+
+    // Clean up stale files from previous migration runs
+    await purgeStaleEntityFiles(app, loreFolderTarget);
+
     const loreFiles = vault.getFiles().filter(f =>
       f.path.startsWith(loreDirPath + '/') && f.extension === 'md'
     );
@@ -852,54 +841,27 @@ function convertCharacterSheet(
   };
 }
 
-/** Identify which location names should be promoted to worlds. */
-function identifyWorlds(
-  _vault: Vault,
-  locFiles: TFile[]
-): Set<string> {
-  // A location is a "world" if it is referenced as a parent by at least
-  // one other location AND has no parent itself.
-  const allNames = new Set<string>();
-
-  // We can't read async here so we'll do a sync metadata scan approach
-  // Actually this is called from analyseProject which is async... let's
-  // use a sync approach and parse from cached metadata.
-  // For now, collect from metadata cache if available. In practice the 
-  // caller should pass pre-parsed data.
-  for (const file of locFiles) {
-    const name = file.basename;
-    allNames.add(name);
-    // We'll need to read these files in the migration step — for now
-    // just track names. The actual world detection is done in analyseProject.
-  }
-
-  // For a simpler approach: any location name that appears as a parent
-  // of another location (from the pre-analysed data) should be a world.
-  return allNames; // This is a placeholder; actual detection uses the 
-  // parent chain scanning from analyseProject's locFiles loop.
-}
-
-/** Determine the world name for a location based on its parent chain. */
-function determineWorld(
-  name: string,
-  parent: string,
-  worldNames: Set<string>
-): string | undefined {
-  // If the parent is a world name, use it as the world
-  if (parent && worldNames.has(parent)) {
-    return parent;
-  }
-  // If this location itself is a world, no world reference needed
-  if (worldNames.has(name)) {
-    return undefined;
-  }
-  return undefined;
-}
-
 /** Build body markdown from legacy sections. */
 function buildSectionsBody(sections: { title: string; content: string }[]): string {
   if (!sections || sections.length === 0) return '';
   return sections.map(s => `## ${s.title}\n\n${s.content}`).join('\n\n');
+}
+
+/**
+ * Delete all existing .md files in a target entity folder (recursively).
+ * Called before each migration step to remove stale files from previous runs.
+ */
+async function purgeStaleEntityFiles(app: App, folder: string): Promise<void> {
+  const stale = app.vault.getFiles().filter(f =>
+    f.path.startsWith(folder + '/') && f.extension === 'md'
+  );
+  for (const file of stale) {
+    try {
+      await app.fileManager.trashFile(file);
+    } catch {
+      // Ignore — file may already be gone
+    }
+  }
 }
 
 /** Extract legacy frontmatter (simple YAML parser for old format). */

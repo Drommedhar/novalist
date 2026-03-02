@@ -290,6 +290,10 @@ export interface LocationListData {
   type: string;
   /** Raw wikilink to parent location, e.g. [[Hillsford]], or empty string. */
   parent: string;
+  /** World name this location belongs to, or empty string. */
+  world: string;
+  /** Whether this entry represents a world entity. */
+  isWorld: boolean;
 }
 
 // Character Sheet Data Structure
@@ -939,6 +943,10 @@ export interface LocationHierarchyEntry {
   type: string;
   /** Raw wikilink [[ParentName]] or empty string. */
   parent: string;
+  /** World name this location belongs to, or empty string. */
+  world: string;
+  /** Entity type from frontmatter: 'world' | 'location'. */
+  entityType: string;
 }
 
 export interface CharacterHierarchyEntry {

@@ -582,30 +582,34 @@ export class NovalistExplorerView extends ItemView {
     // ── Location hierarchy ──────────────────────────────────────────
     if (this.plugin.isLocationFile(file)) {
       const locationEntry = this.plugin.getLocationList().find(l => l.file.path === file.path);
-      const hasParent = !!(locationEntry?.parent);
-      const allLocations = this.plugin.getLocationList().filter(l => l.file.path !== file.path);
 
-      menu.addSeparator();
-      menu.addItem((item) => {
-        item
-          .setTitle(t('explorer.setParent'))
-          .setIcon('git-branch')
-          .onClick(() => {
-            new LocationParentPickerModal(this.app, allLocations, (chosen) => {
-              void this.plugin.setLocationParent(file, chosen.name).then(() => { void this.render(); });
-            }).open();
-          });
-      });
-      if (hasParent) {
+      // Skip parent actions for world entities — worlds are top-level containers
+      if (locationEntry && !locationEntry.isWorld) {
+        const hasParent = !!(locationEntry.parent);
+        const allLocations = this.plugin.getLocationList().filter(l => l.file.path !== file.path && !l.isWorld);
+
+        menu.addSeparator();
         menu.addItem((item) => {
           item
-            .setTitle(t('explorer.removeParent'))
-            .setIcon('x')
-            .onClick(async () => {
-              await this.plugin.setLocationParent(file, '');
-              void this.render();
+            .setTitle(t('explorer.setParent'))
+            .setIcon('git-branch')
+            .onClick(() => {
+              new LocationParentPickerModal(this.app, allLocations, (chosen) => {
+                void this.plugin.setLocationParent(file, chosen.name).then(() => { void this.render(); });
+              }).open();
             });
         });
+        if (hasParent) {
+          menu.addItem((item) => {
+            item
+              .setTitle(t('explorer.removeParent'))
+              .setIcon('x')
+              .onClick(async () => {
+                await this.plugin.setLocationParent(file, '');
+                void this.render();
+              });
+          });
+        }
       }
     }
 
@@ -1098,13 +1102,20 @@ export class NovalistExplorerView extends ItemView {
     const roots: LocationListData[] = [];
 
     for (const item of items) {
+      if (item.isWorld) {
+        // Worlds are always root nodes
+        roots.push(item);
+        continue;
+      }
       const rawParent = item.parent ?? '';
       const parentName = rawParent.replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
-      if (!parentName || !byName.has(parentName)) {
+      // Effective parent: explicit parent if set, otherwise the world (if present)
+      const effectiveParent = parentName || item.world || '';
+      if (!effectiveParent || !byName.has(effectiveParent)) {
         roots.push(item);
       } else {
-        if (!childMap.has(parentName)) childMap.set(parentName, []);
-        childMap.get(parentName)?.push(item);
+        if (!childMap.has(effectiveParent)) childMap.set(effectiveParent, []);
+        childMap.get(effectiveParent)?.push(item);
       }
     }
 
@@ -1112,7 +1123,12 @@ export class NovalistExplorerView extends ItemView {
     for (const children of childMap.values()) {
       children.sort((a, b) => a.name.localeCompare(b.name));
     }
-    roots.sort((a, b) => a.name.localeCompare(b.name));
+    // Sort roots: worlds first, then alphabetical
+    roots.sort((a, b) => {
+      if (a.isWorld && !b.isWorld) return -1;
+      if (!a.isWorld && b.isWorld) return 1;
+      return a.name.localeCompare(b.name);
+    });
 
     // Root drop zone (only visible while dragging)
     const treeContainer = list.createDiv('novalist-tree-container');
@@ -1154,6 +1170,10 @@ export class NovalistExplorerView extends ItemView {
       row.style.setProperty('--tree-depth', String(depth));
       row.setAttribute('draggable', 'true');
 
+      if (item.isWorld) {
+        row.addClass('novalist-tree-world');
+      }
+
       const children = childMap.get(item.name) ?? [];
       const hasChildren = children.length > 0;
 
@@ -1178,9 +1198,14 @@ export class NovalistExplorerView extends ItemView {
         row.createEl('span', { text: t('project.wbBadge'), cls: 'novalist-explorer-badge novalist-wb-badge' });
       }
 
+      // World badge for world nodes
+      if (item.isWorld) {
+        row.createEl('span', { text: t('explorer.worldBadge'), cls: 'novalist-explorer-badge novalist-world-badge' });
+      }
+
       row.createEl('span', { text: item.name, cls: 'novalist-explorer-label' });
 
-      if (item.type) {
+      if (item.type && !item.isWorld) {
         row.createEl('span', { text: item.type, cls: 'novalist-explorer-badge novalist-type-badge' });
       }
 
@@ -1196,21 +1221,27 @@ export class NovalistExplorerView extends ItemView {
       row.addEventListener('click', () => void this.openFileInExplorer(item.file));
       row.addEventListener('contextmenu', (evt) => { void this.handleContextMenu(evt, item.file); });
 
-      // Drag-to-reparent
-      row.addEventListener('dragstart', (evt) => {
-        this.draggingLocationPath = item.file.path;
-        row.addClass('is-dragging');
-        if (evt.dataTransfer) {
-          evt.dataTransfer.effectAllowed = 'move';
-          evt.dataTransfer.setData('text/plain', item.file.path);
-        }
-      });
-      row.addEventListener('dragend', () => {
-        this.draggingLocationPath = null;
-        row.removeClass('is-dragging');
-        treeContainer.querySelectorAll('.drag-over').forEach(el => el.removeClass('drag-over'));
-        treeContainer.removeClass('is-dragging');
-      });
+      // Drag-to-reparent (worlds are not draggable)
+      if (!item.isWorld) {
+        row.addEventListener('dragstart', (evt) => {
+          this.draggingLocationPath = item.file.path;
+          row.addClass('is-dragging');
+          if (evt.dataTransfer) {
+            evt.dataTransfer.effectAllowed = 'move';
+            evt.dataTransfer.setData('text/plain', item.file.path);
+          }
+        });
+        row.addEventListener('dragend', () => {
+          this.draggingLocationPath = null;
+          row.removeClass('is-dragging');
+          treeContainer.querySelectorAll('.drag-over').forEach(el => el.removeClass('drag-over'));
+          treeContainer.removeClass('is-dragging');
+        });
+      } else {
+        row.removeAttribute('draggable');
+      }
+
+      // Accept drops (both worlds and locations can be drop targets)
       row.addEventListener('dragover', (evt) => {
         evt.preventDefault();
         evt.stopPropagation();
@@ -1228,7 +1259,13 @@ export class NovalistExplorerView extends ItemView {
         if (!srcPath || srcPath === item.file.path) return;
         const srcFile = this.app.vault.getAbstractFileByPath(srcPath);
         if (srcFile instanceof TFile) {
-          void this.plugin.setLocationParent(srcFile, item.name).then(() => void this.render());
+          if (item.isWorld) {
+            // Dropping onto a world: set world, clear parent
+            void this.plugin.setLocationWorld(srcFile, item.name).then(() => void this.render());
+          } else {
+            // Dropping onto a location: set parent
+            void this.plugin.setLocationParent(srcFile, item.name).then(() => void this.render());
+          }
         }
       });
 

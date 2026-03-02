@@ -70,7 +70,7 @@ function parseLocationFromYaml(content: string): LocationSheetData {
 
   return {
     name: str(fm.name),
-    type: str(fm.locationType) || str(fm.type),
+    type: str(fm.locationType),
     parent,
     description: str(fm.description),
     images,

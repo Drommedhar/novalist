@@ -297,6 +297,7 @@ export default {
   'explorer.groupByRole': 'Rolle',
   'explorer.groupByGroup': 'Familie / Gruppe',
   'explorer.locationRoot': 'Root (kein Elternteil)',
+  'explorer.worldBadge': 'Welt',
   'explorer.setParent': 'Elternteil festlegen…',
   'explorer.removeParent': 'Elternteil entfernen',
   'explorer.setGroup': 'Gruppe festlegen…',

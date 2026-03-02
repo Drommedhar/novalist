@@ -74,7 +74,7 @@ import { updateSnapshotChapterName, createSnapshot } from './utils/snapshotUtils
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
 import { normalizeCharacterRole, computeInterval } from './utils/characterUtils';
 import { parseCharacterSheet, serializeCharacterSheet, applyChapterOverride } from './utils/characterSheetUtils';
-import { parseLocationSheet, serializeLocationSheet } from './utils/locationSheetUtils';
+import { parseLocationSheet } from './utils/locationSheetUtils';
 import { parseItemSheet } from './utils/itemSheetUtils';
 import { parseLoreSheet } from './utils/loreSheetUtils';
 import { serializeFrontmatterAndBody, extractFrontmatterAndBody as extractFmAndBody } from './services/FrontmatterUtils';
@@ -3734,9 +3734,12 @@ export default class NovalistPlugin extends Plugin {
   ): Promise<void> {
     const h = hierarchy ?? this.getProjectData().entityHierarchy;
     try {
-      const content = await this.app.vault.cachedRead(file);
+      const content = await this.app.vault.read(file);
       const entry = this.extractLocationHierarchyFields(content);
-      h.locations[file.path] = { name: file.basename, ...entry };
+      // Prefer frontmatter name over file basename
+      const { frontmatter } = extractFmAndBody(content);
+      const fmName = typeof frontmatter.name === 'string' && frontmatter.name ? frontmatter.name : file.basename;
+      h.locations[file.path] = { name: fmName, ...entry };
     } catch {
       // ignore unreadable files
     }
@@ -3748,33 +3751,38 @@ export default class NovalistPlugin extends Plugin {
   ): Promise<void> {
     const h = hierarchy ?? this.getProjectData().entityHierarchy;
     try {
-      const content = await this.app.vault.cachedRead(file);
+      const content = await this.app.vault.read(file);
       const entry = this.extractCharacterHierarchyFields(content);
-      h.characters[file.path] = { name: file.basename, ...entry };
+      // Prefer frontmatter name over file basename
+      const { frontmatter } = extractFmAndBody(content);
+      const fmName = typeof frontmatter.name === 'string' && frontmatter.name ? frontmatter.name : file.basename;
+      h.characters[file.path] = { name: fmName, ...entry };
     } catch {
       // ignore unreadable files
     }
   }
 
-  private extractLocationHierarchyFields(content: string): { type: string; parent: string } {
+  private extractLocationHierarchyFields(content: string): { type: string; parent: string; world: string; entityType: string } {
     // ── YAML frontmatter format ────────────────────────────────────
     const { frontmatter } = extractFmAndBody(content);
     if (frontmatter.type === 'location' || frontmatter.type === 'world') {
       return {
         type: typeof frontmatter.locationType === 'string' ? frontmatter.locationType : '',
         parent: typeof frontmatter.parent === 'string' ? `[[${frontmatter.parent}]]` : '',
+        world: typeof frontmatter.world === 'string' ? frontmatter.world : '',
+        entityType: frontmatter.type as string,
       };
     }
 
     // ── Legacy ## LocationSheet format ─────────────────────────────
     const sheetMatch = content.match(/## LocationSheet\n([\s\S]*?)(?=\n## |$)/);
-    if (!sheetMatch) return { type: '', parent: '' };
+    if (!sheetMatch) return { type: '', parent: '', world: '', entityType: '' };
     const sheet = sheetMatch[1];
     const getField = (name: string): string => {
       const m = sheet.match(new RegExp(`^[ \\t]*${name}:[ \\t]*(.*?)$`, 'm'));
       return m ? m[1].trim() : '';
     };
-    return { type: getField('Type'), parent: getField('Parent') };
+    return { type: getField('Type'), parent: getField('Parent'), world: '', entityType: 'location' };
   }
 
   private extractCharacterHierarchyFields(content: string): { surname: string; group: string } {
@@ -3832,14 +3840,37 @@ export default class NovalistPlugin extends Plugin {
   /** Set the parent of a location file (persists to disk + updates cache). */
   async setLocationParent(file: TFile, parentName: string): Promise<void> {
     const all = this.getLocationList();
-    if (parentName && this.wouldCreateCycle(all, file.basename, parentName)) {
+    const childName = all.find(l => l.file.path === file.path)?.name ?? file.basename;
+    if (parentName && this.wouldCreateCycle(all, childName, parentName)) {
       new Notice(t('explorer.cycleError'));
       return;
     }
+    // Read → modify parent → write, preserving all other frontmatter fields.
     const content = await this.app.vault.read(file);
-    const sheet = parseLocationSheet(content);
-    sheet.parent = parentName ? `[[${parentName}]]` : '';
-    const updated = serializeLocationSheet(sheet);
+    const { frontmatter: fm, body } = extractFmAndBody(content);
+    if (parentName) {
+      fm.parent = parentName;
+    } else {
+      delete fm.parent;
+    }
+    const updated = serializeFrontmatterAndBody(fm, body);
+    await this.app.vault.modify(file, updated);
+    await this.updateLocationHierarchyCacheEntry(file);
+    this.debouncedSaveSettings();
+  }
+
+  /** Set the world of a location file (persists to disk + updates cache). Clears parent. */
+  async setLocationWorld(file: TFile, worldName: string): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const { frontmatter: fm, body } = extractFmAndBody(content);
+    if (worldName) {
+      fm.world = worldName;
+    } else {
+      delete fm.world;
+    }
+    // Moving to a world directly — clear explicit parent
+    delete fm.parent;
+    const updated = serializeFrontmatterAndBody(fm, body);
     await this.app.vault.modify(file, updated);
     await this.updateLocationHierarchyCacheEntry(file);
     this.debouncedSaveSettings();
@@ -3847,10 +3878,23 @@ export default class NovalistPlugin extends Plugin {
 
   /** Set the group of a character file (persists to disk + updates cache). */
   async setCharacterGroup(file: TFile, group: string): Promise<void> {
+    // Read → modify custom.group → write, preserving all other frontmatter fields.
     const content = await this.app.vault.read(file);
-    const sheet = parseCharacterSheet(content);
-    sheet.group = group;
-    const updated = serializeCharacterSheet(sheet);
+    const { frontmatter: fm, body } = extractFmAndBody(content);
+    if (group) {
+      const custom = (fm.custom && typeof fm.custom === 'object' && !Array.isArray(fm.custom))
+        ? fm.custom as Record<string, unknown>
+        : {};
+      custom.group = group;
+      fm.custom = custom;
+    } else {
+      if (fm.custom && typeof fm.custom === 'object' && !Array.isArray(fm.custom)) {
+        const custom = fm.custom as Record<string, unknown>;
+        delete custom.group;
+        if (Object.keys(custom).length === 0) delete fm.custom;
+      }
+    }
+    const updated = serializeFrontmatterAndBody(fm, body);
     await this.app.vault.modify(file, updated);
     await this.updateCharacterHierarchyCacheEntry(file);
     this.debouncedSaveSettings();
@@ -3958,18 +4002,38 @@ export default class NovalistPlugin extends Plugin {
       (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
     );
     const hierarchyCache = this.getProjectData().entityHierarchy?.locations ?? {};
-    return files.map((file) => {
+    const items = files.map((file) => {
       const entry = hierarchyCache[file.path];
       // Prefer frontmatter name (StoryLine may rename without renaming the file)
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       const fmName = typeof fm?.name === 'string' && fm.name ? fm.name : '';
+      const entityType = entry?.entityType ?? (typeof fm?.type === 'string' ? fm.type : '');
       return {
         name: fmName || file.basename,
         file,
         type: entry?.type ?? '',
         parent: entry?.parent ?? '',
+        world: entry?.world ?? '',
+        isWorld: entityType === 'world',
+        entityType,
       };
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    // Deduplicate: if a name appears in both a 'world' file and a 'location'
+    // file, keep only the 'location' entry (the world was auto-created as a
+    // hierarchy container and the location holds the real data).
+    const nameCount = new Map<string, number>();
+    for (const item of items) {
+      nameCount.set(item.name, (nameCount.get(item.name) ?? 0) + 1);
+    }
+    return items
+      .filter(item => {
+        if ((nameCount.get(item.name) ?? 0) <= 1) return true;
+        // Duplicate name — keep the 'location' version, drop 'world' duplicates
+        return item.entityType !== 'world';
+      })
+      .map(({ entityType: _, ...rest }) => rest)
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   getItemList(): ItemListData[] {

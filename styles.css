@@ -8477,6 +8477,19 @@ body.novalist-book-paragraph-spacing .CodeMirror .CodeMirror-line {
   margin-left: auto;
 }
 
+.novalist-world-badge {
+  font-size: 0.72em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  white-space: nowrap;
+}
+
+.novalist-tree-world > .novalist-explorer-label {
+  font-weight: 600;
+}
+
 .novalist-children-badge {
   font-size: 0.72em;
   padding: 1px 5px;
