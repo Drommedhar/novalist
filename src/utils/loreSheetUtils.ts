@@ -1,9 +1,115 @@
 import type { LoreSheetData } from '../types';
+import { extractFrontmatterAndBody, serializeFrontmatterAndBody } from '../services/FrontmatterUtils';
+
+/** Helper: detect YAML‑frontmatter content. */
+function isYamlContent(content: string): boolean {
+  return content.trimStart().startsWith('---\n') || content.trimStart().startsWith('---\r\n');
+}
+
+/** Safely coerce an unknown frontmatter value to string. */
+function str(v: unknown): string {
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
+}
+
+// ── YAML → LoreSheetData ────────────────────────────────────────────
+
+function parseLoreFromYaml(content: string): LoreSheetData {
+  const { frontmatter: fm, body } = extractFrontmatterAndBody(content);
+
+  const rawCustom = (fm.custom ?? {}) as Record<string, string>;
+  const customProperties: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawCustom)) {
+    customProperties[k] = str(v);
+  }
+
+  // Images: prefer novalist_images array, fall back to single `image` field
+  const images: { name: string; path: string }[] = [];
+  const rawImages = fm.novalist_images as { name?: string; path?: string }[] | undefined;
+  if (Array.isArray(rawImages) && rawImages.length > 0) {
+    for (const img of rawImages) {
+      const p = str(img.path).replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim();
+      if (p) images.push({ name: str(img.name) || 'Main', path: `[[${p}]]` });
+    }
+  } else {
+    const primaryImage = str(fm.image).replace(/^!/, '').trim();
+    if (primaryImage) {
+      images.push({ name: 'Main', path: `[[${primaryImage.replace(/\[\[|\]\]/g, '')}]]` });
+    }
+  }
+
+  const sections: { title: string; content: string }[] = [];
+  if (body.trim()) {
+    const sectionBlocks = body.split(/^## /m).filter(Boolean);
+    for (const block of sectionBlocks) {
+      const lines = block.split('\n');
+      const title = lines[0].trim();
+      const sectionContent = lines.slice(1).join('\n').trim();
+      if (title) sections.push({ title, content: sectionContent });
+    }
+    if (sections.length === 0 && body.trim()) {
+      sections.push({ title: 'Notes', content: body.trim() });
+    }
+  }
+
+  return {
+    name: str(fm.name),
+    category: str(fm.loreCategory),
+    description: str(fm.description),
+    images,
+    customProperties,
+    sections,
+    templateId: fm.novalist_templateId ? str(fm.novalist_templateId) : undefined,
+  };
+}
+
+// ── LoreSheetData → YAML ────────────────────────────────────────────
+
+function serializeLoreToYaml(data: LoreSheetData): string {
+  const fm: Record<string, unknown> = {
+    type: 'lore',
+    name: data.name,
+  };
+  if (data.category) fm.loreCategory = data.category;
+  if (data.description) fm.description = data.description;
+
+  const allImages = data.images
+    .map(i => ({ name: i.name, path: i.path.replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim() }))
+    .filter(i => i.path);
+  const primaryImage = allImages[0]?.path;
+  if (primaryImage) fm.image = primaryImage;
+  if (allImages.length > 0) fm.novalist_images = allImages;
+
+  if (Object.keys(data.customProperties).length > 0) {
+    fm.custom = data.customProperties;
+  }
+  if (data.templateId) fm.novalist_templateId = data.templateId;
+
+  const bodyParts: string[] = [];
+  for (const section of data.sections) {
+    bodyParts.push(`## ${section.title}\n\n${section.content}`);
+  }
+  const body = bodyParts.join('\n\n');
+
+  return serializeFrontmatterAndBody(fm, body);
+}
 
 /**
- * Parse a lore markdown file into structured LoreSheetData
+ * Parse a lore markdown file into structured LoreSheetData.
+ * Supports both YAML frontmatter format (new) and legacy ## LoreSheet blocks.
  */
 export function parseLoreSheet(content: string): LoreSheetData {
+  // Detect format
+  if (isYamlContent(content)) {
+    const { frontmatter } = extractFrontmatterAndBody(content);
+    if (frontmatter.type === 'lore') {
+      return parseLoreFromYaml(content);
+    }
+  }
+
+  // ── Legacy parser ─────────────────────────────────────────────────
   const normalized = content.replace(/\r\n/g, '\n');
   const data: LoreSheetData = {
     name: '',
@@ -128,46 +234,11 @@ export function parseLoreSheet(content: string): LoreSheetData {
   return data;
 }
 
+/**
+ * Serialize LoreSheetData to YAML frontmatter format.
+ */
 export function serializeLoreSheet(data: LoreSheetData): string {
-  const sanitize = (val: string): string => val.replace(/[\r\n]+/g, ' ').trim();
-
-  let result = `# ${data.name}\n\n`;
-  result += '## LoreSheet\n';
-  if (data.templateId) {
-    result += `TemplateId: ${sanitize(data.templateId)}\n`;
-  }
-  result += `Name: ${sanitize(data.name)}\n`;
-  result += `Category: ${sanitize(data.category)}\n`;
-
-  if (data.description) {
-    result += 'Description:\n';
-    result += `${data.description.trim()}\n`;
-  }
-
-  if (data.images && data.images.length > 0) {
-    result += 'Images:\n';
-    for (const img of data.images) {
-      result += `- ${sanitize(img.name)}: ${sanitize(img.path)}\n`;
-    }
-  }
-
-  if (Object.keys(data.customProperties).length > 0) {
-    result += 'CustomProperties:\n';
-    for (const [key, val] of Object.entries(data.customProperties)) {
-      result += `- ${sanitize(key)}: ${sanitize(val)}\n`;
-    }
-  }
-
-  if (data.sections && data.sections.length > 0) {
-    result += 'Sections:\n';
-    for (const section of data.sections) {
-      result += `${sanitize(section.title)}\n`;
-      result += `${section.content.trim()}\n`;
-      result += '---\n';
-    }
-  }
-
-  return result;
+  return serializeLoreToYaml(data);
 }
 
 function getSheetSection(content: string, heading: string): string | null {

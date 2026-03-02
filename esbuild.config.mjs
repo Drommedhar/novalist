@@ -1,6 +1,28 @@
 import esbuild from "esbuild";
 import process from "process";
 import { builtinModules } from "module";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * esbuild plugin to resolve @storyline/* path aliases to vendor/storyline/*
+ */
+const storylineAliasPlugin = {
+	name: 'storyline-alias',
+	setup(build) {
+		build.onResolve({ filter: /^@storyline\// }, args => {
+			const resolved = args.path.replace(/^@storyline\//, '');
+			let fullPath = path.resolve(__dirname, 'vendor', 'storyline', resolved);
+			// Append .ts if the resolved path doesn't have an extension
+			if (!path.extname(fullPath)) {
+				fullPath += '.ts';
+			}
+			return { path: fullPath };
+		});
+	},
+};
 
 const banner =
 `/*
@@ -48,6 +70,7 @@ const context = await esbuild.context({
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
 	outfile: "main.js",
+	plugins: [storylineAliasPlugin],
 });
 
 if (prod) {

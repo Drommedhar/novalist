@@ -1,13 +1,253 @@
 import type {
   CharacterSheetData,
-  CharacterChapterOverride
+  CharacterChapterOverride,
+  CharacterImage,
+  CharacterRelationship,
 } from '../types';
+import { extractFrontmatterAndBody, serializeFrontmatterAndBody } from '../services/FrontmatterUtils';
+import { RELATIONSHIP_ROLE_MAP } from '../types/novalist-extensions';
+import type { CharacterRelationCategory } from '@storyline/models/Character';
+
+// ── Physical-attribute keys stored inside `custom` in YAML format ───
+const PHYSICAL_CUSTOM_KEYS = new Set([
+  'gender', 'group', 'eyeColor', 'hairColor', 'hairLength',
+  'height', 'build', 'skinTone',
+]);
+
+/** Safely coerce an unknown frontmatter value to string. */
+function str(v: unknown): string {
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
+}
+
+/** Helper: detect YAML‑frontmatter content vs legacy ## Sheet blocks. */
+function isYamlContent(content: string): boolean {
+  return content.trimStart().startsWith('---\n') || content.trimStart().startsWith('---\r\n');
+}
+
+// ── YAML → CharacterSheetData ───────────────────────────────────────
+
+function parseCharacterFromYaml(content: string): CharacterSheetData {
+  const { frontmatter: fm, body } = extractFrontmatterAndBody(content);
+
+  const fullName = str(fm.name);
+  const nameParts = fullName.split(' ');
+  const firstName = nameParts[0] || '';
+  const surname = nameParts.slice(1).join(' ') || '';
+
+  // Custom fields — physical attrs are pulled out, rest stays in customProperties
+  const rawCustom = (fm.custom ?? {}) as Record<string, string>;
+  const customProperties: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawCustom)) {
+    if (!PHYSICAL_CUSTOM_KEYS.has(k)) {
+      customProperties[k] = str(v);
+    }
+  }
+
+  // Relations → relationships
+  const rawRelations = (fm.relations ?? []) as { category?: string; type?: string; target?: string }[];
+  const relationships: CharacterRelationship[] = rawRelations.map(r => ({
+    role: str(r.type),
+    character: r.target ? `[[${str(r.target).replace(/\[\[|\]\]/g, '')}]]` : '',
+  }));
+
+  // Images: prefer novalist_images array, fall back to single `image` field
+  const images: CharacterImage[] = [];
+  const rawImages = fm.novalist_images as { name?: string; path?: string }[] | undefined;
+  if (Array.isArray(rawImages) && rawImages.length > 0) {
+    for (const img of rawImages) {
+      const p = str(img.path).replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim();
+      if (p) images.push({ name: str(img.name) || 'Main', path: `[[${p}]]` });
+    }
+  } else {
+    const primaryImage = str(fm.image).replace(/^!/, '').trim();
+    if (primaryImage) {
+      images.push({ name: 'Main', path: `[[${primaryImage.replace(/\[\[|\]\]/g, '')}]]` });
+    }
+  }
+
+  // Chapter overrides
+  const rawOverrides = (fm.novalist_chapterOverrides ?? []) as Record<string, unknown>[];
+  const chapterOverrides: CharacterChapterOverride[] = rawOverrides.map(o => {
+    const ov: CharacterChapterOverride = { chapter: str(o.chapter) };
+    if (o.act) ov.act = str(o.act);
+    if (o.scene) ov.scene = str(o.scene);
+    if (o.name) ov.name = str(o.name);
+    if (o.gender) ov.gender = str(o.gender);
+    if (o.age) ov.age = str(o.age);
+    if (o.role) ov.role = str(o.role);
+    if (o.eyeColor) ov.eyeColor = str(o.eyeColor);
+    if (o.hairColor) ov.hairColor = str(o.hairColor);
+    if (o.hairLength) ov.hairLength = str(o.hairLength);
+    if (o.height) ov.height = str(o.height);
+    if (o.build) ov.build = str(o.build);
+    if (o.skinTone) ov.skinTone = str(o.skinTone);
+    if (o.distinguishingFeatures) ov.distinguishingFeatures = str(o.distinguishingFeatures);
+    if (o.customProperties) ov.customProperties = o.customProperties as Record<string, string>;
+    if (Array.isArray(o.relationships)) {
+      ov.relationships = (o.relationships as { type?: string; target?: string }[]).map(r => ({
+        role: str(r.type),
+        character: r.target ? `[[${str(r.target).replace(/\[\[|\]\]/g, '')}]]` : '',
+      }));
+    }
+    if (Array.isArray(o.images)) {
+      ov.images = (o.images as { name?: string; path?: string }[]).map(i => ({
+        name: str(i.name),
+        path: str(i.path),
+      }));
+    }
+    return ov;
+  });
+
+  // Sections from body text (split on ## headings)
+  const sections: { title: string; content: string }[] = [];
+  if (body.trim()) {
+    const sectionBlocks = body.split(/^## /m).filter(Boolean);
+    for (const block of sectionBlocks) {
+      const lines = block.split('\n');
+      const title = lines[0].trim();
+      const sectionContent = lines.slice(1).join('\n').trim();
+      if (title) sections.push({ title, content: sectionContent });
+    }
+    // If no ## headings, treat entire body as a single "Notes" section
+    if (sections.length === 0 && body.trim()) {
+      sections.push({ title: 'Notes', content: body.trim() });
+    }
+  }
+
+  return {
+    name: firstName,
+    surname,
+    gender: str(rawCustom.gender),
+    age: str(fm.age),
+    role: str(fm.role),
+    group: str(rawCustom.group),
+    faceShot: images[0]?.path || '',
+    eyeColor: str(rawCustom.eyeColor),
+    hairColor: str(rawCustom.hairColor),
+    hairLength: str(rawCustom.hairLength),
+    height: str(rawCustom.height),
+    build: str(rawCustom.build),
+    skinTone: str(rawCustom.skinTone),
+    distinguishingFeatures: str(fm.distinguishingFeatures),
+    images,
+    relationships,
+    customProperties,
+    sections,
+    chapterOverrides,
+    templateId: fm.novalist_templateId ? str(fm.novalist_templateId) : undefined,
+  };
+}
+
+// ── CharacterSheetData → YAML ───────────────────────────────────────
+
+function serializeCharacterToYaml(data: CharacterSheetData): string {
+  const fullName = `${data.name} ${data.surname}`.trim();
+
+  // Build custom field map (physical attrs + user custom props)
+  const custom: Record<string, string> = {};
+  if (data.gender) custom.gender = data.gender;
+  if (data.group) custom.group = data.group;
+  if (data.eyeColor) custom.eyeColor = data.eyeColor;
+  if (data.hairColor) custom.hairColor = data.hairColor;
+  if (data.hairLength) custom.hairLength = data.hairLength;
+  if (data.height) custom.height = data.height;
+  if (data.build) custom.build = data.build;
+  if (data.skinTone) custom.skinTone = data.skinTone;
+  for (const [k, v] of Object.entries(data.customProperties)) {
+    if (v) custom[k] = v;
+  }
+
+  // Convert relationships → SL relations format
+  const relations: { category: string; type: string; target: string }[] = data.relationships.map(r => {
+    const roleLower = r.role.toLowerCase().trim();
+    const mapping = RELATIONSHIP_ROLE_MAP[roleLower];
+    const target = r.character.replace(/\[\[|\]\]/g, '').trim();
+    return {
+      category: mapping?.category ?? 'other',
+      type: mapping?.type ?? r.role,
+      target,
+    };
+  });
+
+  // Images: write SL-compat `image` (first) + full `novalist_images` array
+  const allImages = data.images
+    .map(i => ({ name: i.name, path: i.path.replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim() }))
+    .filter(i => i.path);
+  const primaryImage = allImages[0]?.path
+    || data.faceShot?.replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim()
+    || undefined;
+
+  // Build frontmatter
+  const fm: Record<string, unknown> = {
+    type: 'character',
+    name: fullName,
+  };
+  if (data.age) fm.age = data.age;
+  if (data.role) fm.role = data.role;
+  if (primaryImage) fm.image = primaryImage;
+  if (allImages.length > 0) fm.novalist_images = allImages;
+  if (data.distinguishingFeatures) fm.distinguishingFeatures = data.distinguishingFeatures;
+  if (relations.length > 0) fm.relations = relations;
+  if (Object.keys(custom).length > 0) fm.custom = custom;
+  if (data.templateId) fm.novalist_templateId = data.templateId;
+
+  // Chapter overrides
+  if (data.chapterOverrides.length > 0) {
+    fm.novalist_chapterOverrides = data.chapterOverrides.map(o => {
+      const obj: Record<string, unknown> = { chapter: o.chapter };
+      if (o.act) obj.act = o.act;
+      if (o.scene) obj.scene = o.scene;
+      if (o.name) obj.name = o.surname ? `${o.name} ${o.surname}`.trim() : o.name;
+      if (o.gender) obj.gender = o.gender;
+      if (o.age) obj.age = o.age;
+      if (o.role) obj.role = o.role;
+      if (o.eyeColor) obj.eyeColor = o.eyeColor;
+      if (o.hairColor) obj.hairColor = o.hairColor;
+      if (o.hairLength) obj.hairLength = o.hairLength;
+      if (o.height) obj.height = o.height;
+      if (o.build) obj.build = o.build;
+      if (o.skinTone) obj.skinTone = o.skinTone;
+      if (o.distinguishingFeatures) obj.distinguishingFeatures = o.distinguishingFeatures;
+      if (o.customProperties && Object.keys(o.customProperties).length > 0) obj.customProperties = o.customProperties;
+      if (o.relationships && o.relationships.length > 0) {
+        obj.relationships = o.relationships.map(r => ({
+          category: (RELATIONSHIP_ROLE_MAP[r.role.toLowerCase()]?.category || 'other') as CharacterRelationCategory,
+          type: RELATIONSHIP_ROLE_MAP[r.role.toLowerCase()]?.type || r.role,
+          target: r.character.replace(/\[\[|\]\]/g, '').trim(),
+        }));
+      }
+      if (o.images && o.images.length > 0) obj.images = o.images;
+      return obj;
+    });
+  }
+
+  // Body text from sections
+  const bodyParts: string[] = [];
+  for (const section of data.sections) {
+    bodyParts.push(`## ${section.title}\n\n${section.content}`);
+  }
+  const body = bodyParts.join('\n\n');
+
+  return serializeFrontmatterAndBody(fm, body);
+}
 
 /**
- * Parse a character markdown file into structured CharacterSheetData
- * The format stores data in a human-readable markdown format with markers
+ * Parse a character markdown file into structured CharacterSheetData.
+ * Supports both YAML frontmatter format (new) and legacy ## CharacterSheet blocks.
  */
 export function parseCharacterSheet(content: string): CharacterSheetData {
+  // Detect format
+  if (isYamlContent(content)) {
+    const { frontmatter } = extractFrontmatterAndBody(content);
+    if (frontmatter.type === 'character') {
+      return parseCharacterFromYaml(content);
+    }
+  }
+
+  // ── Legacy parser ─────────────────────────────────────────────────
   const normalized = content.replace(/\r\n/g, '\n');
   const data: CharacterSheetData = {
     name: '',
@@ -374,127 +614,11 @@ function extractSection(content: string, sectionName: string): string | null {
 }
 
 /**
- * Serialize CharacterSheetData to markdown format
- * Sanitizes values to prevent breaking the format
+ * Serialize CharacterSheetData to YAML frontmatter format.
+ * Always produces the new SL-compatible YAML format.
  */
 export function serializeCharacterSheet(data: CharacterSheetData): string {
-  const fullName = `${data.name} ${data.surname}`.trim();
-  
-  // Helper to sanitize a single-line value
-  const sanitize = (val: string): string => {
-    // Replace newlines and carriage returns with spaces
-    return val.replace(/[\r\n]+/g, ' ').trim();
-  };
-  
-  let result = `# ${fullName}\n\n`;
-  
-  // CharacterSheet block
-  result += '## CharacterSheet\n';
-  if (data.templateId) {
-    result += `TemplateId: ${sanitize(data.templateId)}\n`;
-  }
-  result += `Name: ${sanitize(data.name)}\n`;
-  result += `Surname: ${sanitize(data.surname)}\n`;
-  result += `Gender: ${sanitize(data.gender)}\n`;
-  result += `Age: ${sanitize(data.age)}\n`;
-  result += `Role: ${sanitize(data.role)}\n`;
-  if (data.group) {
-    result += `Group: ${sanitize(data.group)}\n`;
-  }
-  if (data.faceShot) {
-    result += `FaceShot: ${sanitize(data.faceShot)}\n`;
-  }
-  result += `EyeColor: ${sanitize(data.eyeColor)}\n`;
-  result += `HairColor: ${sanitize(data.hairColor)}\n`;
-  result += `HairLength: ${sanitize(data.hairLength)}\n`;
-  result += `Height: ${sanitize(data.height)}\n`;
-  result += `Build: ${sanitize(data.build)}\n`;
-  result += `SkinTone: ${sanitize(data.skinTone)}\n`;
-  result += `DistinguishingFeatures: ${sanitize(data.distinguishingFeatures)}\n\n`;
-  
-  // Relationships
-  result += 'Relationships:\n';
-  if (data.relationships.length > 0) {
-    for (const rel of data.relationships) {
-      result += `- ${sanitize(rel.role)}: ${sanitize(rel.character)}\n`;
-    }
-  }
-  result += '\n';
-  
-  // Images
-  result += 'Images:\n';
-  if (data.images.length > 0) {
-    for (const img of data.images) {
-      result += `- ${sanitize(img.name)}: ${sanitize(img.path)}\n`;
-    }
-  }
-  result += '\n';
-  
-  // Custom Properties
-  result += 'CustomProperties:\n';
-  const customKeys = Object.keys(data.customProperties);
-  if (customKeys.length > 0) {
-    for (const key of customKeys) {
-      result += `- ${sanitize(key)}: ${sanitize(data.customProperties[key])}\n`;
-    }
-  }
-  result += '\n';
-  
-  // Sections
-  result += 'Sections:\n';
-  if (data.sections.length > 0) {
-    for (const section of data.sections) {
-      result += `${sanitize(section.title)}\n${section.content}\n---\n`;
-    }
-  }
-  result += '\n';
-  
-  // Chapter Overrides
-  result += 'ChapterOverrides:\n';
-  if (data.chapterOverrides.length > 0) {
-    for (const override of data.chapterOverrides) {
-      result += `Chapter: ${sanitize(override.chapter)}\n`;
-      if (override.act) result += `- Act: ${sanitize(override.act)}\n`;
-      if (override.scene) result += `- Scene: ${sanitize(override.scene)}\n`;
-      if (override.name) result += `- Name: ${sanitize(override.name)}\n`;
-      if (override.surname) result += `- Surname: ${sanitize(override.surname)}\n`;
-      if (override.gender) result += `- Gender: ${sanitize(override.gender)}\n`;
-      if (override.age) result += `- Age: ${sanitize(override.age)}\n`;
-      if (override.role) result += `- Role: ${sanitize(override.role)}\n`;
-      if (override.faceShot) result += `- FaceShot: ${sanitize(override.faceShot)}\n`;
-      if (override.eyeColor) result += `- EyeColor: ${sanitize(override.eyeColor)}\n`;
-      if (override.hairColor) result += `- HairColor: ${sanitize(override.hairColor)}\n`;
-      if (override.hairLength) result += `- HairLength: ${sanitize(override.hairLength)}\n`;
-      if (override.height) result += `- Height: ${sanitize(override.height)}\n`;
-      if (override.build) result += `- Build: ${sanitize(override.build)}\n`;
-      if (override.skinTone) result += `- SkinTone: ${sanitize(override.skinTone)}\n`;
-      if (override.distinguishingFeatures) result += `- DistinguishingFeatures: ${sanitize(override.distinguishingFeatures)}\n`;
-      if (override.images && override.images.length > 0) {
-        result += `- Images:\n`;
-        for (const img of override.images) {
-          result += `  - ${sanitize(img.name)}: ${sanitize(img.path)}\n`;
-        }
-      }
-      if (override.relationships && override.relationships.length > 0) {
-        result += `- Relationships:\n`;
-        for (const rel of override.relationships) {
-          result += `  - ${sanitize(rel.role)}: ${sanitize(rel.character)}\n`;
-        }
-      }
-      if (override.customProperties) {
-        const keys = Object.keys(override.customProperties);
-        if (keys.length > 0) {
-          result += `- CustomProperties:\n`;
-          for (const key of keys) {
-            result += `  - ${sanitize(key)}: ${sanitize(override.customProperties[key])}\n`;
-          }
-        }
-      }
-      result += '\n';
-    }
-  }
-  
-  return result;
+  return serializeCharacterToYaml(data);
 }
 
 function getSheetSection(content: string, heading: string): string | null {
@@ -512,10 +636,14 @@ function getSheetSection(content: string, heading: string): string | null {
 }
 
 /**
- * Check if content contains a CharacterSheet block
+ * Check if content contains a CharacterSheet block or YAML character frontmatter.
  */
 export function hasCharacterSheet(content: string): boolean {
-  return /<!--\s*CharacterSheet/.test(content);
+  if (isYamlContent(content)) {
+    const { frontmatter } = extractFrontmatterAndBody(content);
+    return frontmatter.type === 'character';
+  }
+  return /<!--\s*CharacterSheet/.test(content) || /^##\s+CharacterSheet/m.test(content);
 }
 
 /**

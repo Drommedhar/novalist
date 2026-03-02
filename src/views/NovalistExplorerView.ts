@@ -458,7 +458,11 @@ export class NovalistExplorerView extends ItemView {
     evt.preventDefault();
     const menu = new Menu();
 
-    if (this.plugin.isChapterFile(file)) {
+    // In scene-based projects, chapter items in the Explorer reference scene files.
+    // Treat them the same as chapter files for the context menu.
+    const isChapterEntry = this.plugin.isChapterFile(file) || this.isSceneFileRef(file);
+
+    if (isChapterEntry) {
       menu.addItem((item) => {
         item
           .setTitle(t('explorer.editChapter'))
@@ -806,7 +810,11 @@ export class NovalistExplorerView extends ItemView {
       statusIcon.style.color = statusDef.color;
 
       row.addEventListener('click', () => {
-        void this.openFileInExplorer(item.file);
+        if (this.plugin.isSceneBasedProject()) {
+          void this.openAssembledChapter(item.file);
+        } else {
+          void this.openFileInExplorer(item.file);
+        }
       });
 
       row.addEventListener('contextmenu', (evt) => {
@@ -897,6 +905,52 @@ export class NovalistExplorerView extends ItemView {
   }
 
   private openEditChapterModal(file: TFile): void {
+    // Scene-based: edit chapter-level metadata across all sibling scenes
+    if (this.plugin.isSceneBasedProject()) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
+      const existing: ChapterEditData = {
+        name: typeof fm.novalist_chapterName === 'string' ? fm.novalist_chapterName : file.basename,
+        order: typeof fm.chapter === 'number' ? String(fm.chapter) : (typeof fm.chapter === 'string' ? fm.chapter : ''),
+        status: this.plugin.sceneStatusToChapterStatus(typeof fm.status === 'string' ? fm.status : 'draft'),
+        act: typeof fm.act === 'string' ? fm.act : (typeof fm.act === 'number' ? String(fm.act) : ''),
+        date: typeof fm.storyDate === 'string' ? fm.storyDate : '',
+      };
+      this.plugin.openChapterDescriptionModal(existing, (data) => {
+        void (async () => {
+          // Get all scene files in this chapter
+          const chapterNum = Number(fm.chapter) || 0;
+          const root = this.plugin.resolvedProjectPath();
+          const scenesFolder = `${root}/Scenes/`;
+          const siblings = this.app.vault.getFiles()
+            .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md')
+            .filter(f => Number(this.app.metadataCache.getFileCache(f)?.frontmatter?.chapter) === chapterNum);
+
+          for (const sf of siblings) {
+            const content = await this.app.vault.read(sf);
+            const { frontmatter, body } = this.plugin.extractFrontmatterAndBody(content);
+            if (data.name !== existing.name) {
+              (frontmatter as Record<string, unknown>).novalist_chapterName = data.name;
+            }
+            if (data.order !== existing.order) {
+              (frontmatter as Record<string, unknown>).chapter = Number(data.order) || chapterNum;
+            }
+            if (data.act !== existing.act) {
+              if (data.act) {
+                (frontmatter as Record<string, unknown>).act = data.act;
+              } else {
+                delete (frontmatter as Record<string, unknown>).act;
+              }
+            }
+            await this.app.vault.modify(sf, this.plugin.serializeFrontmatter(frontmatter) + body);
+          }
+          void this.render();
+        })();
+      });
+      return;
+    }
+
+    // Legacy: edit chapter file frontmatter
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter ?? {};
     const heading = cache?.headings?.find(h => h.level === 1)?.heading;
@@ -940,6 +994,64 @@ export class NovalistExplorerView extends ItemView {
   }
 
   private openEditSceneModal(chapterFile: TFile, sceneName: string): void {
+    // Scene-based: edits are applied to the assembled chapter file's H2 heading.
+    // The decompose-on-modify handler writes changes back to scene files.
+    if (this.plugin.isSceneBasedProject()) {
+      const sceneDate = this.plugin.getSceneDateSync(chapterFile, sceneName);
+      const chapterDate = this.plugin.getChapterDateSync(chapterFile);
+      const explicitDate = sceneDate !== chapterDate ? sceneDate : '';
+      const modal = new SceneNameModal(this.app, (data) => {
+        void (async () => {
+          // Rename scene heading in assembled chapter file if name changed
+          if (data.name !== sceneName) {
+            // Find the assembled chapter file for this chapter
+            const cache = this.app.metadataCache.getFileCache(chapterFile);
+            const chapterNum = Number((cache?.frontmatter as Record<string, unknown> | undefined)?.chapter) || 0;
+            // Look for the assembled file in Chapters/
+            const root = this.plugin.resolvedProjectPath();
+            const chapterFolder = `${root}/${this.plugin.settings.chapterFolder}/`;
+            const assembledFiles = this.app.vault.getFiles().filter(
+              f => f.path.startsWith(chapterFolder) && this.plugin.isAssembledChapterFile(f)
+            );
+            const assembledFile = assembledFiles.find(f => {
+              const c = this.app.metadataCache.getFileCache(f);
+              return Number(c?.frontmatter?.order) === chapterNum;
+            });
+            if (assembledFile) {
+              const content = await this.app.vault.read(assembledFile);
+              const updated = content.replace(
+                new RegExp(`^## ${sceneName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'),
+                `## ${data.name}`
+              );
+              if (updated !== content) await this.app.vault.modify(assembledFile, updated);
+            }
+          }
+          if (data.date !== explicitDate) {
+            // Update scene date via the assembled chapter frontmatter
+            const cache = this.app.metadataCache.getFileCache(chapterFile);
+            const chapterNum = Number((cache?.frontmatter as Record<string, unknown> | undefined)?.chapter) || 0;
+            const root = this.plugin.resolvedProjectPath();
+            const chapterFolder = `${root}/${this.plugin.settings.chapterFolder}/`;
+            const assembledFiles = this.app.vault.getFiles().filter(
+              f => f.path.startsWith(chapterFolder) && this.plugin.isAssembledChapterFile(f)
+            );
+            const assembledFile = assembledFiles.find(f => {
+              const c = this.app.metadataCache.getFileCache(f);
+              return Number(c?.frontmatter?.order) === chapterNum;
+            });
+            if (assembledFile) {
+              const dateTarget = data.name !== sceneName ? data.name : sceneName;
+              await this.plugin.setSceneDate(assembledFile, dateTarget, data.date);
+            }
+          }
+          void this.render();
+        })();
+      }, { name: sceneName, date: sceneDate !== chapterDate ? sceneDate : '' });
+      modal.open();
+      return;
+    }
+
+    // Legacy: edit H2 heading within chapter file
     const sceneDate = this.plugin.getSceneDateSync(chapterFile, sceneName);
     // Use chapter date as inherited fallback display — but only pass explicit scene date
     const chapterDate = this.plugin.getChapterDateSync(chapterFile);
@@ -1536,6 +1648,32 @@ export class NovalistExplorerView extends ItemView {
   }
 
   private async openSceneInChapter(file: TFile, sceneName: string): Promise<void> {
+    // Scene-based: assemble the chapter first, then scroll to the scene H2
+    if (this.plugin.isSceneBasedProject()) {
+      const chapterFile = await this.openAssembledChapter(file);
+      if (!chapterFile) return;
+
+      // Wait a tick for the metadata cache to process the assembled file
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const cache = this.app.metadataCache.getFileCache(chapterFile);
+      if (cache?.headings) {
+        const heading = cache.headings.find(h => h.level === 2 && h.heading === sceneName);
+        if (heading) {
+          const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+          if (activeView?.file?.path === chapterFile.path) {
+            activeView.editor.setCursor({ line: heading.position.start.line, ch: 0 });
+            activeView.editor.scrollIntoView({
+              from: { line: heading.position.start.line, ch: 0 },
+              to: { line: heading.position.start.line, ch: 0 }
+            }, true);
+          }
+        }
+      }
+      return;
+    }
+
+    // Legacy: scroll to H2 heading within the chapter file
     const existingLeaf = this.app.workspace.getLeavesOfType('markdown')
       .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
 
@@ -1558,6 +1696,38 @@ export class NovalistExplorerView extends ItemView {
         }
       }
     }
+  }
+
+  /**
+   * Assemble all scenes for the chapter represented by `sceneFile` into a single
+   * Chapters/ file and open it. Returns the assembled TFile.
+   */
+  private async openAssembledChapter(sceneFile: TFile): Promise<TFile | null> {
+    const cache = this.app.metadataCache.getFileCache(sceneFile);
+    const chapterNum = Number((cache?.frontmatter as Record<string, unknown> | undefined)?.chapter);
+    if (!chapterNum) {
+      await this.openFileInExplorer(sceneFile);
+      return null;
+    }
+
+    const chapterFile = await this.plugin.assembleChapterFromScenes(chapterNum);
+    if (!chapterFile) return null;
+
+    // Open the assembled chapter file
+    const existingLeaf = this.app.workspace.getLeavesOfType('markdown')
+      .find(l => l.view instanceof MarkdownView && l.view.file?.path === chapterFile.path);
+    const leaf = existingLeaf ?? this.app.workspace.getLeaf(false);
+    await leaf.openFile(chapterFile);
+    await this.app.workspace.revealLeaf(leaf);
+    return chapterFile;
+  }
+
+  /** Check whether a file is a scene file in a scene-based project (acts as a chapter reference). */
+  private isSceneFileRef(file: TFile): boolean {
+    if (!this.plugin.isSceneBasedProject()) return false;
+    const root = this.plugin.resolvedProjectPath();
+    if (!root) return false;
+    return file.path.startsWith(`${root}/Scenes/`) && file.extension === 'md';
   }
 }
 

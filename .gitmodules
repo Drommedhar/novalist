@@ -1,0 +1,3 @@
+[submodule "vendor/storyline"]
+	path = vendor/storyline
+	url = https://github.com/PixeroJan/obsidian-storyline.git

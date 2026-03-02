@@ -11,8 +11,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "types": ["node"],
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "baseUrl": ".",
+    "paths": {
+      "@storyline/*": ["./vendor/storyline/*"]
+    }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "vendor/storyline/**/*.ts"],
   "exclude": ["node_modules", "**/*.test.ts"]
 }

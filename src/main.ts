@@ -68,6 +68,7 @@ import { SceneNameModal } from './modals/SceneNameModal';
 import { StartupWizardModal } from './modals/StartupWizardModal';
 import { ProjectSwitcherModal, ProjectRenameModal } from './modals/ProjectModals';
 import { SnapshotNameModal, SnapshotListModal } from './modals/SnapshotModal';
+import { checkAndPromptMigration, MigrationWizardModal } from './modals/MigrationWizardModal';
 // import { AiAnalysisModal } from './modals/AiAnalysisModal';
 import { updateSnapshotChapterName, createSnapshot } from './utils/snapshotUtils';
 import { NovalistSettingTab } from './settings/NovalistSettingTab';
@@ -76,6 +77,7 @@ import { parseCharacterSheet, serializeCharacterSheet, applyChapterOverride } fr
 import { parseLocationSheet, serializeLocationSheet } from './utils/locationSheetUtils';
 import { parseItemSheet } from './utils/itemSheetUtils';
 import { parseLoreSheet } from './utils/loreSheetUtils';
+import { serializeFrontmatterAndBody, extractFrontmatterAndBody as extractFmAndBody } from './services/FrontmatterUtils';
 import { initLocale, t, getFamilyTerms } from './i18n';
 import {
   annotationExtension,
@@ -125,6 +127,16 @@ export default class NovalistPlugin extends Plugin {
   /** Promise that resolves when entity index is fully built */
   private entityIndexReady: Promise<void> | null = null;
 
+  // ─── Assembled chapter ↔ scene file sync ──────────────────────────
+  /** Guard flag: true while writing individual scene files from assembled chapter content. */
+  private isSyncingFromChapter = false;
+  /** Guard flag: true while re-assembling a chapter file from scene files. */
+  private isSyncingFromScenes = false;
+  /** Debounce timer for decomposing assembled chapter back to scene files. */
+  private decomposeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Set of assembled chapter file paths currently managed by the sync system. */
+  private assembledChapterPaths = new Set<string>();
+
   async onload(): Promise<void> {
     await this.loadSettings();
     initLocale();
@@ -138,6 +150,8 @@ export default class NovalistPlugin extends Plugin {
       if (!this.settings.startupWizardShown || !this.app.vault.getAbstractFileByPath(this.resolvedProjectPath())) {
         new StartupWizardModal(this.app, this).open();
       } else {
+        // Check if project needs migration from legacy format to YAML
+        await checkAndPromptMigration(this);
         // Auto-open Dashboard on startup
         await this.openDashboardOnStartup();
       }
@@ -611,6 +625,15 @@ export default class NovalistPlugin extends Plugin {
       }
     });
 
+    // Migrate project from legacy format to YAML frontmatter
+    this.addCommand({
+      id: 'migrate-to-yaml',
+      name: t('cmd.migrateToYaml'),
+      callback: () => {
+        new MigrationWizardModal(this.app, this).open();
+      }
+    });
+
     // Register settings tab
     this.addSettingTab(new NovalistSettingTab(this.app, this));
 
@@ -703,6 +726,9 @@ export default class NovalistPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
     this.registerEvent(this.app.vault.on('rename', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
     this.registerEvent(this.app.vault.on('modify', () => { this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady; }));
+
+    // Assembled chapter ↔ scene file sync
+    this.setupAssembledChapterSync();
 
     // Hierarchy cache: update on modify
     this.registerEvent(this.app.vault.on('modify', (file) => {
@@ -1669,109 +1695,94 @@ export default class NovalistPlugin extends Plugin {
 
   generateCharacterContent(name: string, surname: string, template: CharacterTemplate): string {
     const fullName = `${name} ${surname}`.trim();
-    const lines: string[] = [
-      `# ${fullName}`,
-      '',
-      '## CharacterSheet',
-      `TemplateId: ${template.id}`,
-      `Name: ${name}`,
-      `Surname: ${surname}`,
-    ];
 
+    // Build frontmatter record
+    const fm: Record<string, unknown> = {
+      type: 'character',
+      name: fullName,
+    };
+
+    // Map template fields → frontmatter keys
+    const custom: Record<string, string> = {};
     for (const field of template.fields) {
-      lines.push(`${field.key}: ${field.defaultValue}`);
-    }
-
-    lines.push('');
-
-    if (template.includeRelationships) {
-      lines.push('Relationships:', '');
-    }
-
-    if (template.includeImages) {
-      lines.push('Images:', '');
-    }
-
-    lines.push('CustomProperties:');
-    for (const def of template.customPropertyDefs) {
-      lines.push(`- ${def.key}: ${def.defaultValue}`);
-    }
-    lines.push('');
-
-    lines.push('Sections:');
-    for (const section of template.sections) {
-      lines.push(section.title);
-      if (section.defaultContent) {
-        lines.push(section.defaultContent);
+      const val = field.defaultValue || '';
+      switch (field.key) {
+        case 'Gender': if (val) custom.gender = val; break;
+        case 'Age': if (val) fm.age = val; break;
+        case 'Role': if (val) fm.role = val; break;
+        case 'EyeColor': if (val) custom.eyeColor = val; break;
+        case 'HairColor': if (val) custom.hairColor = val; break;
+        case 'HairLength': if (val) custom.hairLength = val; break;
+        case 'Height': if (val) custom.height = val; break;
+        case 'Build': if (val) custom.build = val; break;
+        case 'SkinTone': if (val) custom.skinTone = val; break;
+        case 'DistinguishingFeatures': if (val) fm.distinguishingFeatures = val; break;
+        default: if (val) custom[field.key] = val; break;
       }
-      lines.push('---');
-    }
-    lines.push('');
-
-    if (template.includeChapterOverrides) {
-      lines.push('ChapterOverrides:');
     }
 
-    return lines.join('\n');
+    // Custom property definitions
+    for (const def of template.customPropertyDefs) {
+      if (def.defaultValue) custom[def.key] = def.defaultValue;
+    }
+
+    if (Object.keys(custom).length > 0) fm.custom = custom;
+    if (template.includeRelationships) fm.relations = [];
+    if (template.id) fm.novalist_templateId = template.id;
+
+    // Body from template sections
+    const bodyParts: string[] = [];
+    for (const section of template.sections) {
+      bodyParts.push(`## ${section.title}\n\n${section.defaultContent || ''}`);
+    }
+    const body = bodyParts.join('\n\n');
+
+    return serializeFrontmatterAndBody(fm, body);
   }
 
   generateLocationContent(name: string, description: string, template: LocationTemplate, parentName?: string): string {
-    const lines: string[] = [
-      `# ${name}`,
-      '',
-      '## LocationSheet',
-      `TemplateId: ${template.id}`,
-      `Name: ${name}`,
-    ];
+    // Build frontmatter record
+    const fm: Record<string, unknown> = {
+      type: 'location',
+      name,
+    };
 
-    let insertedParent = false;
+    // Map template fields → frontmatter keys
     for (const field of template.fields) {
-      if (field.key === 'Type' && parentName && !insertedParent) {
-        lines.push(`Type: ${field.defaultValue}`);
-        lines.push(`Parent: [[${parentName}]]`);
-        insertedParent = true;
-        continue;
-      }
-      if (field.key === 'Description') {
-        lines.push('Description:');
-        lines.push(description || field.defaultValue || '');
-      } else {
-        lines.push(`${field.key}: ${field.defaultValue}`);
+      const val = field.defaultValue || '';
+      switch (field.key) {
+        case 'Type': if (val) fm.locationType = val; break;
+        case 'Description': /* handled below */ break;
+        default: break;
       }
     }
-    if (parentName && !insertedParent) {
-      lines.push(`Parent: [[${parentName}]]`);
+
+    if (parentName) fm.parent = parentName;
+    if (description) fm.description = description;
+    else {
+      const descField = template.fields.find(f => f.key === 'Description');
+      if (descField?.defaultValue) fm.description = descField.defaultValue;
     }
 
-    // If template doesn't have a Description field, add description inline if provided
-    if (!template.fields.some(f => f.key === 'Description') && description) {
-      lines.push('Description:');
-      lines.push(description);
-    }
-
-    if (template.includeImages) {
-      lines.push('Images:', '');
-    }
-
+    // Custom property definitions
     if (template.customPropertyDefs.length > 0) {
-      lines.push('CustomProperties:');
+      const custom: Record<string, string> = {};
       for (const def of template.customPropertyDefs) {
-        lines.push(`- ${def.key}: ${def.defaultValue}`);
+        if (def.defaultValue) custom[def.key] = def.defaultValue;
       }
+      if (Object.keys(custom).length > 0) fm.custom = custom;
     }
 
-    if (template.sections.length > 0) {
-      lines.push('Sections:');
-      for (const section of template.sections) {
-        lines.push(section.title);
-        if (section.defaultContent) {
-          lines.push(section.defaultContent);
-        }
-        lines.push('---');
-      }
-    }
+    if (template.id) fm.novalist_templateId = template.id;
 
-    return lines.join('\n');
+    // Body from template sections
+    const bodyParts: string[] = [];
+    for (const section of template.sections) {
+      bodyParts.push(`## ${section.title}\n\n${section.defaultContent || ''}`);
+    }
+    const body = bodyParts.join('\n\n');
+
+    return serializeFrontmatterAndBody(fm, body);
   }
 
   async createCharacter(name: string, surname: string, templateId?: string, useWorldBible?: boolean): Promise<void> {
@@ -1820,100 +1831,77 @@ export default class NovalistPlugin extends Plugin {
   }
 
   generateItemContent(name: string, description: string, template: ItemTemplate): string {
-    const lines: string[] = [
-      `# ${name}`,
-      '',
-      '## ItemSheet',
-      `TemplateId: ${template.id}`,
-      `Name: ${name}`,
-    ];
+    const fm: Record<string, unknown> = {
+      type: 'item',
+      name,
+    };
 
     for (const field of template.fields) {
-      if (field.key === 'Description') {
-        lines.push('Description:');
-        lines.push(description || field.defaultValue || '');
-      } else {
-        lines.push(`${field.key}: ${field.defaultValue}`);
+      const val = field.defaultValue || '';
+      switch (field.key) {
+        case 'Type': if (val) fm.itemType = val; break;
+        case 'Origin': if (val) fm.origin = val; break;
+        case 'Description': break; // handled below
+        default: break;
       }
     }
 
-    if (!template.fields.some(f => f.key === 'Description') && description) {
-      lines.push('Description:');
-      lines.push(description);
-    }
-
-    if (template.includeImages) {
-      lines.push('Images:', '');
+    if (description) fm.description = description;
+    else {
+      const descField = template.fields.find(f => f.key === 'Description');
+      if (descField?.defaultValue) fm.description = descField.defaultValue;
     }
 
     if (template.customPropertyDefs.length > 0) {
-      lines.push('CustomProperties:');
+      const custom: Record<string, string> = {};
       for (const def of template.customPropertyDefs) {
-        lines.push(`- ${def.key}: ${def.defaultValue}`);
+        if (def.defaultValue) custom[def.key] = def.defaultValue;
       }
+      if (Object.keys(custom).length > 0) fm.custom = custom;
     }
 
-    if (template.sections.length > 0) {
-      lines.push('Sections:');
-      for (const section of template.sections) {
-        lines.push(section.title);
-        if (section.defaultContent) {
-          lines.push(section.defaultContent);
-        }
-        lines.push('---');
-      }
-    }
+    if (template.id) fm.novalist_templateId = template.id;
 
-    return lines.join('\n');
+    const bodyParts: string[] = [];
+    for (const section of template.sections) {
+      bodyParts.push(`## ${section.title}\n\n${section.defaultContent || ''}`);
+    }
+    const body = bodyParts.join('\n\n');
+
+    return serializeFrontmatterAndBody(fm, body);
   }
 
   generateLoreContent(name: string, description: string, category: string, template: LoreTemplate): string {
-    const lines: string[] = [
-      `# ${name}`,
-      '',
-      '## LoreSheet',
-      `TemplateId: ${template.id}`,
-      `Name: ${name}`,
-      `Category: ${category}`,
-    ];
+    const fm: Record<string, unknown> = {
+      type: 'lore',
+      name,
+    };
 
-    for (const field of template.fields) {
-      if (field.key === 'Description') {
-        lines.push('Description:');
-        lines.push(description || field.defaultValue || '');
-      } else if (field.key !== 'Category') {
-        lines.push(`${field.key}: ${field.defaultValue}`);
-      }
-    }
+    if (category) fm.loreCategory = category;
 
-    if (!template.fields.some(f => f.key === 'Description') && description) {
-      lines.push('Description:');
-      lines.push(description);
-    }
-
-    if (template.includeImages) {
-      lines.push('Images:', '');
+    if (description) fm.description = description;
+    else {
+      const descField = template.fields.find(f => f.key === 'Description');
+      if (descField?.defaultValue) fm.description = descField.defaultValue;
     }
 
     if (template.customPropertyDefs.length > 0) {
-      lines.push('CustomProperties:');
+      const custom: Record<string, string> = {};
       for (const def of template.customPropertyDefs) {
-        lines.push(`- ${def.key}: ${def.defaultValue}`);
+        if (def.defaultValue) custom[def.key] = def.defaultValue;
       }
+      if (Object.keys(custom).length > 0) fm.custom = custom;
     }
 
-    if (template.sections.length > 0) {
-      lines.push('Sections:');
-      for (const section of template.sections) {
-        lines.push(section.title);
-        if (section.defaultContent) {
-          lines.push(section.defaultContent);
-        }
-        lines.push('---');
-      }
-    }
+    if (template.id) fm.novalist_templateId = template.id;
 
-    return lines.join('\n');
+    const bodyParts: string[] = [];
+    for (const section of template.sections) {
+      bodyParts.push(`## ${section.title}\n\n${section.defaultContent || ''}`);
+    }
+    const body = bodyParts.join('\n\n');
+
+    return serializeFrontmatterAndBody(fm, body);
   }
 
   async createItem(name: string, description: string, templateId?: string, useWorldBible?: boolean): Promise<void> {
@@ -1975,28 +1963,150 @@ export default class NovalistPlugin extends Plugin {
       ? requestedOrder
       : Math.max(1, maxOrder + 1);
     const guid = this.generateGuid();
-    const content = `---
-guid: ${guid}
-order: ${orderValue}
----
-
-# ${name}
-
-(Write your story here)
-`;
+    const fm: Record<string, unknown> = {
+      guid,
+      order: orderValue,
+    };
+    const content = serializeFrontmatterAndBody(fm, `# ${name}\n\n(Write your story here)`);
 
     await this.app.vault.create(path, content);
     new Notice(t('notice.chapterCreated', { name }));
   }
 
   async createScene(chapterFile: TFile, sceneName: string): Promise<void> {
+    // Scene-based: create a new scene file in Scenes/
+    if (this.isSceneBasedProject()) {
+      const cache = this.app.metadataCache.getFileCache(chapterFile);
+      const cfm = cache?.frontmatter as Record<string, unknown> | undefined;
+
+      // Support both raw scene files and assembled chapter files as input
+      const isAssembled = this.assembledChapterPaths.has(chapterFile.path);
+      const chapterNum = isAssembled
+        ? (Number(cfm?.order) || 1)
+        : (Number(cfm?.chapter) || 1);
+      const chapterName = isAssembled
+        ? (this.extractTitle(this.stripFrontmatter(await this.app.vault.read(chapterFile))) || '')
+        : (typeof cfm?.novalist_chapterName === 'string' ? cfm.novalist_chapterName : '');
+      const chapterId = isAssembled
+        ? (typeof cfm?.guid === 'string' ? cfm.guid : '')
+        : (typeof cfm?.novalist_chapterId === 'string' ? cfm.novalist_chapterId : '');
+      const act = isAssembled ? cfm?.act : cfm?.act;
+
+      // Calculate next sequence number from existing scene files
+      const root = this.resolvedProjectPath();
+      const scenesFolder = `${root}/Scenes/`;
+      const siblings = this.app.vault.getFiles()
+        .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md')
+        .filter(f => Number(this.app.metadataCache.getFileCache(f)?.frontmatter?.chapter) === chapterNum);
+      const maxSeq = siblings.reduce((max, sf) => {
+        const seq = Number(this.app.metadataCache.getFileCache(sf)?.frontmatter?.sequence) || 0;
+        return Math.max(max, seq);
+      }, 0);
+
+      const safeName = sceneName.replace(/[/:*?"<>|]/g, '_');
+      const seqStr = String(maxSeq + 1).padStart(3, '0');
+      const scenePath = `${root}/Scenes/${seqStr} - ${safeName}.md`;
+      const fmObj: Record<string, unknown> = {
+        type: 'scene',
+        title: sceneName,
+        chapter: chapterNum,
+        sequence: maxSeq + 1,
+        status: 'draft',
+      };
+      if (act != null) fmObj.act = act;
+      if (chapterId) fmObj.novalist_chapterId = chapterId;
+      if (chapterName) fmObj.novalist_chapterName = chapterName;
+
+      const fmStr = serializeFrontmatterAndBody(fmObj, '');
+      // Ensure Scenes folder exists
+      const scenesFolderPath = `${root}/Scenes`;
+      if (!this.app.vault.getAbstractFileByPath(scenesFolderPath)) {
+        await this.app.vault.createFolder(scenesFolderPath);
+      }
+      // Create scene file (skip if already exists)
+      if (!this.app.vault.getAbstractFileByPath(scenePath)) {
+        await this.app.vault.create(scenePath, fmStr);
+      }
+      new Notice(t('notice.sceneCreated', { name: sceneName }));
+
+      // Re-assemble if the chapter is currently tracked
+      await this.reassembleIfTracked(chapterNum);
+      return;
+    }
+
+    // Legacy: add H2 heading to chapter file
     const content = await this.app.vault.read(chapterFile);
     const newScene = `\n\n## ${sceneName}\n\n`;
     await this.app.vault.modify(chapterFile, content + newScene);
     new Notice(t('notice.sceneCreated', { name: sceneName }));
   }
 
+  promptSceneName(chapterFile: TFile): void {
+    const modal = new SceneNameModal(this.app, (data) => {
+      void this.createScene(chapterFile, data.name).then(async () => {
+        if (data.date && this.isSceneBasedProject()) {
+          // For scene-based, find the newly created scene file by title
+          const root = this.resolvedProjectPath();
+          const scenesFolder = `${root}/Scenes/`;
+          const sceneFile = this.app.vault.getFiles().find(f => {
+            if (!f.path.startsWith(scenesFolder) || f.extension !== 'md') return false;
+            const c = this.app.metadataCache.getFileCache(f);
+            return (c?.frontmatter as Record<string, unknown> | undefined)?.title === data.name;
+          });
+          if (sceneFile) {
+            const content = await this.app.vault.read(sceneFile);
+            const { frontmatter: sfm, body: sBody } = extractFmAndBody(content);
+            sfm.storyDate = data.date;
+            await this.app.vault.modify(sceneFile, serializeFrontmatterAndBody(sfm, sBody));
+            // Re-assemble to pick up the date
+            const chapterNum = Number(sfm.chapter);
+            if (chapterNum) await this.reassembleIfTracked(chapterNum);
+          }
+        } else if (data.date) {
+          await this.setSceneDate(chapterFile, data.name, data.date);
+        }
+      });
+    });
+    modal.open();
+  }
+
   getScenesForChapter(file: TFile): string[] {
+    // Assembled chapter files: use H2 headings directly (identical to legacy)
+    if (this.assembledChapterPaths.has(file.path)) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      if (!cache?.headings) return [];
+      return cache.headings
+        .filter(h => h.level === 2)
+        .map(h => h.heading);
+    }
+
+    // Scene-based: find all scene files with the same chapter number
+    if (this.isSceneBasedProject()) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+      const chapterNum = Number(fm?.chapter);
+      if (!chapterNum) return [file.basename];
+      const root = this.resolvedProjectPath();
+      const scenesFolder = `${root}/Scenes/`;
+      return this.app.vault.getFiles()
+        .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md')
+        .filter(f => {
+          const c = this.app.metadataCache.getFileCache(f);
+          return Number(c?.frontmatter?.chapter) === chapterNum;
+        })
+        .sort((a, b) => {
+          const sa = Number(this.app.metadataCache.getFileCache(a)?.frontmatter?.sequence) || 999;
+          const sb = Number(this.app.metadataCache.getFileCache(b)?.frontmatter?.sequence) || 999;
+          return sa - sb;
+        })
+        .map(f => {
+          const c = this.app.metadataCache.getFileCache(f);
+          const title = (c?.frontmatter as Record<string, unknown> | undefined)?.title;
+          return typeof title === 'string' && title ? title : f.basename;
+        });
+    }
+
+    // Legacy: H2 headings within chapter file
     const cache = this.app.metadataCache.getFileCache(file);
     if (!cache?.headings) return [];
     return cache.headings
@@ -2005,6 +2115,12 @@ order: ${orderValue}
   }
 
   async getScenesForChapterAsync(file: TFile): Promise<string[]> {
+    // Scene-based projects use the sync path (metadata cache is sufficient)
+    if (this.isSceneBasedProject()) {
+      return this.getScenesForChapter(file);
+    }
+
+    // Legacy: parse H2 headings from file content
     const content = await this.app.vault.read(file);
     const scenes: string[] = [];
     const regex = /^##\s+(.+)$/gm;
@@ -2016,6 +2132,8 @@ order: ${orderValue}
   }
 
   getCurrentSceneForLine(file: TFile, line: number): string | null {
+    // Scene-based projects always use assembled chapter files which have H2 headings,
+    // so we can use the same logic as legacy chapter files.
     const cache = this.app.metadataCache.getFileCache(file);
     if (!cache?.headings) return null;
     const h2s = cache.headings.filter(h => h.level === 2);
@@ -2109,17 +2227,6 @@ order: ${orderValue}
 
   openChapterDescriptionModal(existing?: ChapterEditData, onSave?: (data: ChapterEditData) => void): void {
     new ChapterDescriptionModal(this.app, this, existing, onSave).open();
-  }
-
-  promptSceneName(chapterFile: TFile): void {
-    const modal = new SceneNameModal(this.app, (data) => {
-      void this.createScene(chapterFile, data.name).then(async () => {
-        if (data.date) {
-          await this.setSceneDate(chapterFile, data.name, data.date);
-        }
-      });
-    });
-    modal.open();
   }
 
   // ─── AI / Ollama ─────────────────────────────────────────────────
@@ -2356,15 +2463,30 @@ order: ${orderValue}
     return acts;
   }
 
-  /** Get the act name for a chapter file (from frontmatter). */
+  /** Get the act name for a chapter/scene file (from frontmatter). */
   getActForFileSync(file: TFile): string {
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
-    return typeof fm?.act === 'string' ? fm.act.trim() : '';
+    // Act may be a number (scene-based) or string (chapter-based)
+    if (fm?.act != null) return String(fm.act).trim();
+    return '';
   }
 
   /** Assign a chapter to an act by updating its frontmatter. */
   async assignChapterToAct(file: TFile, actName: string): Promise<void> {
+    // Scene-based: update all scene files in the same chapter
+    if (this.isSceneBasedProject()) {
+      const siblings = this.getSceneFilesInChapter(file);
+      for (const sf of siblings) {
+        const c = await this.app.vault.read(sf);
+        const { frontmatter, body } = this.extractFrontmatterAndBody(c);
+        frontmatter.act = actName;
+        await this.app.vault.modify(sf, this.serializeFrontmatter(frontmatter) + body);
+      }
+      new Notice(t('notice.chapterAssignedToAct', { name: actName }));
+      return;
+    }
+
     const content = await this.app.vault.read(file);
     const { frontmatter, body } = this.extractFrontmatterAndBody(content);
     frontmatter.act = actName;
@@ -2375,6 +2497,19 @@ order: ${orderValue}
 
   /** Remove a chapter from its act. */
   async removeChapterFromAct(file: TFile): Promise<void> {
+    // Scene-based: update all scene files in the same chapter
+    if (this.isSceneBasedProject()) {
+      const siblings = this.getSceneFilesInChapter(file);
+      for (const sf of siblings) {
+        const c = await this.app.vault.read(sf);
+        const { frontmatter, body } = this.extractFrontmatterAndBody(c);
+        delete frontmatter.act;
+        await this.app.vault.modify(sf, this.serializeFrontmatter(frontmatter) + body);
+      }
+      new Notice(t('notice.chapterRemovedFromAct'));
+      return;
+    }
+
     const content = await this.app.vault.read(file);
     const { frontmatter, body } = this.extractFrontmatterAndBody(content);
     delete frontmatter.act;
@@ -2489,6 +2624,34 @@ order: ${orderValue}
   }
 
   parseCharacterSheetForSidebar(content: string): { name: string; surname: string; gender: string; age: string; role: string; group: string; templateId: string; customProperties: Record<string, string> } | null {
+    // ── YAML frontmatter format ────────────────────────────────────
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'character') {
+      const fullName = typeof frontmatter.name === 'string' ? frontmatter.name : '';
+      const nameParts = fullName.split(' ');
+      const custom = (typeof frontmatter.custom === 'object' && frontmatter.custom !== null && !Array.isArray(frontmatter.custom))
+        ? frontmatter.custom as Record<string, unknown>
+        : {};
+      const str = (v: unknown): string => typeof v === 'string' ? v : '';
+      const customProperties: Record<string, string> = {};
+      for (const [k, v] of Object.entries(custom)) {
+        if (!['gender', 'group', 'eyeColor', 'hairColor', 'hairLength', 'height', 'build', 'skinTone'].includes(k)) {
+          customProperties[k] = str(v);
+        }
+      }
+      return {
+        name: nameParts[0] || '',
+        surname: nameParts.slice(1).join(' '),
+        gender: str(custom.gender),
+        age: str(frontmatter.age),
+        role: str(frontmatter.role),
+        group: str(custom.group),
+        templateId: str(frontmatter.novalist_templateId),
+        customProperties,
+      };
+    }
+
+    // ── Legacy ## CharacterSheet format ─────────────────────────────
     const sheetLines = this.getSectionLines(content, 'CharacterSheet');
     if (sheetLines.length === 0) return null;
     
@@ -2545,6 +2708,34 @@ order: ${orderValue}
   }
 
   parseCharacterSheetChapterOverrides(content: string): Array<{ chapter: string; act?: string; scene?: string; overrides: Record<string, string>; info: string; customProperties?: Record<string, string> }> {
+    // ── YAML frontmatter format ────────────────────────────────────
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'character' && Array.isArray(frontmatter.novalist_chapterOverrides)) {
+      return (frontmatter.novalist_chapterOverrides as Record<string, unknown>[]).map(o => {
+        const str = (v: unknown): string => typeof v === 'string' ? v : '';
+        const overrides: Record<string, string> = {};
+        const customProperties: Record<string, string> = {};
+        for (const [k, v] of Object.entries(o)) {
+          if (['chapter', 'act', 'scene', 'images', 'relationships', 'customProperties'].includes(k)) continue;
+          overrides[k] = str(v);
+        }
+        if (typeof o.customProperties === 'object' && o.customProperties !== null && !Array.isArray(o.customProperties)) {
+          for (const [k, v] of Object.entries(o.customProperties as Record<string, unknown>)) {
+            customProperties[k] = str(v);
+          }
+        }
+        return {
+          chapter: str(o.chapter),
+          act: str(o.act) || undefined,
+          scene: str(o.scene) || undefined,
+          overrides,
+          info: '',
+          customProperties: Object.keys(customProperties).length > 0 ? customProperties : undefined,
+        };
+      });
+    }
+
+    // ── Legacy ## CharacterSheet format ─────────────────────────────
     const sheetLines = this.getSectionLines(content, 'CharacterSheet');
     if (sheetLines.length === 0) return [];
     
@@ -2642,6 +2833,22 @@ order: ${orderValue}
     chapterId: string,
     chapterName?: string
   ): Array<{ name: string; path: string }> | null {
+    // ── YAML frontmatter format ────────────────────────────────────
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'character' && Array.isArray(frontmatter.novalist_chapterOverrides)) {
+      for (const o of frontmatter.novalist_chapterOverrides as Record<string, unknown>[]) {
+        const ch = typeof o.chapter === 'string' ? o.chapter : '';
+        if (ch === chapterId || (chapterName && ch === chapterName)) {
+          if (Array.isArray(o.images) && o.images.length > 0) {
+            return (o.images as { name: string; path: string }[]);
+          }
+          return null;
+        }
+      }
+      return null;
+    }
+
+    // ── Legacy ## CharacterSheet format ─────────────────────────────
     const sheetLines = this.getSectionLines(content, 'CharacterSheet');
     if (sheetLines.length === 0) return null;
     
@@ -2696,6 +2903,17 @@ order: ${orderValue}
 
   async parseLocationFile(file: TFile): Promise<LocationData> {
     const content = await this.app.vault.read(file);
+
+    // ── YAML frontmatter format ────────────────────────────────────
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'location' || frontmatter.type === 'world') {
+      return {
+        name: typeof frontmatter.name === 'string' ? frontmatter.name : file.basename,
+        description: typeof frontmatter.description === 'string' ? frontmatter.description : '',
+      };
+    }
+
+    // ── Legacy format ──────────────────────────────────────────────
     const body = this.stripFrontmatter(content);
     const descSection = this.getSectionLines(body, 'Description').join('\n');
 
@@ -2724,6 +2942,23 @@ order: ${orderValue}
   }
 
   parseCharacterSheetImages(content: string): Array<{ name: string; path: string }> {
+    // ── YAML frontmatter format ────────────────────────────────────
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'character') {
+      const images: Array<{ name: string; path: string }> = [];
+      const rawImages = frontmatter.novalist_images as { name?: string; path?: string }[] | undefined;
+      if (Array.isArray(rawImages) && rawImages.length > 0) {
+        for (const img of rawImages) {
+          const p = typeof img.path === 'string' ? img.path.replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim() : '';
+          if (p) images.push({ name: (typeof img.name === 'string' ? img.name : '') || 'Main', path: p });
+        }
+      } else if (typeof frontmatter.image === 'string' && frontmatter.image) {
+        images.push({ name: 'Portrait', path: frontmatter.image.replace(/^!/, '').trim() });
+      }
+      return images;
+    }
+
+    // ── Legacy ## CharacterSheet format ─────────────────────────────
     const sheetLines = this.getSectionLines(content, 'CharacterSheet');
     if (sheetLines.length === 0) return [];
     
@@ -2827,6 +3062,11 @@ order: ${orderValue}
         }
     }
 
+    // Strip stray embed marker (e.g. legacy "!path" after wikilink removal)
+    if (cleanPath.startsWith('!') && !cleanPath.startsWith('![')) {
+      cleanPath = cleanPath.substring(1).trim();
+    }
+
     const file = this.app.metadataCache.getFirstLinkpathDest(cleanPath, sourcePath);
     return file instanceof TFile ? file : null;
   }
@@ -2911,6 +3151,13 @@ order: ${orderValue}
 
   async getChapterDescriptions(): Promise<Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }>> {
     const root = this.resolvedProjectPath();
+
+    // ── New scene-based format ───────────────────────────────────
+    if (this.isSceneBasedProject()) {
+      return this.getChapterDescriptionsFromScenes();
+    }
+
+    // ── Legacy chapter-based format ──────────────────────────────
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
 
@@ -2945,17 +3192,113 @@ order: ${orderValue}
     });
   }
 
+  /**
+   * Build chapter descriptions from individual scene files (new YAML format).
+   * Groups scenes by their `chapter` frontmatter field and reconstructs chapter metadata.
+   */
+  private getChapterDescriptionsFromScenes(): Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }> {
+    const root = this.resolvedProjectPath();
+    const scenesFolder = `${root}/Scenes/`;
+    const sceneFiles = this.app.vault.getFiles().filter(
+      f => f.path.startsWith(scenesFolder) && f.extension === 'md'
+    );
+
+    // Group scene files by chapter number
+    const chapterMap = new Map<number, Array<{ file: TFile; fm: Record<string, unknown>; sequence: number }>>();
+
+    for (const file of sceneFiles) {
+      const cache = this.app.metadataCache.getFileCache(file);
+      const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
+      const chapterNum = Number(fm.chapter) || 0;
+      const sequence = Number(fm.sequence) || 999;
+      if (!chapterMap.has(chapterNum)) chapterMap.set(chapterNum, []);
+      chapterMap.get(chapterNum)?.push({ file, fm, sequence });
+    }
+
+    const chapters: Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }> = [];
+
+    for (const [chapterNum, sceneEntries] of chapterMap) {
+      // Sort scenes within the chapter by sequence
+      sceneEntries.sort((a, b) => a.sequence - b.sequence);
+      const first = sceneEntries[0];
+
+      // Derive chapter metadata from the first scene
+      const chapterName = typeof first.fm.novalist_chapterName === 'string'
+        ? first.fm.novalist_chapterName
+        : `Chapter ${chapterNum}`;
+      const chapterId = typeof first.fm.novalist_chapterId === 'string' && first.fm.novalist_chapterId
+        ? first.fm.novalist_chapterId
+        : `chapter-${chapterNum}`;
+
+      // Map SL scene status back to Novalist chapter status
+      const rawStatus = first.fm.status;
+      const sceneStatus = typeof rawStatus === 'string' ? rawStatus : 'draft';
+      const status = this.sceneStatusToChapterStatus(sceneStatus);
+
+      // Act — may be number or string in scene frontmatter
+      const rawAct = first.fm.act;
+      const act = rawAct != null && rawAct !== '' ? `${rawAct as string | number}` : '';
+
+      // Date — storyDate in scene frontmatter
+      const rawDate = first.fm.storyDate;
+      const date = rawDate != null ? this.coerceDateValue(rawDate) : '';
+
+      // Scene display names — use frontmatter title (original scene name) or cleaned basename
+      const sceneNames = sceneEntries.map(e => {
+        const title = e.fm.title;
+        return typeof title === 'string' && title ? title : e.file.basename;
+      });
+
+      chapters.push({
+        id: chapterId,
+        name: chapterName,
+        order: chapterNum,
+        status,
+        act,
+        date,
+        file: first.file,
+        scenes: sceneNames,
+      });
+    }
+
+    return chapters.sort((a, b) => {
+      const orderDiff = a.order - b.order;
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  /** Map StoryLine scene status strings to Novalist's ChapterStatus for display. */
+  /** Map StoryLine scene status strings to Novalist's ChapterStatus for display. */
+  sceneStatusToChapterStatus(sceneStatus: string): ChapterStatus {
+    switch (sceneStatus) {
+      case 'idea': return 'outline';
+      case 'outlined': return 'outline';
+      case 'draft': return 'first-draft';
+      case 'written': return 'edited';
+      case 'revised': return 'revised';
+      case 'final': return 'final';
+      default: return 'outline';
+    }
+  }
+
   getChapterList(): ChapterListData[] {
     const chapters = this.getChapterDescriptionsSync();
     return chapters.map((chapter) => ({
       name: chapter.name,
       order: chapter.order,
       file: chapter.file,
-      scenes: this.getScenesForChapter(chapter.file)
+      scenes: chapter.scenes
     }));
   }
 
   getChapterDescriptionsSync(): Array<{ id: string; name: string; order: number; status: ChapterStatus; act: string; date: string; file: TFile; scenes: string[] }> {
+    // Scene-based projects share the same sync-friendly logic
+    if (this.isSceneBasedProject()) {
+      return this.getChapterDescriptionsFromScenes();
+    }
+
+    // Legacy chapter-based format
     const root = this.resolvedProjectPath();
     const folder = `${root}/${this.settings.chapterFolder}/`;
     const files = this.app.vault.getFiles().filter((f) => f.path.startsWith(folder) && f.extension === 'md');
@@ -2989,6 +3332,21 @@ order: ${orderValue}
   }
 
   async updateChapterOrder(chapterFiles: TFile[]): Promise<void> {
+    // Scene-based: chapterFiles are first-scene references for each chapter.
+    // Update the `chapter` field on all sibling scenes.
+    if (this.isSceneBasedProject()) {
+      for (let i = 0; i < chapterFiles.length; i++) {
+        const siblings = this.getSceneFilesInChapter(chapterFiles[i]);
+        for (const sf of siblings) {
+          const c = await this.app.vault.read(sf);
+          const { frontmatter, body } = this.extractFrontmatterAndBody(c);
+          frontmatter.chapter = i + 1;
+          await this.app.vault.modify(sf, this.serializeFrontmatter(frontmatter) + body);
+        }
+      }
+      return;
+    }
+
     for (let i = 0; i < chapterFiles.length; i++) {
       const file = chapterFiles[i];
       const content = await this.app.vault.read(file);
@@ -3039,6 +3397,8 @@ order: ${orderValue}
     if (!file) return '';
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
+    // Scene-based: storyDate field
+    if (fm?.storyDate != null) return this.coerceDateValue(fm.storyDate);
     return this.coerceDateValue(fm?.date);
   }
 
@@ -3047,6 +3407,10 @@ order: ${orderValue}
     if (!file) return '';
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter;
+
+    // Scene-based format: each scene file has its own storyDate
+    if (fm?.storyDate != null) return this.coerceDateValue(fm.storyDate);
+
     if (fm?.sceneDates && typeof fm.sceneDates === 'object') {
       const sd = fm.sceneDates as Record<string, unknown>;
       // Try exact key match first
@@ -3111,6 +3475,14 @@ order: ${orderValue}
   detectCharacterRole(content: string, frontmatter: Record<string, string>): string {
       let role = frontmatter.role;
       if (!role) {
+         // ── YAML frontmatter format ────────────────────────────────
+         const { frontmatter: fm } = extractFmAndBody(content);
+         if (fm.type === 'character' && typeof fm.role === 'string') {
+           role = fm.role;
+         }
+      }
+      if (!role) {
+         // ── Legacy ## CharacterSheet format ─────────────────────────
          const sheetLines = this.getSectionLines(content, 'CharacterSheet');
          if (sheetLines.length > 0) {
            const sheetContent = sheetLines.join('\n');
@@ -3144,8 +3516,13 @@ order: ${orderValue}
       const group = entry?.group ?? sheetData?.group ?? '';
       const surname = entry?.surname ?? sheetData?.surname ?? '';
 
+      // Prefer the frontmatter name (StoryLine may rename without renaming the file)
+      const displayName = sheetData?.name
+        ? (sheetData.surname ? `${sheetData.name} ${sheetData.surname}` : sheetData.name)
+        : file.basename;
+
       chars.push({
-        name: file.basename,
+        name: displayName,
         file,
         role,
         gender,
@@ -3159,9 +3536,22 @@ order: ${orderValue}
 
   async updateCharacterRole(file: TFile, roleLabel: string): Promise<void> {
     const content = await this.app.vault.read(file);
+    const trimmedRole = roleLabel.trim();
+
+    // ── YAML frontmatter format — use dual-format sheet utils ────
+    const { frontmatter: fmCheck } = extractFmAndBody(content);
+    if (fmCheck.type === 'character') {
+      const sheet = parseCharacterSheet(content);
+      sheet.role = trimmedRole;
+      const updated = serializeCharacterSheet(sheet);
+      await this.app.vault.modify(file, updated);
+      new Notice(t('notice.updatedRole', { name: file.basename, role: trimmedRole || t('general.unassigned') }));
+      return;
+    }
+
+    // ── Legacy format ──────────────────────────────────────────────
     let { frontmatter, body } = this.extractFrontmatterAndBody(content);
     const hasFrontmatter = Object.keys(frontmatter).length > 0;
-    const trimmedRole = roleLabel.trim();
     
     // Update frontmatter only if it existed or if we want to enforce it (but we don't anymore)
     if (frontmatter.role) {
@@ -3341,6 +3731,16 @@ order: ${orderValue}
   }
 
   private extractLocationHierarchyFields(content: string): { type: string; parent: string } {
+    // ── YAML frontmatter format ────────────────────────────────────
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'location' || frontmatter.type === 'world') {
+      return {
+        type: typeof frontmatter.locationType === 'string' ? frontmatter.locationType : '',
+        parent: typeof frontmatter.parent === 'string' ? `[[${frontmatter.parent}]]` : '',
+      };
+    }
+
+    // ── Legacy ## LocationSheet format ─────────────────────────────
     const sheetMatch = content.match(/## LocationSheet\n([\s\S]*?)(?=\n## |$)/);
     if (!sheetMatch) return { type: '', parent: '' };
     const sheet = sheetMatch[1];
@@ -3352,6 +3752,21 @@ order: ${orderValue}
   }
 
   private extractCharacterHierarchyFields(content: string): { surname: string; group: string } {
+    // ── YAML frontmatter format ────────────────────────────────────
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'character') {
+      const fullName = typeof frontmatter.name === 'string' ? frontmatter.name : '';
+      const nameParts = fullName.split(' ');
+      const custom = (typeof frontmatter.custom === 'object' && frontmatter.custom !== null && !Array.isArray(frontmatter.custom))
+        ? frontmatter.custom as Record<string, unknown>
+        : {};
+      return {
+        surname: nameParts.slice(1).join(' '),
+        group: typeof custom.group === 'string' ? custom.group : '',
+      };
+    }
+
+    // ── Legacy ## CharacterSheet format ─────────────────────────────
     const sheetMatch = content.match(/## CharacterSheet\n([\s\S]*?)(?=\n## |$)/);
     if (!sheetMatch) return { surname: '', group: '' };
     const sheet = sheetMatch[1];
@@ -3516,11 +3931,14 @@ order: ${orderValue}
     const files = this.app.vault.getFiles().filter((f) =>
       (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
     );
-    const cache = this.getProjectData().entityHierarchy?.locations ?? {};
+    const hierarchyCache = this.getProjectData().entityHierarchy?.locations ?? {};
     return files.map((file) => {
-      const entry = cache[file.path];
+      const entry = hierarchyCache[file.path];
+      // Prefer frontmatter name (StoryLine may rename without renaming the file)
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const fmName = typeof fm?.name === 'string' && fm.name ? fm.name : '';
       return {
-        name: file.basename,
+        name: fmName || file.basename,
         file,
         type: entry?.type ?? '',
         parent: entry?.parent ?? '',
@@ -3537,11 +3955,16 @@ order: ${orderValue}
       (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
     );
 
-    return files.map((file) => ({
-      name: file.basename,
-      file,
-      type: ''
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    return files.map((file) => {
+      // Prefer frontmatter name (StoryLine may rename without renaming the file)
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const fmName = typeof fm?.name === 'string' && fm.name ? fm.name : '';
+      return {
+        name: fmName || file.basename,
+        file,
+        type: ''
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   getLoreList(): LoreListData[] {
@@ -3553,15 +3976,26 @@ order: ${orderValue}
       (f.path.startsWith(folder) || (wbFolder && f.path.startsWith(wbFolder))) && f.extension === 'md'
     );
 
-    return files.map((file) => ({
-      name: file.basename,
-      file,
-      category: ''
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    return files.map((file) => {
+      // Prefer frontmatter name (StoryLine may rename without renaming the file)
+      const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+      const fmName = typeof fm?.name === 'string' && fm.name ? fm.name : '';
+      return {
+        name: fmName || file.basename,
+        file,
+        category: ''
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   getChapterNameForFileSync(file: TFile): string {
     const cache = this.app.metadataCache.getFileCache(file);
+    const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+    // Scene-based: use novalist_chapterName, fall back to file basename
+    if (typeof fm?.novalist_chapterName === 'string' && fm.novalist_chapterName) {
+      return fm.novalist_chapterName;
+    }
+    // Legacy chapter-based: use H1 heading
     const heading = cache?.headings?.find(h => h.level === 1)?.heading;
     return heading || file.basename;
   }
@@ -3573,6 +4007,11 @@ order: ${orderValue}
   getChapterIdForFileSync(file: TFile): string {
     const cache = this.app.metadataCache.getFileCache(file);
     const frontmatter = cache?.frontmatter as Record<string, unknown> | undefined;
+    // Scene-based: use novalist_chapterId
+    if (typeof frontmatter?.novalist_chapterId === 'string' && frontmatter.novalist_chapterId.trim()) {
+      return frontmatter.novalist_chapterId.trim();
+    }
+    // Legacy chapter-based: use guid
     const guid = typeof frontmatter?.guid === 'string' ? frontmatter.guid.trim() : '';
     return guid ? guid : file.basename;
   }
@@ -4034,6 +4473,16 @@ order: ${orderValue}
 
   async parseItemFile(file: TFile): Promise<{ name: string; type: string; description: string }> {
     const content = await this.app.vault.read(file);
+    // Try YAML frontmatter first
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'item') {
+      return {
+        name: typeof frontmatter.name === 'string' ? frontmatter.name : file.basename,
+        type: typeof frontmatter.itemType === 'string' ? frontmatter.itemType : '',
+        description: typeof frontmatter.description === 'string' ? frontmatter.description : '',
+      };
+    }
+    // Legacy fallback
     const body = this.stripFrontmatter(content);
     const typeLines = this.getSectionLines(body, 'Type');
     const descLines = this.getSectionLines(body, 'Description');
@@ -4046,6 +4495,16 @@ order: ${orderValue}
 
   async parseLoreFile(file: TFile): Promise<{ name: string; category: string; description: string }> {
     const content = await this.app.vault.read(file);
+    // Try YAML frontmatter first
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'lore') {
+      return {
+        name: typeof frontmatter.name === 'string' ? frontmatter.name : file.basename,
+        category: typeof frontmatter.loreCategory === 'string' ? frontmatter.loreCategory : '',
+        description: typeof frontmatter.description === 'string' ? frontmatter.description : '',
+      };
+    }
+    // Legacy fallback
     const body = this.stripFrontmatter(content);
     const catLines = this.getSectionLines(body, 'Category');
     const descLines = this.getSectionLines(body, 'Description');
@@ -4441,17 +4900,375 @@ order: ${orderValue}
     return false;
   }
 
+  /**
+   * Detect whether the active project uses the new scene-based format
+   * (individual scene files in Scenes/) vs the old chapter-based format
+   * (chapter files in Chapters/ with H2 scenes).
+   */
+  isSceneBasedProject(): boolean {
+    const root = this.resolvedProjectPath();
+    if (!root) return false;
+    const scenesFolder = `${root}/Scenes/`;
+    return this.app.vault.getFiles().some(
+      f => f.path.startsWith(scenesFolder) && f.extension === 'md'
+    );
+  }
+
+  /**
+   * Get all scene files that belong to the same chapter as the given scene file.
+   * Used by scene-based projects to batch-update chapter-level metadata.
+   */
+  private getSceneFilesInChapter(file: TFile): TFile[] {
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+    const chapterNum = Number(fm?.chapter);
+    if (!chapterNum) return [file];
+    const root = this.resolvedProjectPath();
+    const scenesFolder = `${root}/Scenes/`;
+    return this.app.vault.getFiles()
+      .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md')
+      .filter(f => {
+        const c = this.app.metadataCache.getFileCache(f);
+        return Number(c?.frontmatter?.chapter) === chapterNum;
+      })
+      .sort((a, b) => {
+        const sa = Number(this.app.metadataCache.getFileCache(a)?.frontmatter?.sequence) || 999;
+        const sb = Number(this.app.metadataCache.getFileCache(b)?.frontmatter?.sequence) || 999;
+        return sa - sb;
+      });
+  }
+
   isChapterFile(file: TFile): boolean {
     const root = this.resolvedProjectPath();
-    const folder = `${root}/${this.settings.chapterFolder}/`;
-    return file.path.startsWith(folder);
+    if (!root) return false;
+    const chapterFolder = `${root}/${this.settings.chapterFolder}/`;
+    if (file.path.startsWith(chapterFolder)) return true;
+    return false;
   }
 
   isChapterPath(path: string): boolean {
       const root = this.resolvedProjectPath();
       if (!root) return false;
-      const folder = `${root}/${this.settings.chapterFolder}/`;
-      return path.startsWith(folder);
+      const chapterFolder = `${root}/${this.settings.chapterFolder}/`;
+      if (path.startsWith(chapterFolder)) return true;
+      return false;
+  }
+
+  /** Check whether a given file path is an assembled chapter file (built from scene files). */
+  isAssembledChapterFile(file: TFile): boolean {
+    return this.assembledChapterPaths.has(file.path);
+  }
+
+  // ─── Assemble / Decompose ────────────────────────────────────────
+
+  /**
+   * Assemble all scene files belonging to `chapterNum` into a single
+   * Chapters/ file that looks identical to the old chapter format.
+   * Returns the TFile of the assembled chapter.
+   */
+  async assembleChapterFromScenes(chapterNum: number): Promise<TFile | null> {
+    const root = this.resolvedProjectPath();
+    if (!root) return null;
+    const scenesFolder = `${root}/Scenes/`;
+    const sceneFiles = this.app.vault.getFiles()
+      .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md')
+      .filter(f => Number(this.app.metadataCache.getFileCache(f)?.frontmatter?.chapter) === chapterNum)
+      .sort((a, b) => {
+        const sa = Number(this.app.metadataCache.getFileCache(a)?.frontmatter?.sequence) || 999;
+        const sb = Number(this.app.metadataCache.getFileCache(b)?.frontmatter?.sequence) || 999;
+        return sa - sb;
+      });
+
+    if (sceneFiles.length === 0) return null;
+
+    // Read first scene to derive chapter metadata
+    const firstCache = this.app.metadataCache.getFileCache(sceneFiles[0]);
+    const firstFm = (firstCache?.frontmatter ?? {}) as Record<string, unknown>;
+    const chapterName = typeof firstFm.novalist_chapterName === 'string'
+      ? firstFm.novalist_chapterName
+      : `Chapter ${chapterNum}`;
+    const chapterId = typeof firstFm.novalist_chapterId === 'string' && firstFm.novalist_chapterId
+      ? firstFm.novalist_chapterId
+      : `chapter-${chapterNum}`;
+    const rawStatus = firstFm.status;
+    const sceneStatus = typeof rawStatus === 'string' ? rawStatus : 'draft';
+    const status = this.sceneStatusToChapterStatus(sceneStatus);
+    const rawAct = firstFm.act;
+    const act = rawAct != null && rawAct !== '' ? `${rawAct as string | number}` : '';
+    const chapterDate = this.coerceDateValue(firstFm.storyDate);
+
+    // Build assembled chapter frontmatter
+    const fm: Record<string, unknown> = {
+      guid: chapterId,
+      order: chapterNum,
+      status,
+      novalist_assembled: true,
+    };
+    if (act) fm.act = act;
+    if (chapterDate) fm.date = chapterDate;
+
+    // Collect per-scene dates for sceneDates map
+    const sceneDates: Record<string, string> = {};
+    for (const sf of sceneFiles) {
+      const c = this.app.metadataCache.getFileCache(sf);
+      const sfm = (c?.frontmatter ?? {}) as Record<string, unknown>;
+      const sceneTitle = typeof sfm.title === 'string' && sfm.title ? sfm.title : sf.basename;
+      const sd = this.coerceDateValue(sfm.storyDate);
+      if (sd) sceneDates[sceneTitle] = sd;
+    }
+    if (Object.keys(sceneDates).length > 0) {
+      fm.sceneDates = sceneDates;
+    }
+
+    // Build body: # ChapterName\n\n followed by ## SceneTitle sections
+    const bodyParts: string[] = [`# ${chapterName}`];
+    for (const sf of sceneFiles) {
+      const content = await this.app.vault.read(sf);
+      const c = this.app.metadataCache.getFileCache(sf);
+      const sfm = (c?.frontmatter ?? {}) as Record<string, unknown>;
+      const sceneTitle = typeof sfm.title === 'string' && sfm.title ? sfm.title : sf.basename;
+      const sceneBody = this.stripFrontmatter(content);
+      bodyParts.push(`## ${sceneTitle}\n\n${sceneBody.trim()}`);
+    }
+    const body = bodyParts.join('\n\n');
+    const assembledContent = serializeFrontmatterAndBody(fm, body);
+
+    // Write or update the chapter file
+    const chapterFolder = `${root}/${this.settings.chapterFolder}`;
+    if (!this.app.vault.getAbstractFileByPath(chapterFolder)) {
+      await this.app.vault.createFolder(chapterFolder);
+    }
+    // Sanitise name for file path
+    const safeName = chapterName.replace(/[/:*?"<>|]/g, '_');
+    const chapterPath = `${chapterFolder}/${safeName}.md`;
+
+    this.isSyncingFromScenes = true;
+    try {
+      const existing = this.app.vault.getAbstractFileByPath(chapterPath);
+      if (existing instanceof TFile) {
+        await this.app.vault.modify(existing, assembledContent);
+        this.assembledChapterPaths.add(existing.path);
+        return existing;
+      }
+      const created = await this.app.vault.create(chapterPath, assembledContent);
+      this.assembledChapterPaths.add(created.path);
+      return created;
+    } finally {
+      // Give Obsidian a tick to process the vault events before clearing the guard
+      setTimeout(() => { this.isSyncingFromScenes = false; }, 200);
+    }
+  }
+
+  /**
+   * Re-assemble the chapter file for the given chapter number if it is
+   * currently open / tracked (i.e. was previously assembled). This is
+   * used when external changes happen to the scene files.
+   */
+  async reassembleIfTracked(chapterNum: number): Promise<void> {
+    // Find any tracked chapter file for this chapter number
+    for (const p of this.assembledChapterPaths) {
+      const f = this.app.vault.getAbstractFileByPath(p);
+      if (!(f instanceof TFile)) continue;
+      const cache = this.app.metadataCache.getFileCache(f);
+      if (Number(cache?.frontmatter?.order) === chapterNum) {
+        await this.assembleChapterFromScenes(chapterNum);
+        return;
+      }
+    }
+  }
+
+  /**
+   * Decompose an assembled chapter file back into individual scene files.
+   * Matches H2 sections to existing scene files by title (frontmatter title).
+   * Updates scene file bodies + frontmatter metadata.
+   */
+  async decomposeChapterToScenes(chapterFile: TFile): Promise<void> {
+    if (!this.assembledChapterPaths.has(chapterFile.path)) return;
+    const content = await this.app.vault.read(chapterFile);
+    const { frontmatter: chFm } = extractFmAndBody(content);
+    const chapterNum = Number(chFm.order) || 0;
+    if (!chapterNum) return;
+
+    const root = this.resolvedProjectPath();
+    if (!root) return;
+
+    // Parse H2 sections from the assembled content
+    const body = this.stripFrontmatter(content);
+    const h2Sections = this.parseH2Sections(body);
+
+    // Gather existing scene files for this chapter
+    const scenesFolder = `${root}/Scenes/`;
+    const existingSceneFiles = this.app.vault.getFiles()
+      .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md')
+      .filter(f => Number(this.app.metadataCache.getFileCache(f)?.frontmatter?.chapter) === chapterNum)
+      .sort((a, b) => {
+        const sa = Number(this.app.metadataCache.getFileCache(a)?.frontmatter?.sequence) || 999;
+        const sb = Number(this.app.metadataCache.getFileCache(b)?.frontmatter?.sequence) || 999;
+        return sa - sb;
+      });
+
+    // Build a map from title → scene file for matching
+    const titleToSceneFile = new Map<string, TFile>();
+    for (const sf of existingSceneFiles) {
+      const c = this.app.metadataCache.getFileCache(sf);
+      const fm = (c?.frontmatter ?? {}) as Record<string, unknown>;
+      const fmTitle = typeof fm.title === 'string' && fm.title ? fm.title : sf.basename;
+      titleToSceneFile.set(fmTitle, sf);
+    }
+
+    // Extract chapter-level metadata from the assembled frontmatter
+    const chapterName = this.extractTitle(body) || `Chapter ${chapterNum}`;
+    const chapterId = typeof chFm.guid === 'string' ? chFm.guid : `chapter-${chapterNum}`;
+    const assembledAct = chFm.act;
+    const assembledSceneDates = (typeof chFm.sceneDates === 'object' && chFm.sceneDates !== null)
+      ? chFm.sceneDates as Record<string, string>
+      : {};
+
+    this.isSyncingFromChapter = true;
+    try {
+      const usedSceneFiles = new Set<string>();
+
+      for (let i = 0; i < h2Sections.length; i++) {
+        const section = h2Sections[i];
+        const seq = i + 1;
+
+        // Try to match to existing scene file
+        let sceneFile = titleToSceneFile.get(section.title);
+
+        if (sceneFile) {
+          usedSceneFiles.add(sceneFile.path);
+          // Update existing scene file
+          const sceneContent = await this.app.vault.read(sceneFile);
+          const { frontmatter: sfm } = extractFmAndBody(sceneContent);
+
+          // Update title if renamed
+          sfm.title = section.title;
+          sfm.sequence = seq;
+          sfm.chapter = chapterNum;
+          sfm.novalist_chapterName = chapterName;
+          sfm.novalist_chapterId = chapterId;
+          if (assembledAct != null && assembledAct !== '') {
+            sfm.act = assembledAct;
+          }
+          // Update storyDate from sceneDates map
+          if (assembledSceneDates[section.title]) {
+            sfm.storyDate = assembledSceneDates[section.title];
+          }
+
+          const newContent = serializeFrontmatterAndBody(sfm, section.body);
+          if (newContent !== sceneContent) {
+            await this.app.vault.modify(sceneFile, newContent);
+          }
+        } else {
+          // New scene (H2 added by user) — create a new scene file
+          const safeName = section.title.replace(/[/:*?"<>|]/g, '_');
+          const seqStr = String(seq).padStart(3, '0');
+          const scenePath = `${scenesFolder}${seqStr} - ${safeName}.md`;
+
+          if (!this.app.vault.getAbstractFileByPath(scenesFolder)) {
+            await this.app.vault.createFolder(scenesFolder);
+          }
+
+          const sfm: Record<string, unknown> = {
+            type: 'scene',
+            title: section.title,
+            chapter: chapterNum,
+            sequence: seq,
+            status: 'draft',
+            novalist_chapterId: chapterId,
+            novalist_chapterName: chapterName,
+          };
+          if (assembledAct != null && assembledAct !== '') sfm.act = assembledAct;
+          if (assembledSceneDates[section.title]) sfm.storyDate = assembledSceneDates[section.title];
+
+          const newContent = serializeFrontmatterAndBody(sfm, section.body);
+          if (!this.app.vault.getAbstractFileByPath(scenePath)) {
+            await this.app.vault.create(scenePath, newContent);
+          }
+        }
+      }
+
+      // Update sequence numbers on scene files that match by position
+      // (handles reordering)
+      // Already handled above — each section gets seq = i + 1
+    } finally {
+      setTimeout(() => { this.isSyncingFromChapter = false; }, 200);
+    }
+  }
+
+  /**
+   * Parse H2 sections from a chapter body (without frontmatter).
+   * Returns an array of { title, body } where body is the content between H2 headings.
+   */
+  private parseH2Sections(body: string): Array<{ title: string; body: string }> {
+    const lines = body.split('\n');
+    const sections: Array<{ title: string; body: string }> = [];
+    let currentTitle: string | null = null;
+    const currentLines: string[] = [];
+
+    for (const line of lines) {
+      const h2Match = line.match(/^##\s+(.+)$/);
+      if (h2Match) {
+        // Save previous section
+        if (currentTitle !== null) {
+          sections.push({ title: currentTitle, body: currentLines.join('\n').trim() });
+        }
+        currentTitle = h2Match[1].trim();
+        currentLines.length = 0;
+      } else if (currentTitle !== null) {
+        currentLines.push(line);
+      }
+      // Lines before the first H2 (e.g. H1 chapter title) are skipped
+    }
+    // Save last section
+    if (currentTitle !== null) {
+      sections.push({ title: currentTitle, body: currentLines.join('\n').trim() });
+    }
+    return sections;
+  }
+
+  /**
+   * Set up the vault event handler that decomposes assembled chapter files
+   * back to scene files on modification. Must be called once during onload().
+   */
+  private setupAssembledChapterSync(): void {
+    // On modify: if an assembled chapter file was changed, schedule decomposition
+    this.registerEvent(this.app.vault.on('modify', (file) => {
+      if (!(file instanceof TFile)) return;
+      if (this.isSyncingFromScenes) return;
+      if (!this.assembledChapterPaths.has(file.path)) return;
+
+      // Debounce: wait 2 seconds of inactivity before decomposing
+      if (this.decomposeTimer !== null) clearTimeout(this.decomposeTimer);
+      this.decomposeTimer = setTimeout(() => {
+        this.decomposeTimer = null;
+        void this.decomposeChapterToScenes(file);
+      }, 2000);
+    }));
+
+    // On modify of scene files: re-assemble if the chapter is tracked
+    this.registerEvent(this.app.vault.on('modify', (file) => {
+      if (!(file instanceof TFile)) return;
+      if (this.isSyncingFromChapter) return;
+      const root = this.resolvedProjectPath();
+      if (!root) return;
+      const scenesFolder = `${root}/Scenes/`;
+      if (!file.path.startsWith(scenesFolder) || file.extension !== 'md') return;
+
+      const cache = this.app.metadataCache.getFileCache(file);
+      const chapterNum = Number(cache?.frontmatter?.chapter);
+      if (!chapterNum) return;
+
+      // Only re-assemble if we're tracking this chapter
+      void this.reassembleIfTracked(chapterNum);
+    }));
+
+    // Clean up assembled files when they are deleted (e.g. user closes project)
+    this.registerEvent(this.app.vault.on('delete', (file) => {
+      if (file instanceof TFile) {
+        this.assembledChapterPaths.delete(file.path);
+      }
+    }));
   }
 
   isTemplateFile(file: TFile): boolean {
@@ -5413,6 +6230,13 @@ order: ${orderValue}
   }
 
   private parseLocationTypeFromContent(content: string): string {
+    // ── YAML frontmatter format ────────────────────────────────────
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'location' || frontmatter.type === 'world') {
+      return typeof frontmatter.locationType === 'string' ? frontmatter.locationType : '';
+    }
+
+    // ── Legacy format ──────────────────────────────────────────
     const sheetLines = this.getSectionLines(content, 'LocationSheet');
     for (const line of sheetLines) {
       const match = line.match(/^\s*Type:\s*(.+)$/);
@@ -5422,6 +6246,20 @@ order: ${orderValue}
   }
 
   private parseLocationCustomProperties(content: string): Record<string, string> {
+    // ── YAML frontmatter format ────────────────────────────────────
+    const { frontmatter } = extractFmAndBody(content);
+    if (frontmatter.type === 'location' || frontmatter.type === 'world') {
+      if (typeof frontmatter.custom === 'object' && frontmatter.custom !== null && !Array.isArray(frontmatter.custom)) {
+        const props: Record<string, string> = {};
+        for (const [k, v] of Object.entries(frontmatter.custom as Record<string, unknown>)) {
+          props[k] = typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : '';
+        }
+        return props;
+      }
+      return {};
+    }
+
+    // ── Legacy format ──────────────────────────────────────────
     const sheetLines = this.getSectionLines(content, 'LocationSheet');
     const props: Record<string, string> = {};
     let inCustom = false;
@@ -5461,55 +6299,119 @@ order: ${orderValue}
 
     // Pre-allocate array to preserve chapter ordering from getChapterDescriptionsSync()
     const chapterStats: (ChapterOverviewStat | null)[] = new Array<ChapterOverviewStat | null>(chapters.length).fill(null);
+    const isSceneBased = this.isSceneBasedProject();
 
     for (let ci = 0; ci < chapters.length; ci++) {
       const ch = chapters[ci];
       const idx = ci;
-      void vault.cachedRead(ch.file).then(content => {
-        const words = countWords(content);
-        totalWords += words;
-        const readability = calculateReadability(content, this.settings.language);
 
-        // Calculate per-scene word counts
+      if (isSceneBased) {
+        // Scene-based: read all scene files for this chapter to produce
+        // the combined word count and per-scene breakdown.
+        const chapterNum = ch.order;
+        const root = this.resolvedProjectPath();
+        const scenesFolder = `${root}/Scenes/`;
+        const sceneFiles = this.app.vault.getFiles()
+          .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md')
+          .filter(f => Number(this.app.metadataCache.getFileCache(f)?.frontmatter?.chapter) === chapterNum)
+          .sort((a, b) => {
+            const sa = Number(this.app.metadataCache.getFileCache(a)?.frontmatter?.sequence) || 999;
+            const sb = Number(this.app.metadataCache.getFileCache(b)?.frontmatter?.sequence) || 999;
+            return sa - sb;
+          });
+
+        let scenesDone = 0;
+        let chapterWords = 0;
+        let combinedContent = '';
         const scenes: SceneOverviewStat[] = [];
-        const h2Regex = /^##\s+(.+)$/gm;
-        let h2Match: RegExpExecArray | null;
-        const h2Positions: Array<{ name: string; start: number }> = [];
-        while ((h2Match = h2Regex.exec(content)) !== null) {
-          h2Positions.push({ name: h2Match[1], start: h2Match.index });
+        if (sceneFiles.length === 0) {
+          chapterStats[idx] = { name: ch.name, words: 0, readability: null };
+          remaining--;
+          if (remaining === 0) { this.finalizeProjectOverview(chapterStats, totalWords, chapterCount, characterCount, locationCount); }
+          continue;
         }
-        if (h2Positions.length > 0) {
-          for (let i = 0; i < h2Positions.length; i++) {
-            const start = h2Positions[i].start;
-            const end = i + 1 < h2Positions.length ? h2Positions[i + 1].start : content.length;
-            const sceneContent = content.slice(start, end);
-            scenes.push({ name: h2Positions[i].name, words: countWords(sceneContent) });
-          }
+        for (const sf of sceneFiles) {
+          void vault.cachedRead(sf).then(scContent => {
+            const body = this.stripFrontmatter(scContent);
+            const w = countWords(body);
+            chapterWords += w;
+            combinedContent += body + '\n';
+            const scCache = this.app.metadataCache.getFileCache(sf);
+            const scFm = (scCache?.frontmatter ?? {}) as Record<string, unknown>;
+            const scTitle = typeof scFm.title === 'string' && scFm.title ? scFm.title : sf.basename;
+            scenes.push({ name: scTitle, words: w });
+            scenesDone++;
+            if (scenesDone === sceneFiles.length) {
+              totalWords += chapterWords;
+              const readability = calculateReadability(combinedContent, this.settings.language);
+              chapterStats[idx] = {
+                name: ch.name,
+                words: chapterWords,
+                readability: readability.score > 0 ? readability : null,
+                scenes: scenes.length > 0 ? scenes : undefined
+              };
+              remaining--;
+              if (remaining === 0) { this.finalizeProjectOverview(chapterStats, totalWords, chapterCount, characterCount, locationCount); }
+            }
+          });
         }
+      } else {
+        // Legacy: read single chapter file
+        void vault.cachedRead(ch.file).then(content => {
+          const words = countWords(content);
+          totalWords += words;
+          const readability = calculateReadability(content, this.settings.language);
 
-        chapterStats[idx] = {
-          name: ch.name,
-          words,
-          readability: readability.score > 0 ? readability : null,
-          scenes: scenes.length > 0 ? scenes : undefined
-        };
-        remaining--;
-        if (remaining === 0) {
-          const ordered = chapterStats.filter((s): s is ChapterOverviewStat => s !== null);
-          const avg = chapterCount > 0 ? Math.round(totalWords / chapterCount) : 0;
-          this.cachedProjectOverview = {
-            totalWords,
-            totalChapters: chapterCount,
-            totalCharacters: characterCount,
-            totalLocations: locationCount,
-            readingTime: Math.ceil(totalWords / 200),
-            avgChapter: avg,
-            chapters: ordered
+          // Calculate per-scene word counts
+          const scenes: SceneOverviewStat[] = [];
+          const h2Regex = /^##\s+(.+)$/gm;
+          let h2Match: RegExpExecArray | null;
+          const h2Positions: Array<{ name: string; start: number }> = [];
+          while ((h2Match = h2Regex.exec(content)) !== null) {
+            h2Positions.push({ name: h2Match[1], start: h2Match.index });
+          }
+          if (h2Positions.length > 0) {
+            for (let i = 0; i < h2Positions.length; i++) {
+              const start = h2Positions[i].start;
+              const end = i + 1 < h2Positions.length ? h2Positions[i + 1].start : content.length;
+              const sceneContent = content.slice(start, end);
+              scenes.push({ name: h2Positions[i].name, words: countWords(sceneContent) });
+            }
+          }
+
+          chapterStats[idx] = {
+            name: ch.name,
+            words,
+            readability: readability.score > 0 ? readability : null,
+            scenes: scenes.length > 0 ? scenes : undefined
           };
-          this.updateDailyWordCount(totalWords);
-        }
-      });
+          remaining--;
+          if (remaining === 0) { this.finalizeProjectOverview(chapterStats, totalWords, chapterCount, characterCount, locationCount); }
+        });
+      }
     }
+  }
+
+  /** Finalize the project overview after all chapters have been processed. */
+  private finalizeProjectOverview(
+    chapterStats: (ChapterOverviewStat | null)[],
+    totalWords: number,
+    chapterCount: number,
+    characterCount: number,
+    locationCount: number
+  ): void {
+    const ordered = chapterStats.filter((s): s is ChapterOverviewStat => s !== null);
+    const avg = chapterCount > 0 ? Math.round(totalWords / chapterCount) : 0;
+    this.cachedProjectOverview = {
+      totalWords,
+      totalChapters: chapterCount,
+      totalCharacters: characterCount,
+      totalLocations: locationCount,
+      readingTime: Math.ceil(totalWords / 200),
+      avgChapter: avg,
+      chapters: ordered
+    };
+    this.updateDailyWordCount(totalWords);
   }
 
   private updateDailyWordCount(totalWords: number): void {

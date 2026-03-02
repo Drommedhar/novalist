@@ -1,11 +1,141 @@
 import type {
   LocationSheetData
 } from '../types';
+import { extractFrontmatterAndBody, serializeFrontmatterAndBody } from '../services/FrontmatterUtils';
+
+/** Helper: detect YAML‑frontmatter content. */
+function isYamlContent(content: string): boolean {
+  return content.trimStart().startsWith('---\n') || content.trimStart().startsWith('---\r\n');
+}
+
+/** Safely coerce an unknown frontmatter value to string. */
+function str(v: unknown): string {
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
+}
+
+// ── YAML → LocationSheetData ────────────────────────────────────────
+
+function parseLocationFromYaml(content: string): LocationSheetData {
+  const { frontmatter: fm, body } = extractFrontmatterAndBody(content);
+
+  const rawCustom = (fm.custom ?? {}) as Record<string, string>;
+  const customProperties: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawCustom)) {
+    customProperties[k] = str(v);
+  }
+
+  // Parse relationships (Novalist extension)
+  const rawRels = (fm.novalist_relationships ?? []) as { role?: string; target?: string }[];
+  const relationships = rawRels.map(r => ({
+    role: str(r.role),
+    target: r.target ? `[[${str(r.target).replace(/\[\[|\]\]/g, '')}]]` : '',
+  }));
+
+  // Images: prefer novalist_images array, fall back to single `image` field
+  const images: { name: string; path: string }[] = [];
+  const rawImages = fm.novalist_images as { name?: string; path?: string }[] | undefined;
+  if (Array.isArray(rawImages) && rawImages.length > 0) {
+    for (const img of rawImages) {
+      const p = str(img.path).replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim();
+      if (p) images.push({ name: str(img.name) || 'Main', path: `[[${p}]]` });
+    }
+  } else {
+    const primaryImage = str(fm.image).replace(/^!/, '').trim();
+    if (primaryImage) {
+      images.push({ name: 'Main', path: `[[${primaryImage.replace(/\[\[|\]\]/g, '')}]]` });
+    }
+  }
+
+  // Parent
+  const parentRaw = str(fm.parent);
+  const parent = parentRaw ? `[[${parentRaw.replace(/\[\[|\]\]/g, '')}]]` : '';
+
+  // Sections from body
+  const sections: { title: string; content: string }[] = [];
+  if (body.trim()) {
+    const sectionBlocks = body.split(/^## /m).filter(Boolean);
+    for (const block of sectionBlocks) {
+      const lines = block.split('\n');
+      const title = lines[0].trim();
+      const sectionContent = lines.slice(1).join('\n').trim();
+      if (title) sections.push({ title, content: sectionContent });
+    }
+    if (sections.length === 0 && body.trim()) {
+      sections.push({ title: 'Notes', content: body.trim() });
+    }
+  }
+
+  return {
+    name: str(fm.name),
+    type: str(fm.locationType) || str(fm.type),
+    parent,
+    description: str(fm.description),
+    images,
+    relationships,
+    customProperties,
+    sections,
+    templateId: fm.novalist_templateId ? str(fm.novalist_templateId) : undefined,
+  };
+}
+
+// ── LocationSheetData → YAML ────────────────────────────────────────
+
+function serializeLocationToYaml(data: LocationSheetData): string {
+  const fm: Record<string, unknown> = {
+    type: 'location',
+    name: data.name,
+  };
+  if (data.type) fm.locationType = data.type;
+  if (data.parent) {
+    fm.parent = data.parent.replace(/\[\[|\]\]/g, '').trim();
+  }
+  if (data.description) fm.description = data.description;
+
+  const allImages = data.images
+    .map(i => ({ name: i.name, path: i.path.replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim() }))
+    .filter(i => i.path);
+  const primaryImage = allImages[0]?.path;
+  if (primaryImage) fm.image = primaryImage;
+  if (allImages.length > 0) fm.novalist_images = allImages;
+
+  if (data.relationships.length > 0) {
+    fm.novalist_relationships = data.relationships.map(r => ({
+      role: r.role,
+      target: r.target.replace(/\[\[|\]\]/g, '').trim(),
+    }));
+  }
+  if (Object.keys(data.customProperties).length > 0) {
+    fm.custom = data.customProperties;
+  }
+  if (data.templateId) fm.novalist_templateId = data.templateId;
+
+  // Body from sections
+  const bodyParts: string[] = [];
+  for (const section of data.sections) {
+    bodyParts.push(`## ${section.title}\n\n${section.content}`);
+  }
+  const body = bodyParts.join('\n\n');
+
+  return serializeFrontmatterAndBody(fm, body);
+}
 
 /**
- * Parse a location markdown file into structured LocationSheetData
+ * Parse a location markdown file into structured LocationSheetData.
+ * Supports both YAML frontmatter format (new) and legacy ## LocationSheet blocks.
  */
 export function parseLocationSheet(content: string): LocationSheetData {
+  // Detect format
+  if (isYamlContent(content)) {
+    const { frontmatter } = extractFrontmatterAndBody(content);
+    if (frontmatter.type === 'location' || frontmatter.type === 'world') {
+      return parseLocationFromYaml(content);
+    }
+  }
+
+  // ── Legacy parser ─────────────────────────────────────────────────
   const normalized = content.replace(/\r\n/g, '\n');
   const data: LocationSheetData = {
     name: '',
@@ -186,61 +316,11 @@ export function parseLocationSheet(content: string): LocationSheetData {
   return data;
 }
 
+/**
+ * Serialize LocationSheetData to YAML frontmatter format.
+ */
 export function serializeLocationSheet(data: LocationSheetData): string {
-  // Helper to sanitize a single-line value
-  const sanitize = (val: string): string => {
-    return val.replace(/[\r\n]+/g, ' ').trim();
-  };
-  
-  let result = `# ${data.name}\n\n`;
-  
-  // LocationSheet block
-  result += '## LocationSheet\n';
-  if (data.templateId) {
-    result += `TemplateId: ${sanitize(data.templateId)}\n`;
-  }
-  result += `Name: ${sanitize(data.name)}\n`;
-  result += `Type: ${sanitize(data.type)}\n`;
-  if (data.parent) {
-    result += `Parent: ${sanitize(data.parent)}\n`;
-  }
-
-  if (data.description) {
-    result += 'Description:\n';
-    result += `${data.description.trim()}\n`;
-  }
-
-  if (data.images && data.images.length > 0) {
-    result += 'Images:\n';
-    for (const img of data.images) {
-      result += `- ${sanitize(img.name)}: ${sanitize(img.path)}\n`;
-    }
-  }
-
-  if (data.relationships && data.relationships.length > 0) {
-    result += 'Relationships:\n';
-    for (const rel of data.relationships) {
-      result += `- ${sanitize(rel.role)}: ${sanitize(rel.target)}\n`;
-    }
-  }
-
-  if (Object.keys(data.customProperties).length > 0) {
-    result += 'CustomProperties:\n';
-    for (const [key, val] of Object.entries(data.customProperties)) {
-      result += `- ${sanitize(key)}: ${sanitize(val)}\n`;
-    }
-  }
-  
-  if (data.sections && data.sections.length > 0) {
-    result += 'Sections:\n';
-    for (const section of data.sections) {
-      result += `${sanitize(section.title)}\n`;
-      result += `${section.content.trim()}\n`;
-      result += '---\n';
-    }
-  }
-
-  return result;
+  return serializeLocationToYaml(data);
 }
 
 function getSheetSection(content: string, heading: string): string | null {

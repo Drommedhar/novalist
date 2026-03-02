@@ -1,9 +1,117 @@
 import type { ItemSheetData } from '../types';
+import { extractFrontmatterAndBody, serializeFrontmatterAndBody } from '../services/FrontmatterUtils';
+
+/** Helper: detect YAML‑frontmatter content. */
+function isYamlContent(content: string): boolean {
+  return content.trimStart().startsWith('---\n') || content.trimStart().startsWith('---\r\n');
+}
+
+/** Safely coerce an unknown frontmatter value to string. */
+function str(v: unknown): string {
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
+}
+
+// ── YAML → ItemSheetData ────────────────────────────────────────────
+
+function parseItemFromYaml(content: string): ItemSheetData {
+  const { frontmatter: fm, body } = extractFrontmatterAndBody(content);
+
+  const rawCustom = (fm.custom ?? {}) as Record<string, string>;
+  const customProperties: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawCustom)) {
+    customProperties[k] = str(v);
+  }
+
+  // Images: prefer novalist_images array, fall back to single `image` field
+  const images: { name: string; path: string }[] = [];
+  const rawImages = fm.novalist_images as { name?: string; path?: string }[] | undefined;
+  if (Array.isArray(rawImages) && rawImages.length > 0) {
+    for (const img of rawImages) {
+      const p = str(img.path).replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim();
+      if (p) images.push({ name: str(img.name) || 'Main', path: `[[${p}]]` });
+    }
+  } else {
+    const primaryImage = str(fm.image).replace(/^!/, '').trim();
+    if (primaryImage) {
+      images.push({ name: 'Main', path: `[[${primaryImage.replace(/\[\[|\]\]/g, '')}]]` });
+    }
+  }
+
+  const sections: { title: string; content: string }[] = [];
+  if (body.trim()) {
+    const sectionBlocks = body.split(/^## /m).filter(Boolean);
+    for (const block of sectionBlocks) {
+      const lines = block.split('\n');
+      const title = lines[0].trim();
+      const sectionContent = lines.slice(1).join('\n').trim();
+      if (title) sections.push({ title, content: sectionContent });
+    }
+    if (sections.length === 0 && body.trim()) {
+      sections.push({ title: 'Notes', content: body.trim() });
+    }
+  }
+
+  return {
+    name: str(fm.name),
+    type: str(fm.itemType),
+    description: str(fm.description),
+    origin: str(fm.origin),
+    images,
+    customProperties,
+    sections,
+    templateId: fm.novalist_templateId ? str(fm.novalist_templateId) : undefined,
+  };
+}
+
+// ── ItemSheetData → YAML ────────────────────────────────────────────
+
+function serializeItemToYaml(data: ItemSheetData): string {
+  const fm: Record<string, unknown> = {
+    type: 'item',
+    name: data.name,
+  };
+  if (data.type) fm.itemType = data.type;
+  if (data.origin) fm.origin = data.origin;
+  if (data.description) fm.description = data.description;
+
+  const allImages = data.images
+    .map(i => ({ name: i.name, path: i.path.replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim() }))
+    .filter(i => i.path);
+  const primaryImage = allImages[0]?.path;
+  if (primaryImage) fm.image = primaryImage;
+  if (allImages.length > 0) fm.novalist_images = allImages;
+
+  if (Object.keys(data.customProperties).length > 0) {
+    fm.custom = data.customProperties;
+  }
+  if (data.templateId) fm.novalist_templateId = data.templateId;
+
+  const bodyParts: string[] = [];
+  for (const section of data.sections) {
+    bodyParts.push(`## ${section.title}\n\n${section.content}`);
+  }
+  const body = bodyParts.join('\n\n');
+
+  return serializeFrontmatterAndBody(fm, body);
+}
 
 /**
- * Parse an item markdown file into structured ItemSheetData
+ * Parse an item markdown file into structured ItemSheetData.
+ * Supports both YAML frontmatter format (new) and legacy ## ItemSheet blocks.
  */
 export function parseItemSheet(content: string): ItemSheetData {
+  // Detect format
+  if (isYamlContent(content)) {
+    const { frontmatter } = extractFrontmatterAndBody(content);
+    if (frontmatter.type === 'item') {
+      return parseItemFromYaml(content);
+    }
+  }
+
+  // ── Legacy parser ─────────────────────────────────────────────────
   const normalized = content.replace(/\r\n/g, '\n');
   const data: ItemSheetData = {
     name: '',
@@ -130,47 +238,11 @@ export function parseItemSheet(content: string): ItemSheetData {
   return data;
 }
 
+/**
+ * Serialize ItemSheetData to YAML frontmatter format.
+ */
 export function serializeItemSheet(data: ItemSheetData): string {
-  const sanitize = (val: string): string => val.replace(/[\r\n]+/g, ' ').trim();
-
-  let result = `# ${data.name}\n\n`;
-  result += '## ItemSheet\n';
-  if (data.templateId) {
-    result += `TemplateId: ${sanitize(data.templateId)}\n`;
-  }
-  result += `Name: ${sanitize(data.name)}\n`;
-  result += `Type: ${sanitize(data.type)}\n`;
-  result += `Origin: ${sanitize(data.origin)}\n`;
-
-  if (data.description) {
-    result += 'Description:\n';
-    result += `${data.description.trim()}\n`;
-  }
-
-  if (data.images && data.images.length > 0) {
-    result += 'Images:\n';
-    for (const img of data.images) {
-      result += `- ${sanitize(img.name)}: ${sanitize(img.path)}\n`;
-    }
-  }
-
-  if (Object.keys(data.customProperties).length > 0) {
-    result += 'CustomProperties:\n';
-    for (const [key, val] of Object.entries(data.customProperties)) {
-      result += `- ${sanitize(key)}: ${sanitize(val)}\n`;
-    }
-  }
-
-  if (data.sections && data.sections.length > 0) {
-    result += 'Sections:\n';
-    for (const section of data.sections) {
-      result += `${sanitize(section.title)}\n`;
-      result += `${section.content.trim()}\n`;
-      result += '---\n';
-    }
-  }
-
-  return result;
+  return serializeItemToYaml(data);
 }
 
 function getSheetSection(content: string, heading: string): string | null {

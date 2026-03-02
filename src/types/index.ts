@@ -1,6 +1,26 @@
 ﻿import { t } from '../i18n';
 
+// ─── StoryLine & Novalist Extension Types (re-exports) ──────────────
+// Consumers can import SL-compatible types from '../types' directly.
+export type {
+  NovalistScene,
+  NovalistCharacter,
+  NovalistLocation,
+  NovalistWorld,
+  NovalistItem,
+  NovalistLore,
+  NovalistChapterOverride,
+  NovalistProject as NovalistProjectSL,
+} from './novalist-extensions';
+export { STATUS_MIGRATION_MAP, RELATIONSHIP_ROLE_MAP } from './novalist-extensions';
+export type { Scene, SceneStatus, TimelineMode } from '@storyline/models/Scene';
+export type { Character, CharacterRelation, CharacterRelationCategory } from '@storyline/models/Character';
+export type { StoryWorld, StoryLocation } from '@storyline/models/Location';
+export type { StoryLineProject } from '@storyline/models/StoryLineProject';
+export type { PlotGridData, CellData, ColumnMeta, RowMeta } from '@storyline/models/PlotGridData';
+
 // ─── Multi-project & World Bible ────────────────────────────────────
+/** Legacy project reference type. See NovalistProjectSL for the SL-based equivalent. */
 export interface NovalistProject {
   id: string;
   name: string;
@@ -152,6 +172,13 @@ export interface NovalistSettings {
   enableChapterNotes: boolean;
   /** Persisted Focus Peek card dimensions. */
   focusPeekSize: { width: number; height: number } | null;
+  /**
+   * Data format version used to detect whether a YAML migration has been
+   * offered/completed for each project. `undefined` or absent means the
+   * user has never been prompted.  Set to `2` once migration completes or
+   * the user explicitly skips it.
+   */
+  dataFormatVersion?: number;
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────

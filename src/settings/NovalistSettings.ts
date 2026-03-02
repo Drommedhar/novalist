@@ -332,4 +332,5 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
   chapterNotes: {},
   enableChapterNotes: true,
   focusPeekSize: null,
+  dataFormatVersion: undefined,
 };
