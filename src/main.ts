@@ -3203,6 +3203,21 @@ export default class NovalistPlugin extends Plugin {
       f => f.path.startsWith(scenesFolder) && f.extension === 'md'
     );
 
+    // Build act number → label lookup from project file frontmatter
+    const actLabelMap = new Map<number, string>();
+    const projectBasename = root.split('/').pop() ?? '';
+    const projectFilePath = `${root}/${projectBasename}.md`;
+    const projectFile = this.app.vault.getAbstractFileByPath(projectFilePath);
+    if (projectFile instanceof TFile) {
+      const pfm = this.app.metadataCache.getFileCache(projectFile)?.frontmatter;
+      if (pfm?.actLabels && typeof pfm.actLabels === 'object') {
+        for (const [k, v] of Object.entries(pfm.actLabels as Record<string, string>)) {
+          const num = Number(k);
+          if (num && typeof v === 'string') actLabelMap.set(num, v);
+        }
+      }
+    }
+
     // Group scene files by chapter number
     const chapterMap = new Map<number, Array<{ file: TFile; fm: Record<string, unknown>; sequence: number }>>();
 
@@ -3235,9 +3250,20 @@ export default class NovalistPlugin extends Plugin {
       const sceneStatus = typeof rawStatus === 'string' ? rawStatus : 'draft';
       const status = this.sceneStatusToChapterStatus(sceneStatus);
 
-      // Act — may be number or string in scene frontmatter
+      // Act — may be number or string in scene frontmatter; resolve to label if available
       const rawAct = first.fm.act;
-      const act = rawAct != null && rawAct !== '' ? `${rawAct as string | number}` : '';
+      let act = '';
+      if (rawAct != null && rawAct !== '') {
+        const actNum = Number(rawAct);
+        const label = actLabelMap.get(actNum);
+        if (!isNaN(actNum) && label) {
+          act = label;
+        } else if (typeof rawAct === 'string') {
+          act = rawAct;
+        } else if (typeof rawAct === 'number') {
+          act = String(rawAct);
+        }
+      }
 
       // Date — storyDate in scene frontmatter
       const rawDate = first.fm.storyDate;

@@ -423,6 +423,20 @@ export async function migrateProject(
     let globalSequence = 1;
     const chapterIdMap = new Map<string, number>(); // old guid → chapter number
 
+    // Build act name → number map from chapter order so we always get a numeric act
+    const actNameToNumber = new Map<string, number>();
+    const actLabelsMap: Record<number, string> = {};
+    for (const cf of chapterFiles) {
+      const cfCache = app.metadataCache.getFileCache(cf)?.frontmatter;
+      const actStr = typeof cfCache?.act === 'string' ? cfCache.act.trim() : '';
+      if (actStr && !actNameToNumber.has(actStr)) {
+        const nextNum = actNameToNumber.size + 1;
+        actNameToNumber.set(actStr, nextNum);
+        actLabelsMap[nextNum] = actStr;
+      }
+    }
+    const definedActNumbers = [...actNameToNumber.values()];
+
     for (const file of chapterFiles) {
       try {
         const content = await vault.read(file);
@@ -456,7 +470,7 @@ export async function migrateProject(
           const sceneDate = sceneDates[sceneInfo.name] || chapterDate;
 
           const sceneOpts: Partial<NovalistScene> = {
-            act: chapterAct ? parseActNumber(chapterAct) : undefined,
+            act: chapterAct ? actNameToNumber.get(chapterAct) : undefined,
             chapter: chapterOrder,
             sequence: globalSequence,
             status: slStatus,
@@ -640,7 +654,10 @@ export async function migrateProject(
     progress('Creating project file and system data');
     // The project file lives at <storyLineRoot>/<ProjectName>/<ProjectName>.md
     // createProject expects (rootFolder, title, ...) → creates <rootFolder>/<title>/<title>.md
-    await createProject(vault, storyLineRoot, projectName, settings.activeProjectId);
+    await createProject(vault, storyLineRoot, projectName, settings.activeProjectId, {
+      definedActs: definedActNumbers.length > 0 ? definedActNumbers : undefined,
+      actLabels: Object.keys(actLabelsMap).length > 0 ? actLabelsMap : undefined,
+    });
 
     // Migrate plot board → plotgrid.json
     if (projectData?.plotBoard) {
@@ -938,11 +955,6 @@ function extractLegacyFrontmatterAndBody(content: string): { frontmatter: Record
   return { frontmatter: fm, body };
 }
 
-/** Parse act name to number (e.g. "Act 1" → 1, "Act 2 — Confrontation" → 2). */
-function parseActNumber(act: string): number | string {
-  const num = act.match(/(\d+)/);
-  return num ? parseInt(num[1]) : act;
-}
 
 /**
  * Convert Novalist PlotBoardData to SL PlotGridData format.
