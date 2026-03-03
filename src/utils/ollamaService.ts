@@ -30,7 +30,7 @@ export interface OllamaGenerateResponse {
   done: boolean;
 }
 
-export type AiFindingType = 'reference' | 'inconsistency' | 'suggestion';
+export type AiFindingType = 'reference' | 'inconsistency' | 'suggestion' | 'scene_stats';
 
 export interface AiFinding {
   type: AiFindingType;
@@ -44,6 +44,14 @@ export interface AiFinding {
   entityName?: string;
   /** Entity type (character / location / item / lore) if applicable. */
   entityType?: string;
+  /** AI-determined POV character name (only for type "scene_stats"). */
+  scenePov?: string;
+  /** AI-determined dominant emotion (only for type "scene_stats"). */
+  sceneEmotion?: string;
+  /** AI-determined narrative intensity -10..+10 (only for type "scene_stats"). */
+  sceneIntensity?: number;
+  /** AI-determined conflict summary (only for type "scene_stats"). */
+  sceneConflict?: string;
 }
 
 export interface EntitySummary {
@@ -66,6 +74,7 @@ export interface EnabledChecks {
   references: boolean;
   inconsistencies: boolean;
   suggestions: boolean;
+  sceneStats?: boolean;
 }
 
 // ─── Copilot ACP Client ─────────────────────────────────────────────
@@ -1327,6 +1336,10 @@ export class OllamaService {
     }
     if (doSug) {
       tasks.push(`${taskNum}. **Suggestions** ("type":"suggestion"): Identify character names, place names, or notable objects mentioned in the text that do NOT match any known entity and could be added as new entities. For every suggestion you MUST set "entityName" to the exact name of the entity to create and "entityType" to one of "character", "location", "item", or "lore".`);
+      taskNum++;
+    }
+    if (checks.sceneStats) {
+      tasks.push(`${taskNum}. **Scene Stats** ("type":"scene_stats"): Determine the following scene-level metadata from the text. Return EXACTLY ONE object with type "scene_stats" and these ADDITIONAL fields (alongside the standard fields):\n- "scenePov": the name of the point-of-view character (the character whose perspective the scene is narrated from). Pick from the known characters list if possible. Empty string if unclear.\n- "sceneEmotion": the dominant emotional tone of the scene, MUST be one of: "neutral", "tense", "joyful", "melancholic", "angry", "fearful", "romantic", "mysterious", "humorous", "hopeful", "desperate", "peaceful", "chaotic", "sorrowful", "triumphant"\n- "sceneIntensity": overall narrative intensity as an integer from -10 (very calm, contemplative, slow) to +10 (extreme action, high tension, climax)\n- "sceneConflict": a one-line summary of the central conflict or tension in this scene, or empty string if there is no notable conflict\nFor this object set "title" to "Scene Stats", "description" to a brief summary of your reasoning, and "excerpt" to an empty string.`);
     }
     return tasks;
   }
@@ -1421,7 +1434,8 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
     const doRefs = checks?.references ?? true;
     const doIncon = checks?.inconsistencies ?? true;
     const doSug = checks?.suggestions ?? true;
-    if (!doRefs && !doIncon && !doSug) return { findings: [], rawResponse: '', thinking: '' };
+    const doStats = checks?.sceneStats ?? false;
+    if (!doRefs && !doIncon && !doSug && !doStats) return { findings: [], rawResponse: '', thinking: '' };
 
     const entityBlock = entities.map(e => `- [${e.type}] ${e.name}: ${e.details}`).join('\n');
 
@@ -1435,7 +1449,7 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
       ? `\nChapter context: Chapter "${context.chapterName}"${context.actName ? `, Act "${context.actName}"` : ''}${context.sceneName ? `, Scene "${context.sceneName}"` : ''}${context.date ? `, In-story date: ${context.date}` : ''}. The entity details above already reflect any act/chapter/scene-specific overrides.\n`
       : '';
 
-    const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug }, alreadyFound, findAllReferences);
+    const tasks = this.buildTaskInstructions({ references: doRefs, inconsistencies: doIncon, suggestions: doSug, sceneStats: doStats }, alreadyFound, findAllReferences);
 
     const lang = getLanguageName();
 
@@ -1444,6 +1458,13 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
     const scopeDescription = isScene
       ? `a scene from a novel chapter. The project tracks entities (characters, locations, items, lore) by matching their names as plain text — no special markup is used. You have the full scene text, so you can detect cross-paragraph patterns and narrative-level inconsistencies within this scene.`
       : `a complete chapter from a novel. The project tracks entities (characters, locations, items, lore) by matching their names as plain text — no special markup is used. You have the full chapter text, so you can detect cross-paragraph patterns and narrative-level inconsistencies.`;
+
+    const typeEnum = doStats
+      ? '"reference", "inconsistency", "suggestion", or "scene_stats"'
+      : '"reference", "inconsistency", or "suggestion"';
+    const sceneStatsFields = doStats
+      ? `\n\nFor objects with "type":"scene_stats", include these ADDITIONAL fields:\n- "scenePov": POV character name (string)\n- "sceneEmotion": one of "neutral","tense","joyful","melancholic","angry","fearful","romantic","mysterious","humorous","hopeful","desperate","peaceful","chaotic","sorrowful","triumphant"\n- "sceneIntensity": integer from -10 to +10\n- "sceneConflict": one-line conflict summary (string)`
+      : '';
 
     const prompt = `You are a fiction-writing assistant analysing ${scopeDescription}
 
@@ -1458,12 +1479,12 @@ ${chapterText}
 """
 
 Perform the following task(s) and return ONLY a JSON array (no markdown fences, no explanation outside the array). Each element must be an object with these fields:
-- "type": one of "reference", "inconsistency", or "suggestion"
+- "type": one of ${typeEnum}
 - "title": short heading (max 80 chars)
 - "description": concise explanation
 - "excerpt": the EXACT text from the ${isScene ? 'scene' : 'chapter'} that this finding refers to (verbatim copy, max 120 chars). This will be used to locate the finding in the document.
 - "entityName": the entity name this relates to (or empty string)
-- "entityType": "character", "location", "item", "lore", or empty string
+- "entityType": "character", "location", "item", "lore", or empty string${sceneStatsFields}
 
 ${tasks.join('\n')}
 
@@ -1737,7 +1758,7 @@ IMPORTANT: After your thinking/reasoning, you MUST produce the JSON array as pla
       }
       if (!etype) etype = 'item';
     }
-    return {
+    const result: AiFinding = {
       type: f.type,
       title: f.title,
       description: f.description,
@@ -1745,6 +1766,16 @@ IMPORTANT: After your thinking/reasoning, you MUST produce the JSON array as pla
       entityName: name,
       entityType: etype,
     };
+    // Preserve scene_stats fields
+    if (f.type === 'scene_stats') {
+      const raw = f as unknown as Record<string, unknown>;
+      if (typeof raw['scenePov'] === 'string') result.scenePov = raw['scenePov'];
+      if (typeof raw['sceneEmotion'] === 'string') result.sceneEmotion = raw['sceneEmotion'];
+      if (typeof raw['sceneIntensity'] === 'number') result.sceneIntensity = raw['sceneIntensity'];
+      else if (typeof raw['sceneIntensity'] === 'string') result.sceneIntensity = parseInt(raw['sceneIntensity'], 10) || 0;
+      if (typeof raw['sceneConflict'] === 'string') result.sceneConflict = raw['sceneConflict'];
+    }
+    return result;
   }
 
   /**

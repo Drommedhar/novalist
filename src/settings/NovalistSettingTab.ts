@@ -575,6 +575,16 @@ export class NovalistSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
+    new Setting(containerEl)
+      .setName(t('ollama.checkSceneStats'))
+      .setDesc(t('ollama.checkSceneStatsDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.checkSceneStats)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.checkSceneStats = value;
+          await this.plugin.saveSettings();
+        }));
+
     // ── System Prompt ───────────────────────────────────────────────
     new Setting(containerEl)
       .setName(t('ollama.systemPrompt'))

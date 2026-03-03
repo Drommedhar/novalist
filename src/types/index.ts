@@ -39,7 +39,7 @@ export interface MentionResult {
 
 /** Serialisable AI finding stored in the mention cache. */
 export interface CachedAiFinding {
-  type: 'reference' | 'inconsistency' | 'suggestion';
+  type: 'reference' | 'inconsistency' | 'suggestion' | 'scene_stats';
   title: string;
   description: string;
   excerpt?: string;
@@ -102,6 +102,8 @@ export interface ProjectData {
   sceneMetadataCache: Record<string, SceneMetadataCache>;
   /** Manual overrides for scene metadata fields, keyed by "chapterId:sceneName". */
   sceneMetadataOverrides: Record<string, Partial<SceneMetadataOverrides>>;
+  /** AI-determined scene metadata overrides, keyed by "chapterId:sceneName". */
+  aiSceneMetadataOverrides: Record<string, Partial<SceneMetadataOverrides>>;
   /** Last plot validation result for this project. */
   validationResult?: ValidationResult;
   /** Findings the user has explicitly dismissed, persisted across sessions. */
@@ -689,6 +691,8 @@ export interface OllamaSettings {
   checkInconsistencies: boolean;
   /** Enable entity suggestion detection in AI analysis. */
   checkSuggestions: boolean;
+  /** Enable AI-based scene stats detection (POV, emotion, intensity, conflict). */
+  checkSceneStats: boolean;
   /** Path to the Copilot CLI executable (used when provider is 'copilot'). */
   copilotPath: string;
   /** Copilot model to use (e.g. "gpt-4o"). Empty means Copilot's default. */

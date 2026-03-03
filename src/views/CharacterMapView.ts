@@ -122,8 +122,9 @@ export class CharacterMapView extends ItemView {
     }
 
     let folderPath = this.plugin.settings.characterFolder;
-    if (this.plugin.settings.projectPath) {
-        folderPath = `${this.plugin.settings.projectPath}/${folderPath}`;
+    const resolvedRoot = this.plugin.resolvedProjectPath();
+    if (resolvedRoot) {
+        folderPath = `${resolvedRoot}/${folderPath}`;
     }
 
     const folder = this.plugin.app.vault.getAbstractFileByPath(folderPath);

@@ -1,7 +1,7 @@
 import { App, Modal, Notice, TFile } from 'obsidian';
 import type NovalistPlugin from '../main';
 import { t } from '../i18n';
-import type { MentionResult } from '../types';
+import type { MentionResult, SceneMetadataOverrides } from '../types';
 import type { AiFinding, AiFindingType, EntitySummary, EnabledChecks } from '../utils/ollamaService';
 
 type FilterTab = 'all' | 'inconsistency' | 'suggestion';
@@ -217,6 +217,7 @@ export class FullStoryAnalysisModal extends Modal {
         references: true,
         inconsistencies: true,
         suggestions: true,
+        sceneStats: this.plugin.settings.ollama.checkSceneStats,
       };
 
       let doneSoFar = 0;
@@ -291,7 +292,27 @@ export class FullStoryAnalysisModal extends Modal {
             findings: result.findings,
           });
 
-          chapterAllFindings.push(...result.findings);
+          // Apply AI-determined scene stats as AI overrides
+          if (scene.name) {
+            const statsFindings = result.findings.filter(f => f.type === 'scene_stats');
+            if (statsFindings.length > 0) {
+              const stats = statsFindings[0];
+              const sceneChapterId = this.plugin.getChapterIdForFileSync(ch.file);
+              const aiOvr: Record<string, unknown> = {};
+              if (stats.scenePov !== undefined) aiOvr['pov'] = stats.scenePov;
+              if (stats.sceneEmotion !== undefined) aiOvr['emotion'] = stats.sceneEmotion;
+              if (stats.sceneIntensity !== undefined) aiOvr['intensity'] = Math.min(10, Math.max(-10, stats.sceneIntensity));
+              if (stats.sceneConflict !== undefined) aiOvr['conflict'] = stats.sceneConflict;
+              if (Object.keys(aiOvr).length > 0) {
+                await this.plugin.saveAiSceneMetadataOverride(
+                  sceneChapterId, scene.name, aiOvr as Partial<SceneMetadataOverrides>,
+                );
+              }
+            }
+          }
+
+          // Filter out scene_stats from chapter findings (they're not user-facing cards)
+          chapterAllFindings.push(...result.findings.filter(f => f.type !== 'scene_stats'));
           doneSoFar++;
           this.renderProgress(doneSoFar, totalUnits, ch.name, this.computeEta(doneSoFar, totalUnits));
 
@@ -755,6 +776,7 @@ export class FullStoryAnalysisModal extends Modal {
       case 'reference': return t('ollama.findingReference');
       case 'inconsistency': return t('ollama.findingInconsistency');
       case 'suggestion': return t('ollama.findingSuggestion');
+      default: return '';
     }
   }
 }

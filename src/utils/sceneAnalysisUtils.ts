@@ -623,6 +623,7 @@ export function analyseScene(
   plotBoard: PlotBoardData,
   overrides: Partial<SceneMetadataOverrides> | undefined,
   locale: string,
+  aiOverrides?: Partial<SceneMetadataOverrides>,
 ): SceneMetadata {
   // Text statistics
   const wordCount = countSceneWords(sceneText);
@@ -630,26 +631,36 @@ export function analyseScene(
   const avgSentenceLength = computeAvgSentenceLength(sceneText);
   const punctuationIntensity = computePunctuationIntensity(sceneText);
 
-  // Detect or apply overrides
+  // Detect or apply overrides (priority: manual > ai > auto)
   const pov: TrackedValue<string> = overrides?.pov !== undefined
     ? { value: overrides.pov, source: 'manual' }
-    : detectPov(sceneText, mentions.characters);
+    : aiOverrides?.pov !== undefined
+      ? { value: aiOverrides.pov, source: 'ai' }
+      : detectPov(sceneText, mentions.characters);
 
   const emotion: TrackedValue<SceneEmotion> = overrides?.emotion !== undefined
     ? { value: overrides.emotion, source: 'manual' }
-    : detectEmotion(sceneText, locale);
+    : aiOverrides?.emotion !== undefined
+      ? { value: aiOverrides.emotion, source: 'ai' }
+      : detectEmotion(sceneText, locale);
 
   const intensity: TrackedValue<number> = overrides?.intensity !== undefined
     ? { value: overrides.intensity, source: 'manual' }
-    : detectIntensity(sceneText, emotion.value, locale);
+    : aiOverrides?.intensity !== undefined
+      ? { value: aiOverrides.intensity, source: 'ai' }
+      : detectIntensity(sceneText, emotion.value, locale);
 
   const conflict: TrackedValue<string> = overrides?.conflict !== undefined
     ? { value: overrides.conflict, source: 'manual' }
-    : detectConflict(sceneText, mentions.characters, chapterNotes, sceneName);
+    : aiOverrides?.conflict !== undefined
+      ? { value: aiOverrides.conflict, source: 'ai' }
+      : detectConflict(sceneText, mentions.characters, chapterNotes, sceneName);
 
   const tags: TrackedValue<string[]> = overrides?.tags !== undefined
     ? { value: overrides.tags, source: 'manual' }
-    : detectTags(plotBoard, chapterNotes, chapterId, sceneName, sceneText);
+    : aiOverrides?.tags !== undefined
+      ? { value: aiOverrides.tags, source: 'ai' }
+      : detectTags(plotBoard, chapterNotes, chapterId, sceneName, sceneText);
 
   return {
     name: sceneName,

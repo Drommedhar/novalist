@@ -459,7 +459,7 @@ export default class NovalistPlugin extends Plugin {
       name: t('cmd.moveContentToNotes'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
-        const canRun = file instanceof TFile && this.isChapterFile(file);
+        const canRun = file instanceof TFile && this.isContentFile(file);
         if (checking) return canRun;
         if (canRun) this.moveChapterContentToNotes();
       }
@@ -487,7 +487,7 @@ export default class NovalistPlugin extends Plugin {
       name: t('cmd.addScene'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
-        const canRun = file instanceof TFile && this.isChapterFile(file);
+        const canRun = file instanceof TFile && this.isContentFile(file);
         if (checking) return canRun;
         if (canRun && file) {
           this.promptSceneName(file);
@@ -526,7 +526,7 @@ export default class NovalistPlugin extends Plugin {
       name: t('cmd.snapshotChapter'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
-        const canRun = file instanceof TFile && this.isChapterFile(file);
+        const canRun = file instanceof TFile && this.isContentFile(file);
         if (checking) return canRun;
         if (canRun && file) {
           new SnapshotNameModal(this.app, this, file).open();
@@ -540,7 +540,7 @@ export default class NovalistPlugin extends Plugin {
       name: t('cmd.viewSnapshots'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
-        const canRun = file instanceof TFile && this.isChapterFile(file);
+        const canRun = file instanceof TFile && this.isContentFile(file);
         if (checking) return canRun;
         if (canRun && file) {
           new SnapshotListModal(this.app, this, file).open();
@@ -555,7 +555,7 @@ export default class NovalistPlugin extends Plugin {
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         const isCopilot = this.settings.ollama.provider === 'copilot';
-        const canRun = file instanceof TFile && this.isChapterFile(file) && this.settings.ollama.enabled && (isCopilot || !!this.settings.ollama.model);
+        const canRun = file instanceof TFile && this.isContentFile(file) && this.settings.ollama.enabled && (isCopilot || !!this.settings.ollama.model);
         if (checking) return canRun;
         if (canRun && file) {
           this.analyseChapterWithAi(file);
@@ -606,7 +606,7 @@ export default class NovalistPlugin extends Plugin {
       name: t('cmd.validateChapter'),
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
-        const canRun = file instanceof TFile && this.isChapterFile(file);
+        const canRun = file instanceof TFile && this.isContentFile(file);
         if (checking) return canRun;
         if (canRun && file) {
           void this.openValidatorModal(file);
@@ -772,7 +772,7 @@ export default class NovalistPlugin extends Plugin {
 
     // Update snapshot chapter names when a chapter file is renamed
     this.registerEvent(this.app.vault.on('rename', (file) => {
-      if (file instanceof TFile && this.isChapterFile(file)) {
+      if (file instanceof TFile && this.isContentFile(file)) {
         const guid = this.getChapterIdForFileSync(file);
         if (guid) {
           const root = this.resolvedProjectPath();
@@ -783,12 +783,12 @@ export default class NovalistPlugin extends Plugin {
 
     // Refresh explorer on creation
     this.registerEvent(this.app.vault.on('create', (file) => {
-      if (file instanceof TFile && this.isChapterFile(file)) {
+      if (file instanceof TFile && this.isContentFile(file)) {
          this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady;
       }
     }));
     this.registerEvent(this.app.vault.on('delete', (file) => {
-      if (file instanceof TFile && this.isChapterFile(file)) {
+      if (file instanceof TFile && this.isContentFile(file)) {
          this.entityIndexReady = this.refreshEntityIndex(); void this.entityIndexReady;
       }
     }));
@@ -1018,6 +1018,7 @@ export default class NovalistPlugin extends Plugin {
         chapterNotes: this.settings.chapterNotes ?? {},
         sceneMetadataCache: {},
         sceneMetadataOverrides: {},
+        aiSceneMetadataOverrides: {},
         dismissedFindings: [],
         entityHierarchy: { locations: {}, characters: {} },
       };
@@ -1049,6 +1050,7 @@ export default class NovalistPlugin extends Plugin {
       wholeStoryAnalysis: existing?.wholeStoryAnalysis,
       sceneMetadataCache: existing?.sceneMetadataCache ?? {},
       sceneMetadataOverrides: existing?.sceneMetadataOverrides ?? {},
+      aiSceneMetadataOverrides: existing?.aiSceneMetadataOverrides ?? {},
       validationResult: existing?.validationResult,
       dismissedFindings: existing?.dismissedFindings ?? [],
       entityHierarchy: existing?.entityHierarchy ?? { locations: {}, characters: {} },
@@ -3649,21 +3651,56 @@ export default class NovalistPlugin extends Plugin {
     new Notice(t('notice.updatedRole', { name: file.basename, role: trimmedRole || t('general.unassigned') }));
   }
 
-  serializeFrontmatter(fm: Record<string, string | number | Record<string, string>>): string {
+  serializeFrontmatter(fm: Record<string, unknown>): string {
       const needsQuote = (s: string) => /[:{}[\],&*?|><!%@`#]/.test(s);
+      const quoteScalar = (val: unknown): string => {
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'object') return JSON.stringify(val);
+        const s = String(val as string | number | boolean);
+        return needsQuote(s) ? `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : s;
+      };
       const lines: string[] = [];
       for (const [k, v] of Object.entries(fm)) {
-        if (v !== null && typeof v === 'object') {
-          const entries = Object.entries(v);
+        if (v === null || v === undefined) continue;
+        if (Array.isArray(v)) {
+          if (v.length === 0) {
+            lines.push(`${k}: []`);
+          } else if (v.every(item => typeof item !== 'object' || item === null)) {
+            // Simple scalar array
+            lines.push(`${k}:`);
+            for (const item of v) {
+              lines.push(`  - ${quoteScalar(item)}`);
+            }
+          } else {
+            // Array of objects
+            lines.push(`${k}:`);
+            for (const obj of v) {
+              if (typeof obj === 'object' && obj !== null) {
+                const entries = Object.entries(obj as Record<string, unknown>);
+                if (entries.length === 0) continue;
+                const [firstKey, firstVal] = entries[0];
+                const safeFirstKey = needsQuote(firstKey) ? `"${firstKey.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : firstKey;
+                lines.push(`  - ${safeFirstKey}: ${quoteScalar(firstVal)}`);
+                for (let j = 1; j < entries.length; j++) {
+                  const eKey = entries[j][0];
+                  const safeEKey = needsQuote(eKey) ? `"${eKey.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : eKey;
+                  lines.push(`    ${safeEKey}: ${quoteScalar(entries[j][1])}`);
+                }
+              } else {
+                lines.push(`  - ${quoteScalar(obj)}`);
+              }
+            }
+          }
+        } else if (v !== null && typeof v === 'object') {
+          const entries = Object.entries(v as Record<string, unknown>);
           if (entries.length === 0) continue;
           lines.push(`${k}:`);
           for (const [subK, subV] of entries) {
             const safeKey = needsQuote(subK) ? `"${subK.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : subK;
-            lines.push(`  ${safeKey}: ${String(subV)}`);
+            lines.push(`  ${safeKey}: ${quoteScalar(subV)}`);
           }
         } else {
-          const scalar = v as string | number;
-          lines.push(`${k}: ${String(scalar)}`);
+          lines.push(`${k}: ${quoteScalar(v)}`);
         }
       }
       return `---\n${lines.join('\n')}\n---\n`;
@@ -4122,8 +4159,9 @@ export default class NovalistPlugin extends Plugin {
     const content = await this.readChapterContent(file);
     const hash = await this.hashContent(content);
     // Check the persistent mention cache
+    const cacheKey = this.getChapterCacheKey(file);
     const cache = this.getMentionCache();
-    const entry = cache[file.path];
+    const entry = cache[cacheKey];
 
     // When regex references are disabled, entity detection is handled
     // exclusively by AI analysis.  If the cache has AI findings whose
@@ -4167,7 +4205,7 @@ export default class NovalistPlugin extends Plugin {
       };
     }
 
-    cache[file.path] = { hash, chapter: result, scenes };
+    cache[cacheKey] = { hash, chapter: result, scenes };
     void this.saveSettings();
 
     return { ...result };
@@ -4182,8 +4220,9 @@ export default class NovalistPlugin extends Plugin {
     const content = await this.readChapterContent(file);
     const hash = await this.hashContent(content);
 
+    const cacheKey = this.getChapterCacheKey(file);
     const cache = this.getMentionCache();
-    const entry = cache[file.path];
+    const entry = cache[cacheKey];
 
     // When regex is disabled, return cached scene data only if it was
     // populated by AI analysis. Otherwise return empty.
@@ -4224,6 +4263,12 @@ export default class NovalistPlugin extends Plugin {
   /**
    * Store mention scan results into the cache for a chapter file.
    * Used by AI analysis modals to persist their findings.
+   *
+   * For scene-based projects the cache key is the chapter ID
+   * (novalist_chapterId), and the hash is computed from the assembled
+   * (concatenated) chapter content.  This ensures that both the sidebar
+   * and the analysis modals read and write the same cache entry
+   * regardless of which scene file the user currently has open.
    */
   async storeMentionCache(
     file: TFile,
@@ -4231,11 +4276,13 @@ export default class NovalistPlugin extends Plugin {
     sceneResults?: Record<string, MentionResult>,
     aiFindings?: CachedAiFinding[],
   ): Promise<void> {
-    const content = await this.app.vault.read(file);
-    const hash = await this.hashContent(content);
+    const key = this.getChapterCacheKey(file);
+    const content = await this.readChapterContent(file);
+    const body = this.stripFrontmatter(content);
+    const hash = await this.hashContent(body);
     const cache = this.getMentionCache();
-    const existing = cache[file.path];
-    cache[file.path] = {
+    const existing = cache[key];
+    cache[key] = {
       hash,
       chapter: chapterResult,
       scenes: sceneResults ?? existing?.scenes ?? {},
@@ -4248,12 +4295,25 @@ export default class NovalistPlugin extends Plugin {
    * Retrieve cached AI findings for a chapter file.
    * Returns the findings array if the cache entry exists and the file hash
    * still matches, otherwise `null`.
+   *
+   * For scene-based projects the lookup uses the chapter ID as key
+   * and the assembled chapter content hash — matching the key used
+   * by {@link storeMentionCache}.
    */
   async getCachedAiFindings(file: TFile): Promise<CachedAiFinding[] | null> {
-    const content = await this.app.vault.read(file);
-    const hash = await this.hashContent(content);
+    const key = this.getChapterCacheKey(file);
+    const content = await this.readChapterContent(file);
+    const body = this.stripFrontmatter(content);
+    const hash = await this.hashContent(body);
     const cache = this.getMentionCache();
-    const entry = cache[file.path];
+    const entry = cache[key];
+    const cacheKeys = Object.keys(cache);
+    console.debug(`[Novalist AI] getCachedAiFindings — file="${file.path}", key="${key}", hash="${hash.slice(0, 12)}…", cacheKeys=[${cacheKeys.map(k => `"${k}"`).join(', ')}]`);
+    if (entry) {
+      console.debug(`[Novalist AI]   entry found — entryHash="${entry.hash.slice(0, 12)}…", hashMatch=${entry.hash === hash}, hasAiFindings=${!!entry.aiFindings}, findingsCount=${entry.aiFindings?.length ?? 0}`);
+    } else {
+      console.debug(`[Novalist AI]   NO entry for key "${key}"`);
+    }
     if (entry && entry.hash === hash && entry.aiFindings) {
       return entry.aiFindings;
     }
@@ -4267,13 +4327,14 @@ export default class NovalistPlugin extends Plugin {
    */
   getAllCachedAiFindings(): Array<{ chapterName: string; findings: CachedAiFinding[] }> {
     const cache = this.getMentionCache();
+    const chapters = this.getChapterDescriptionsSync();
     const result: Array<{ chapterName: string; findings: CachedAiFinding[] }> = [];
-    for (const [filePath, entry] of Object.entries(cache)) {
+    for (const [key, entry] of Object.entries(cache)) {
       if (!entry.aiFindings || entry.aiFindings.length === 0) continue;
-      const abstract = this.app.vault.getAbstractFileByPath(filePath);
-      const chapterName = abstract instanceof TFile
-        ? this.getChapterNameForFileSync(abstract)
-        : filePath;
+      // Resolve key to chapter name: for scene-based projects the key is a
+      // chapter ID, for legacy it is a file path.
+      const ch = chapters.find(c => this.getChapterCacheKey(c.file) === key);
+      const chapterName = ch?.name ?? key;
       result.push({ chapterName, findings: entry.aiFindings });
     }
     return result;
@@ -4292,6 +4353,21 @@ export default class NovalistPlugin extends Plugin {
       pd.wholeStoryAnalysis = result;
       await this.saveSettings();
     }
+  }
+
+  /**
+   * Return a stable cache key for a chapter file.
+   * For scene-based projects this is the chapter ID (novalist_chapterId
+   * on scene files, guid on assembled chapter files), which is shared
+   * across all representations of the same chapter and survives file
+   * renames.  For legacy (non-scene-based) chapter files it returns the
+   * file path.
+   */
+  getChapterCacheKey(file: TFile): string {
+    if (this.isSceneBasedProject()) {
+      return this.getChapterIdForFileSync(file);
+    }
+    return file.path;
   }
 
   /** Get the per-project mention cache, initialising if needed. */
@@ -5037,6 +5113,29 @@ export default class NovalistPlugin extends Plugin {
   }
 
   /**
+   * Returns true if the file is a "content" file — a chapter file,
+   * scene file, or assembled chapter file. Use this wherever you want
+   * to gate functionality to "the user is editing story content".
+   */
+  isContentFile(file: TFile): boolean {
+    return this.isChapterFile(file)
+        || this.isSceneFile(file)
+        || this.assembledChapterPaths.has(file.path);
+  }
+
+  /**
+   * Given a content file (scene or chapter), resolve the chapter number.
+   * For assembled/chapter files: extract from frontmatter `order`.
+   * For scene files: extract from frontmatter `chapter`.
+   */
+  getChapterNumberForContentFile(file: TFile): number | null {
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    if (!fm) return null;
+    if (this.isSceneFile(file)) return Number(fm.chapter) || null;
+    return Number(fm.order) || null;
+  }
+
+  /**
    * Read the full chapter body for a given file. For legacy and assembled
    * chapter files the file is read directly. For scene-based projects where
    * the file is a single scene, all sibling scene files are read and
@@ -5048,29 +5147,55 @@ export default class NovalistPlugin extends Plugin {
    * a harmless no-op in that case.
    */
   async readChapterContent(file: TFile): Promise<string> {
-    // Assembled or legacy chapter → read the file directly
-    if (this.assembledChapterPaths.has(file.path) || this.isChapterFile(file)) {
+    // For scene-based projects, always assemble from scene files so that
+    // the content (and its hash) is identical regardless of whether the
+    // caller passes a scene file or the assembled chapter file.
+    if (this.isSceneBasedProject() && (this.assembledChapterPaths.has(file.path) || this.isSceneFile(file))) {
+      // Resolve to a scene file so getSceneFilesInChapter can find siblings
+      let sceneFile = file;
+      if (!this.isSceneFile(file)) {
+        // Assembled chapter → find the first scene file for the same chapter
+        const chapterNum = this.getChapterNumberForContentFile(file);
+        if (chapterNum) {
+          const root = this.resolvedProjectPath();
+          const scenesFolder = `${root}/Scenes/`;
+          const sceneFiles = this.app.vault.getFiles()
+            .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md')
+            .filter(f => Number(this.app.metadataCache.getFileCache(f)?.frontmatter?.chapter) === chapterNum);
+          if (sceneFiles.length > 0) {
+            sceneFile = sceneFiles[0];
+          }
+        }
+      }
+
+      const allSceneFiles = this.getSceneFilesInChapter(sceneFile);
+      console.debug(`[Novalist AI] readChapterContent — scene-based for "${file.path}", found ${allSceneFiles.length} scene file(s):`, allSceneFiles.map(f => f.path));
+      const bodyParts: string[] = [];
+      for (const sf of allSceneFiles) {
+        const content = await this.app.vault.read(sf);
+        const cache = this.app.metadataCache.getFileCache(sf);
+        const sfm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
+        const sceneTitle = typeof sfm.title === 'string' && sfm.title ? sfm.title : sf.basename;
+        const sceneBody = this.stripFrontmatter(content);
+        console.debug(`[Novalist AI]   scene "${sceneTitle}" (${sf.path}) — body length=${sceneBody.trim().length}`);
+        bodyParts.push(`## ${sceneTitle}\n\n${sceneBody.trim()}`);
+      }
+      const assembled = bodyParts.join('\n\n');
+      console.debug(`[Novalist AI] readChapterContent — assembled total length=${assembled.length}`);
+      return assembled;
+    }
+
+    // Legacy chapter → read the file directly
+    if (this.isChapterFile(file)) {
       const content = await this.app.vault.read(file);
-      console.debug(`[Novalist AI] readChapterContent — direct read of "${file.path}" (assembled=${this.assembledChapterPaths.has(file.path)}, chapter=${this.isChapterFile(file)}), length=${content.length}`);
+      console.debug(`[Novalist AI] readChapterContent — direct read of "${file.path}" (chapter=true), length=${content.length}`);
       return content;
     }
 
-    // Scene-based: read all scene files for the chapter and assemble with H2 headings
-    const sceneFiles = this.getSceneFilesInChapter(file);
-    console.debug(`[Novalist AI] readChapterContent — scene-based for "${file.path}", found ${sceneFiles.length} scene file(s):`, sceneFiles.map(f => f.path));
-    const bodyParts: string[] = [];
-    for (const sf of sceneFiles) {
-      const content = await this.app.vault.read(sf);
-      const cache = this.app.metadataCache.getFileCache(sf);
-      const sfm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
-      const sceneTitle = typeof sfm.title === 'string' && sfm.title ? sfm.title : sf.basename;
-      const sceneBody = this.stripFrontmatter(content);
-      console.debug(`[Novalist AI]   scene "${sceneTitle}" (${sf.path}) — body length=${sceneBody.trim().length}`);
-      bodyParts.push(`## ${sceneTitle}\n\n${sceneBody.trim()}`);
-    }
-    const assembled = bodyParts.join('\n\n');
-    console.debug(`[Novalist AI] readChapterContent — assembled total length=${assembled.length}`);
-    return assembled;
+    // Fallback: read directly
+    const content = await this.app.vault.read(file);
+    console.debug(`[Novalist AI] readChapterContent — fallback direct read of "${file.path}", length=${content.length}`);
+    return content;
   }
 
   /** Check whether a given file path is an assembled chapter file (built from scene files). */
@@ -5165,7 +5290,12 @@ export default class NovalistPlugin extends Plugin {
     try {
       const existing = this.app.vault.getAbstractFileByPath(chapterPath);
       if (existing instanceof TFile) {
-        await this.app.vault.modify(existing, assembledContent);
+        // Only write if the content actually changed to avoid
+        // triggering a re-render that scrolls the editor to the top.
+        const currentContent = await this.app.vault.read(existing);
+        if (currentContent !== assembledContent) {
+          await this.app.vault.modify(existing, assembledContent);
+        }
         this.assembledChapterPaths.add(existing.path);
         return existing;
       }
@@ -5788,7 +5918,7 @@ export default class NovalistPlugin extends Plugin {
 
           // Determine active chapter context
           const activeFile = this.app.workspace.getActiveFile();
-          const inChapter = activeFile && this.isChapterFile(activeFile);
+          const inChapter = activeFile && this.isContentFile(activeFile);
           const chapterId = inChapter ? this.getChapterIdForFile(activeFile) : '';
           const chapterName = inChapter ? this.getChapterNameForFile(activeFile) : '';
 
@@ -6075,7 +6205,7 @@ export default class NovalistPlugin extends Plugin {
     const callbacks: ChapterDateCallbacks = {
       isChapterFile: () => {
         const f = this.app.workspace.getActiveFile();
-        return f ? this.isChapterFile(f) : false;
+        return f ? this.isContentFile(f) : false;
       },
       getChapterDate: () => {
         const f = this.app.workspace.getActiveFile();
@@ -6098,7 +6228,7 @@ export default class NovalistPlugin extends Plugin {
     const callbacks: ChapterNotesCallbacks = {
       isChapterFile: () => {
         const f = this.app.workspace.getActiveFile();
-        return f ? this.isChapterFile(f) : false;
+        return f ? this.isContentFile(f) : false;
       },
       getChapterGuid: () => {
         const f = this.app.workspace.getActiveFile();
@@ -6153,7 +6283,7 @@ export default class NovalistPlugin extends Plugin {
   /** Move the active chapter body to notes, leaving only headings in the file. */
   moveChapterContentToNotes(): void {
     const file = this.app.workspace.getActiveFile();
-    if (!file || !this.isChapterFile(file)) return;
+    if (!file || !this.isContentFile(file)) return;
 
     new MoveToNotesModal(
       this.app,
@@ -6918,7 +7048,8 @@ export default class NovalistPlugin extends Plugin {
 
       if (regexDisabled && mentionCache) {
         // Use AI-populated mention cache instead of regex scanning
-        const cacheEntry = mentionCache[ch.file.path];
+        const cacheKey = this.getChapterCacheKey(ch.file);
+        const cacheEntry = mentionCache[cacheKey];
         const cachedChars = cacheEntry?.chapter?.characters ?? [];
         for (const charName of trackedCharacters) {
           mentions[charName].push(cachedChars.includes(charName));
@@ -6979,6 +7110,99 @@ export default class NovalistPlugin extends Plugin {
     return {};
   }
 
+  /** Get AI-determined overrides map for the active project. */
+  private getAiSceneMetadataOverrides(): Record<string, Partial<SceneMetadataOverrides>> {
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (pd) {
+      if (!pd.aiSceneMetadataOverrides) pd.aiSceneMetadataOverrides = {};
+      return pd.aiSceneMetadataOverrides;
+    }
+    return {};
+  }
+
+  /**
+   * Find the scene file matching chapterId + sceneName and update its
+   * frontmatter pov/emotion/intensity/conflict fields so StoryLine can
+   * read the values directly from YAML.
+   */
+  private async syncSceneOverridesToFrontmatter(
+    chapterId: string,
+    sceneName: string,
+    overrides: Partial<SceneMetadataOverrides>,
+  ): Promise<void> {
+    if (!this.isSceneBasedProject()) return;
+
+    const root = this.resolvedProjectPath();
+    if (!root) return;
+    const scenesFolder = `${root}/Scenes/`;
+    const sceneFiles = this.app.vault.getFiles()
+      .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md');
+
+    // Find the scene file by matching novalist_chapterId and title
+    let targetFile: TFile | undefined;
+    for (const f of sceneFiles) {
+      const cache = this.app.metadataCache.getFileCache(f);
+      const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+      if (!fm) continue;
+      const fmChapterId = fm.novalist_chapterId as string | undefined;
+      if (fmChapterId !== chapterId) continue;
+      const title = (fm.title as string) || f.basename;
+      if (title === sceneName) {
+        targetFile = f;
+        break;
+      }
+    }
+    if (!targetFile) return;
+
+    const content = await this.app.vault.read(targetFile);
+    const { frontmatter: fm, body } = extractFmAndBody(content);
+
+    let changed = false;
+    if (overrides.pov !== undefined) { fm.pov = overrides.pov || undefined; changed = true; }
+    if (overrides.emotion !== undefined) { fm.emotion = overrides.emotion || undefined; changed = true; }
+    if (overrides.intensity !== undefined) { fm.intensity = overrides.intensity; changed = true; }
+    if (overrides.conflict !== undefined) { fm.conflict = overrides.conflict || undefined; changed = true; }
+
+    if (!changed) return;
+
+    // Remove undefined keys so they don't appear as `key:` in YAML
+    for (const k of ['pov', 'emotion', 'intensity', 'conflict']) {
+      if (fm[k] === undefined || fm[k] === '') delete fm[k];
+    }
+
+    const newContent = serializeFrontmatterAndBody(fm, body);
+    if (newContent !== content) {
+      await this.app.vault.modify(targetFile, newContent);
+    }
+  }
+
+  /** Save AI-determined scene metadata overrides. */
+  async saveAiSceneMetadataOverride(
+    chapterId: string,
+    sceneName: string,
+    overrides: Partial<SceneMetadataOverrides>,
+  ): Promise<void> {
+    const key = `${chapterId}:${sceneName}`;
+    const aiOverridesMap = this.getAiSceneMetadataOverrides();
+    aiOverridesMap[key] = { ...aiOverridesMap[key], ...overrides };
+    // Invalidate scene metadata cache for this chapter so it re-runs
+    const pd = this.settings.projectData[this.settings.activeProjectId];
+    if (pd?.sceneMetadataCache) {
+      // Direct key match (scene-based projects use chapterId as key)
+      delete pd.sceneMetadataCache[chapterId];
+      // Legacy fallback: scan by chapterId stored inside scenes
+      for (const path of Object.keys(pd.sceneMetadataCache)) {
+        const entry = pd.sceneMetadataCache[path];
+        if (Object.values(entry.scenes).some(s => s.chapterId === chapterId)) {
+          delete pd.sceneMetadataCache[path];
+        }
+      }
+    }
+    await this.saveSettings();
+    // Write to scene file frontmatter so StoryLine can read the values
+    await this.syncSceneOverridesToFrontmatter(chapterId, sceneName, overrides);
+  }
+
   /**
    * Analyse all scenes in a chapter file and cache the results.
    * Uses the same SHA-256 hash-check pattern as parseChapterFile().
@@ -6988,16 +7212,19 @@ export default class NovalistPlugin extends Plugin {
     const hash = await this.hashContent(content);
 
     const smCache = this.getSceneMetadataCache();
-    const cached = smCache[file.path];
+    const cacheKey = this.getChapterCacheKey(file);
+    const cached = smCache[cacheKey];
     if (cached && cached.hash === hash) return cached;
 
     // Cache miss — run analysis on all scenes
     const chapterId = this.getChapterIdForFileSync(file);
     const sceneNames = this.getScenesForChapter(file);
-    const mentionCacheEntry = this.getMentionCache()[file.path];
+    const mentionCacheKey = this.getChapterCacheKey(file);
+    const mentionCacheEntry = this.getMentionCache()[mentionCacheKey];
     const plotBoard = this.settings.projectData[this.settings.activeProjectId]?.plotBoard ?? { columns: [], cells: {}, labels: [], cardColors: {}, cardLabels: {}, viewMode: 'board' as const, collapsedActs: [] };
     const chapterNotes = this.settings.projectData[this.settings.activeProjectId]?.chapterNotes?.[chapterId];
     const overridesMap = this.getSceneMetadataOverrides();
+    const aiOverridesMap = this.getAiSceneMetadataOverrides();
     const locale = this.settings.language;
 
     const scenes: Record<string, SceneMetadata> = {};
@@ -7006,6 +7233,7 @@ export default class NovalistPlugin extends Plugin {
       const sceneText = this.extractSceneSection(content, sceneName);
       const overrideKey = `${chapterId}:${sceneName}`;
       const overrides = overridesMap[overrideKey];
+      const aiOverrides = aiOverridesMap[overrideKey];
 
       // Use cached mentions if available, else scan
       let mentions = mentionCacheEntry?.scenes[sceneName];
@@ -7024,12 +7252,13 @@ export default class NovalistPlugin extends Plugin {
         plotBoard,
         overrides,
         locale,
+        aiOverrides,
       );
     }
 
     const chapterAggregate = computeChapterAggregate(scenes);
     const entry: SceneMetadataCache = { hash, scenes, chapterAggregate };
-    smCache[file.path] = entry;
+    smCache[cacheKey] = entry;
     void this.saveSettings();
 
     return entry;
@@ -7052,7 +7281,9 @@ export default class NovalistPlugin extends Plugin {
     // Invalidate scene metadata cache for this chapter so it re-runs
     const pd = this.settings.projectData[this.settings.activeProjectId];
     if (pd?.sceneMetadataCache) {
-      // Remove all entries for this chapter (chapterId may be derived from file.path)
+      // Remove all entries for this chapter
+      delete pd.sceneMetadataCache[chapterId];
+      // Legacy fallback: scan by chapterId stored inside scenes
       for (const path of Object.keys(pd.sceneMetadataCache)) {
         const entry = pd.sceneMetadataCache[path];
         if (Object.values(entry.scenes).some(s => s.chapterId === chapterId)) {
@@ -7061,6 +7292,8 @@ export default class NovalistPlugin extends Plugin {
       }
     }
     await this.saveSettings();
+    // Write to scene file frontmatter so StoryLine can read the values
+    await this.syncSceneOverridesToFrontmatter(chapterId, sceneName, overrides);
   }
 
   /** Remove a manual override for a scene (revert to auto-detected value). */
@@ -7071,14 +7304,21 @@ export default class NovalistPlugin extends Plugin {
   ): Promise<void> {
     const key = `${chapterId}:${sceneName}`;
     const overridesMap = this.getSceneMetadataOverrides();
+    const aiOverridesMap = this.getAiSceneMetadataOverrides();
+    const fieldsToReset: (keyof SceneMetadataOverrides)[] = [];
     if (field) {
       if (overridesMap[key]) delete (overridesMap[key] as Record<string, unknown>)[field];
+      if (aiOverridesMap[key]) delete (aiOverridesMap[key] as Record<string, unknown>)[field];
+      fieldsToReset.push(field);
     } else {
       delete overridesMap[key];
+      delete aiOverridesMap[key];
+      fieldsToReset.push('pov', 'emotion', 'intensity', 'conflict');
     }
     // Invalidate scene metadata cache
     const pd = this.settings.projectData[this.settings.activeProjectId];
     if (pd?.sceneMetadataCache) {
+      delete pd.sceneMetadataCache[chapterId];
       for (const path of Object.keys(pd.sceneMetadataCache)) {
         const entry = pd.sceneMetadataCache[path];
         if (Object.values(entry.scenes).some(s => s.chapterId === chapterId)) {
@@ -7087,6 +7327,16 @@ export default class NovalistPlugin extends Plugin {
       }
     }
     await this.saveSettings();
+    // Clear the corresponding frontmatter fields in the scene file
+    const clearOverrides: Partial<SceneMetadataOverrides> = {};
+    for (const f of fieldsToReset) {
+      if (f === 'pov' || f === 'emotion' || f === 'conflict') {
+        (clearOverrides as Record<string, unknown>)[f] = '';
+      } else if (f === 'intensity') {
+        (clearOverrides as Record<string, unknown>)[f] = undefined;
+      }
+    }
+    await this.syncSceneOverridesToFrontmatter(chapterId, sceneName, clearOverrides);
   }
 
   // ─── Plot Validator ──────────────────────────────────────────────────
@@ -7124,7 +7374,7 @@ export default class NovalistPlugin extends Plugin {
         status: c.status,
         act: c.act,
         date: c.date,
-        filePath: c.file.path,
+        filePath: this.getChapterCacheKey(c.file),
         scenes: c.scenes,
       })),
       sceneMetadataCache: smCache,

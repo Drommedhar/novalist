@@ -145,8 +145,25 @@ export async function buildTimelineEvents(plugin: NovalistPlugin): Promise<Timel
     }
 
     // 2) Scene events
+    const isSceneBased = plugin.isSceneBasedProject();
     for (const sceneName of ch.scenes) {
-      const sceneDate = plugin.getSceneDateSync(ch.file, sceneName);
+      // In scene-based projects each scene has its own file with its own storyDate.
+      // Look up the actual scene file so getSceneDateSync reads the right frontmatter.
+      let sceneFile = ch.file;
+      if (isSceneBased) {
+        const root = plugin.resolvedProjectPath();
+        const scenesFolder = `${root}/Scenes/`;
+        const found = plugin.app.vault.getFiles().find(f => {
+          if (!f.path.startsWith(scenesFolder) || f.extension !== 'md') return false;
+          const c = plugin.app.metadataCache.getFileCache(f);
+          const fm = c?.frontmatter;
+          return Number(fm?.chapter) === ch.order
+            && (fm?.title === sceneName || f.basename === sceneName);
+        });
+        if (found) sceneFile = found;
+      }
+
+      const sceneDate = plugin.getSceneDateSync(sceneFile, sceneName);
       // Only create a separate scene event if the scene has its own date
       // different from the chapter date (or if the chapter has no date)
       if (sceneDate && sceneDate !== ch.date) {

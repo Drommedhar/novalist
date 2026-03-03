@@ -430,6 +430,7 @@ export class WholeStoryAnalysisModal extends Modal {
       case 'reference': return t('ollama.findingReference');
       case 'inconsistency': return t('ollama.findingInconsistency');
       case 'suggestion': return t('ollama.findingSuggestion');
+      default: return '';
     }
   }
 }

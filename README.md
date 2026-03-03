@@ -220,6 +220,7 @@ Two analysis modes are available. **Per paragraph** splits the text and analyses
 - **Reference detection** — finds indirect entity references the regex system cannot catch, such as pronouns, relationship terms (e.g. "his wife" → the character linked as Wife), nicknames, and abbreviated names. Direct name matches already found by regex are excluded.
 - **Consistency checking** — flags contradictions between the chapter text and your entity data (e.g. wrong hair colour, mismatched location details). Relationship-based references are also checked. Entity data reflects act/chapter/scene overrides.
 - **Entity suggestions** — spots characters, locations, items, or lore concepts that appear in the text but do not exist in the project, and offers to create them. Each suggestion card has a `Create` button that opens the matching creation modal with the entity name and description pre-filled.
+- **Scene stats detection** — when analysing a scene, the AI determines the point-of-view character, dominant emotion, narrative intensity, and central conflict. The detected values are saved as AI overrides and appear in the Scene Analysis panel with an `(ai)` source label. Manual edits still take priority over AI-determined values, and both can be reset to fall back to the automatic heuristic.
 
 Findings are shown in two places: the **AI Assistant section** at the bottom of the context sidebar (with sub-tabs and action buttons), and as **inline highlights** directly in the editor — references get a solid underline, inconsistencies a wavy red underline, and suggestions a dashed green underline. Hover over a highlight to see the finding title.
 
@@ -323,6 +324,7 @@ A fixed-width panel on the left side of the editor that shows notes and outline 
 | Check references | Detect indirect entity references (pronouns, relationship terms) that regex matching cannot find | On |
 | Check inconsistencies | Flag contradictions between the chapter text and entity details | On |
 | Check suggestions | Identify unregistered entities mentioned in the text | On |
+| Detect scene stats | Use AI to determine POV, emotion, intensity, and conflict for each scene | On |
 
 ## Commands
 

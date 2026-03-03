@@ -491,10 +491,13 @@ export class NovalistSidebarView extends ItemView {
           });
         });
         povValEl.appendChild(povSpan);
-        if (scene.pov.source === 'manual') {
+        if (scene.pov.source === 'manual' || scene.pov.source === 'ai') {
           const resetBtn = povValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
           resetBtn.title = t('sceneAnalysis.resetOverride');
           resetBtn.addEventListener('click', () => void resetOverride('pov'));
+          if (scene.pov.source === 'ai') {
+            povValEl.createSpan({ text: ` (${scene.pov.source})`, cls: 'novalist-sa-source' });
+          }
         } else {
           povValEl.createSpan({ text: ` (${scene.pov.source})`, cls: 'novalist-sa-source' });
         }
@@ -534,7 +537,7 @@ export class NovalistSidebarView extends ItemView {
           });
         });
         emoValEl.appendChild(emoBadge);
-        if (scene.emotion.source === 'manual') {
+        if (scene.emotion.source === 'manual' || scene.emotion.source === 'ai') {
           const resetBtn = emoValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
           resetBtn.title = t('sceneAnalysis.resetOverride');
           resetBtn.addEventListener('click', () => void resetOverride('emotion'));
@@ -575,7 +578,7 @@ export class NovalistSidebarView extends ItemView {
           });
         });
         intValEl.appendChild(intNumSpan);
-        if (scene.intensity.source === 'manual') {
+        if (scene.intensity.source === 'manual' || scene.intensity.source === 'ai') {
           const resetBtn = intValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
           resetBtn.title = t('sceneAnalysis.resetOverride');
           resetBtn.addEventListener('click', () => void resetOverride('intensity'));
@@ -611,7 +614,7 @@ export class NovalistSidebarView extends ItemView {
           });
         });
         conValEl.appendChild(conSpan);
-        if (scene.conflict.source === 'manual') {
+        if (scene.conflict.source === 'manual' || scene.conflict.source === 'ai') {
           const resetBtn = conValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
           resetBtn.title = t('sceneAnalysis.resetOverride');
           resetBtn.addEventListener('click', () => void resetOverride('conflict'));
@@ -650,7 +653,7 @@ export class NovalistSidebarView extends ItemView {
             else if (e.key === 'Escape') { e.preventDefault(); void renderContent(); }
           });
         });
-        if (scene.tags.source === 'manual') {
+        if (scene.tags.source === 'manual' || scene.tags.source === 'ai') {
           const resetBtn = tagsValEl.createSpan({ text: '×', cls: 'novalist-sa-reset' });
           resetBtn.title = t('sceneAnalysis.resetOverride');
           resetBtn.addEventListener('click', () => void resetOverride('tags'));
@@ -730,13 +733,18 @@ export class NovalistSidebarView extends ItemView {
    * fields are cleared so the next scheduled analysis starts fresh.
    */
   private async restoreAiCacheOrClear(file: TFile): Promise<void> {
+    console.debug(`[Novalist AI] restoreAiCacheOrClear — file="${file.path}", cacheKey="${this.plugin.getChapterCacheKey(file)}"`);
     const cached = await this.plugin.getCachedAiFindings(file);
+    console.debug(`[Novalist AI] restoreAiCacheOrClear — cached=${cached ? `${cached.length} findings` : 'null'}`);
     if (cached) {
       this.restoreFromCachedFindings(cached);
       // Compute the same hash that runAiAnalysis uses so its guard
       // correctly skips re-analysis when the content hasn't changed.
-      const content = await this.app.vault.read(file);
-      this.aiLastAnalysedHash = this.hashText(content);
+      // readChapterContent assembles all scenes for scene-based projects,
+      // matching the hash produced by runAiAnalysis.
+      const content = await this.plugin.readChapterContent(file);
+      const body = this.plugin.stripFrontmatter(content);
+      this.aiLastAnalysedHash = this.hashText(body);
     } else {
       this.aiFindings = [];
       this.aiExtraEntities = { characters: [], locations: [], items: [], lore: [] };
@@ -747,7 +755,7 @@ export class NovalistSidebarView extends ItemView {
   /** Populate sidebar state from a set of cached AI findings. */
   private restoreFromCachedFindings(findings: CachedAiFinding[]): void {
     const refFindings = findings.filter(f => f.type === 'reference');
-    const nonRefFindings = findings.filter(f => f.type !== 'reference') as AiFinding[];
+    const nonRefFindings = findings.filter(f => f.type !== 'reference' && f.type !== 'scene_stats') as AiFinding[];
 
     // Rebuild extra entity lists from reference findings
     this.aiExtraEntities = { characters: [], locations: [], items: [], lore: [] };
@@ -795,7 +803,8 @@ export class NovalistSidebarView extends ItemView {
     // Read chapter text and check if it changed since last analysis
     const chapterText = await this.plugin.readChapterContent(this.currentChapterFile);
     console.debug(`[Novalist AI] Sidebar runAiAnalysis — file "${this.currentChapterFile.path}", content length=${chapterText.length}${chapterText.length === 0 ? ' ⚠ EMPTY' : ''}`);
-    const hash = this.hashText(chapterText);
+    const body = this.plugin.stripFrontmatter(chapterText);
+    const hash = this.hashText(body);
     if (hash === this.aiLastAnalysedHash && this.aiFindings.length > 0) return;
 
     this.aiIsAnalysing = true;
@@ -839,6 +848,8 @@ export class NovalistSidebarView extends ItemView {
         references: this.plugin.settings.ollama.checkReferences,
         inconsistencies: this.plugin.settings.ollama.checkInconsistencies,
         suggestions: this.plugin.settings.ollama.checkSuggestions,
+        // Scene stats detection is only useful for whole-scene analysis
+        sceneStats: this.plugin.settings.ollama.checkSceneStats && !!sceneName,
       };
 
       const result = await this.plugin.ollamaService.analyseChapter(
@@ -868,7 +879,8 @@ export class NovalistSidebarView extends ItemView {
 
       // Separate reference findings: merge into normal entity lists, don't show as cards
       const refFindings = result.findings.filter(f => f.type === 'reference');
-      const nonRefFindings = result.findings.filter(f => f.type !== 'reference');
+      const sceneStatsFindings = result.findings.filter(f => f.type === 'scene_stats');
+      const nonRefFindings = result.findings.filter(f => f.type !== 'reference' && f.type !== 'scene_stats');
 
       // Build extra entity lists from reference findings
       this.aiExtraEntities = { characters: [], locations: [], items: [], lore: [] };
@@ -883,6 +895,20 @@ export class NovalistSidebarView extends ItemView {
           this.aiExtraEntities.items.push(ref.entityName);
         } else if (etype === 'lore' && !this.aiExtraEntities.lore.includes(ref.entityName)) {
           this.aiExtraEntities.lore.push(ref.entityName);
+        }
+      }
+
+      // Apply AI-determined scene stats as AI overrides
+      if (sceneStatsFindings.length > 0 && sceneName && this.currentChapterFile) {
+        const stats = sceneStatsFindings[0];
+        const chapterId = this.plugin.getChapterIdForFileSync(this.currentChapterFile);
+        const aiOverrides: Partial<SceneMetadataOverrides> = {};
+        if (stats.scenePov !== undefined) aiOverrides.pov = stats.scenePov;
+        if (stats.sceneEmotion !== undefined) aiOverrides.emotion = stats.sceneEmotion as SceneEmotion;
+        if (stats.sceneIntensity !== undefined) aiOverrides.intensity = Math.min(10, Math.max(-10, stats.sceneIntensity));
+        if (stats.sceneConflict !== undefined) aiOverrides.conflict = stats.sceneConflict;
+        if (Object.keys(aiOverrides).length > 0) {
+          await this.plugin.saveAiSceneMetadataOverride(chapterId, sceneName, aiOverrides);
         }
       }
 
@@ -988,7 +1014,7 @@ export class NovalistSidebarView extends ItemView {
     }
 
     // No chapter
-    if (!this.currentChapterFile || !this.plugin.isChapterFile(this.currentChapterFile)) {
+    if (!this.currentChapterFile || !this.plugin.isContentFile(this.currentChapterFile)) {
       this.aiSectionEl.createEl('p', { text: t('ollama.sidebarNoChapter'), cls: 'novalist-ai-sidebar-hint' });
       return;
     }
@@ -1183,6 +1209,7 @@ export class NovalistSidebarView extends ItemView {
       case 'reference': return t('ollama.findingReference');
       case 'inconsistency': return t('ollama.findingInconsistency');
       case 'suggestion': return t('ollama.findingSuggestion');
+      default: return '';
     }
   }
 
@@ -1224,14 +1251,14 @@ export class NovalistSidebarView extends ItemView {
   private pushHighlightsToEditor(chapterText: string): void {
     const highlights: AiHighlight[] = [];
     for (const finding of this.aiFindings) {
-      if (!finding.excerpt) continue;
+      if (!finding.excerpt || finding.type === 'scene_stats') continue;
       // Find the excerpt position in the chapter text (case-insensitive)
       const idx = chapterText.toLowerCase().indexOf(finding.excerpt.toLowerCase());
       if (idx === -1) continue;
       highlights.push({
         from: idx,
         to: idx + finding.excerpt.length,
-        type: finding.type,
+        type: finding.type as AiHighlight['type'],
         title: finding.title,
         description: finding.description,
         excerpt: finding.excerpt,

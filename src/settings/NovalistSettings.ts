@@ -250,6 +250,7 @@ export function createDefaultProjectData(): ProjectData {
     chapterNotes: {},
     sceneMetadataCache: {},
     sceneMetadataOverrides: {},
+    aiSceneMetadataOverrides: {},
     dismissedFindings: [],
     entityHierarchy: { locations: {}, characters: {} },
   };
@@ -317,6 +318,7 @@ export const DEFAULT_SETTINGS: NovalistSettings = {
     checkReferences: true,
     checkInconsistencies: true,
     checkSuggestions: true,
+    checkSceneStats: true,
     copilotPath: 'copilot',
     copilotModel: '',
     temperature: 0.7,

@@ -16,6 +16,7 @@ import { ChapterListData, CharacterListData, LocationListData, CHAPTER_STATUSES,
 import { ChapterEditData } from '../modals/ChapterDescriptionModal';
 import { SceneNameModal } from '../modals/SceneNameModal';
 import { SnapshotNameModal, SnapshotListModal } from '../modals/SnapshotModal';
+import { extractFrontmatterAndBody, serializeFrontmatterAndBody } from '../services/FrontmatterUtils';
 import { t } from '../i18n';
 
 export const NOVELIST_EXPLORER_VIEW_TYPE = 'novalist-explorer';
@@ -932,22 +933,29 @@ export class NovalistExplorerView extends ItemView {
 
           for (const sf of siblings) {
             const content = await this.app.vault.read(sf);
-            const { frontmatter, body } = this.plugin.extractFrontmatterAndBody(content);
+            const { frontmatter, body } = extractFrontmatterAndBody(content);
             if (data.name !== existing.name) {
-              (frontmatter as Record<string, unknown>).novalist_chapterName = data.name;
+              frontmatter.novalist_chapterName = data.name;
             }
             if (data.order !== existing.order) {
-              (frontmatter as Record<string, unknown>).chapter = Number(data.order) || chapterNum;
+              frontmatter.chapter = Number(data.order) || chapterNum;
             }
             if (data.act !== existing.act) {
               if (data.act) {
-                (frontmatter as Record<string, unknown>).act = data.act;
+                frontmatter.act = data.act;
               } else {
-                delete (frontmatter as Record<string, unknown>).act;
+                delete frontmatter.act;
               }
             }
-            await this.app.vault.modify(sf, this.plugin.serializeFrontmatter(frontmatter) + body);
+            await this.app.vault.modify(sf, serializeFrontmatterAndBody(frontmatter, body));
           }
+          // Wait for metadata cache to process the changes before re-rendering
+          await new Promise<void>(resolve => {
+            const handler = this.app.metadataCache.on('resolved', () => {
+              this.app.metadataCache.offref(handler);
+              resolve();
+            });
+          });
           void this.render();
         })();
       });
@@ -998,59 +1006,66 @@ export class NovalistExplorerView extends ItemView {
   }
 
   private openEditSceneModal(chapterFile: TFile, sceneName: string): void {
-    // Scene-based: edits are applied to the assembled chapter file's H2 heading.
-    // The decompose-on-modify handler writes changes back to scene files.
+    // Scene-based: directly modify the individual scene file's frontmatter.
+    // The assembled chapter sync handler will auto-reassemble if tracked.
     if (this.plugin.isSceneBasedProject()) {
-      const sceneDate = this.plugin.getSceneDateSync(chapterFile, sceneName);
+      // Find the actual scene file by chapter number + title
+      const cache = this.app.metadataCache.getFileCache(chapterFile);
+      const chapterNum = Number((cache?.frontmatter as Record<string, unknown> | undefined)?.chapter) || 0;
+      const root = this.plugin.resolvedProjectPath();
+      const scenesFolder = `${root}/Scenes/`;
+      const sceneFile = this.app.vault.getFiles().find(f => {
+        if (!f.path.startsWith(scenesFolder) || f.extension !== 'md') return false;
+        const c = this.app.metadataCache.getFileCache(f);
+        const fm = c?.frontmatter as Record<string, unknown> | undefined;
+        return Number(fm?.chapter) === chapterNum
+          && (fm?.title === sceneName || f.basename === sceneName);
+      });
+      if (!sceneFile) {
+        new Notice(t('notice.sceneNotFound'));
+        return;
+      }
+
+      const sceneDate = this.plugin.getSceneDateSync(sceneFile, sceneName);
       const chapterDate = this.plugin.getChapterDateSync(chapterFile);
       const explicitDate = sceneDate !== chapterDate ? sceneDate : '';
       const modal = new SceneNameModal(this.app, (data) => {
         void (async () => {
-          // Rename scene heading in assembled chapter file if name changed
+          const content = await this.app.vault.read(sceneFile);
+          const { frontmatter, body } = extractFrontmatterAndBody(content);
+
+          // Update title in frontmatter
           if (data.name !== sceneName) {
-            // Find the assembled chapter file for this chapter
-            const cache = this.app.metadataCache.getFileCache(chapterFile);
-            const chapterNum = Number((cache?.frontmatter as Record<string, unknown> | undefined)?.chapter) || 0;
-            // Look for the assembled file in Chapters/
-            const root = this.plugin.resolvedProjectPath();
-            const chapterFolder = `${root}/${this.plugin.settings.chapterFolder}/`;
-            const assembledFiles = this.app.vault.getFiles().filter(
-              f => f.path.startsWith(chapterFolder) && this.plugin.isAssembledChapterFile(f)
-            );
-            const assembledFile = assembledFiles.find(f => {
-              const c = this.app.metadataCache.getFileCache(f);
-              return Number(c?.frontmatter?.order) === chapterNum;
-            });
-            if (assembledFile) {
-              const content = await this.app.vault.read(assembledFile);
-              const updated = content.replace(
-                new RegExp(`^## ${sceneName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'),
-                `## ${data.name}`
-              );
-              if (updated !== content) await this.app.vault.modify(assembledFile, updated);
-            }
+            frontmatter.title = data.name;
           }
+
+          // Update storyDate in frontmatter
           if (data.date !== explicitDate) {
-            // Update scene date via the assembled chapter frontmatter
-            const cache = this.app.metadataCache.getFileCache(chapterFile);
-            const chapterNum = Number((cache?.frontmatter as Record<string, unknown> | undefined)?.chapter) || 0;
-            const root = this.plugin.resolvedProjectPath();
-            const chapterFolder = `${root}/${this.plugin.settings.chapterFolder}/`;
-            const assembledFiles = this.app.vault.getFiles().filter(
-              f => f.path.startsWith(chapterFolder) && this.plugin.isAssembledChapterFile(f)
-            );
-            const assembledFile = assembledFiles.find(f => {
-              const c = this.app.metadataCache.getFileCache(f);
-              return Number(c?.frontmatter?.order) === chapterNum;
-            });
-            if (assembledFile) {
-              const dateTarget = data.name !== sceneName ? data.name : sceneName;
-              await this.plugin.setSceneDate(assembledFile, dateTarget, data.date);
+            if (data.date) {
+              frontmatter.storyDate = data.date;
+            } else {
+              delete frontmatter.storyDate;
             }
           }
+
+          await this.app.vault.modify(sceneFile, serializeFrontmatterAndBody(frontmatter, body));
+
+          // Rename the file if the title changed
+          if (data.name !== sceneName) {
+            const newPath = sceneFile.path.replace(/[^/]+\.md$/, `${data.name}.md`);
+            await this.app.fileManager.renameFile(sceneFile, newPath);
+          }
+
+          // Wait for metadata cache before re-rendering
+          await new Promise<void>(resolve => {
+            const handler = this.app.metadataCache.on('resolved', () => {
+              this.app.metadataCache.offref(handler);
+              resolve();
+            });
+          });
           void this.render();
         })();
-      }, { name: sceneName, date: sceneDate !== chapterDate ? sceneDate : '' });
+      }, { name: sceneName, date: explicitDate });
       modal.open();
       return;
     }
