@@ -162,6 +162,11 @@ class ChapterNotesPanelPlugin implements PluginValue {
     const scrollerRect = this.view.scrollDOM.getBoundingClientRect();
     const ribbonOffset = Math.max(0, scrollerRect.top - wrapperRect.top);
 
+    // ── Shrink the wrapper so it stops above the statistics panel ──
+    const bottomPanels = this.view.dom.querySelector<HTMLElement>(':scope > .cm-panels-bottom');
+    const bottomOffset = bottomPanels ? bottomPanels.offsetHeight : 0;
+    this.wrapper.style.bottom = `${bottomOffset}px`;
+
     // Clip anything that renders above the ribbon (non-sticky cards scrolling up)
     this.wrapper.style.clipPath = `inset(${ribbonOffset}px 0 0 0)`;
 
@@ -178,6 +183,8 @@ class ChapterNotesPanelPlugin implements PluginValue {
     }
 
     const STICKY_GAP = 4;
+    // Wrapper height now excludes the stats bar, so use it directly
+    const visibleBottom = scrollTop + this.wrapper.offsetHeight;
     for (let i = 0; i < children.length; i++) {
       const el = children[i];
       const layoutTop = parseFloat(el.dataset.layoutTop ?? '0');
@@ -191,6 +198,9 @@ class ChapterNotesPanelPlugin implements PluginValue {
           const maxTop = nextLayoutTop - el.offsetHeight - STICKY_GAP;
           if (stickyTop > maxTop) stickyTop = maxTop;
         }
+        // Don't push below the visible area (status bar)
+        const maxVisibleTop = visibleBottom - el.offsetHeight - STICKY_GAP;
+        if (stickyTop > maxVisibleTop) stickyTop = maxVisibleTop;
         el.setCssStyles({ top: `${stickyTop}px` });
         el.classList.add('is-sticky');
       } else {
