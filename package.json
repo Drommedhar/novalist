@@ -26,8 +26,8 @@
     "@codemirror/state": "*",
     "@codemirror/view": "*"
   },
-  "eslint-plugin-eslint-comments": "^3.2.0",
   "devDependencies": {
+    "@typescript-eslint/parser": "^8.54.0",
     "@types/cytoscape": "^3.21.9",
     "@types/node": "^22.10.2",
     "esbuild": "^0.27.3",
