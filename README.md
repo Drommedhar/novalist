@@ -249,6 +249,25 @@ Scenes are subsections within a chapter file, created as `## heading` (H2) Markd
 
 Chapters and scenes can each carry a date (stored in chapter frontmatter). When a timespan custom property is displayed in the character sheet, the interval between the property's reference date and the selected chapter or scene date is computed and shown automatically. Edit chapter or scene metadata — including dates — by right-clicking in the explorer.
 
+### StoryLine Compatibility
+
+Novalist is fully compatible with [StoryLine](https://github.com/PixeroJan/obsidian-storyline). Both plugins can coexist in the same vault, reading and writing the same project files. A Novalist project is a valid StoryLine project and vice versa.
+
+#### How the bridge works
+
+StoryLine's source repository is embedded as a **git submodule** at `vendor/storyline`. At build time, Novalist imports StoryLine's canonical model types (`Scene`, `Character`, `StoryLocation`, `StoryWorld`, `StoryLineProject`, `PlotGridData`) through a `@storyline/models/*` path alias and extends them with Novalist-specific fields. This means every file Novalist writes uses the exact same YAML frontmatter schema StoryLine expects — `type: scene`, `type: character`, `type: location`, `type: world`, `type: storyline` — so either plugin can open and edit the data without conflicts.
+
+- **Shared scene format** — Each scene is a standalone Markdown file with `type: scene` frontmatter containing title, act, chapter, sequence, POV, characters, location, status, emotion, intensity, tags, story date/time, timeline mode, and notes. StoryLine's six-stage status pipeline (`idea → outlined → draft → written → revised → final`) is used natively.
+- **Shared character format** — Character files use `type: character` frontmatter with name, age, role, relationships (`relations[]` with category/type/target), and a `custom` field map for physical attributes and user-defined properties. Novalist stores additional data (chapter overrides, template ID, extra images) in `novalist_`-prefixed fields that StoryLine ignores.
+- **Shared location format** — Location files use `type: location` or `type: world` frontmatter. Parent/child hierarchies, location types, and world metadata are represented identically in both plugins.
+- **Shared project structure** — A project is a `.md` file with `type: storyline` frontmatter. Scene, character, and location subfolders, plus a `System/` folder for per-project settings (`plotgrid.json`, `board.json`, `stats.json`, etc.), follow the same layout convention.
+- **Novalist extensions** — Items (`type: item`) and Lore (`type: lore`) are Novalist-only entity types. StoryLine does not define these types and will simply ignore the files. All Novalist-only frontmatter fields are prefixed with `novalist_` to avoid namespace collisions.
+- **Migration** — Existing Novalist projects using the legacy format (`## CharacterSheet` blocks, one file per chapter) can be migrated to the StoryLine-compatible format through a built-in migration wizard. The migration splits chapters into individual scene files, converts entity sheets to YAML frontmatter, creates world entities from top-level locations, and generates the project file and `System/` folder.
+
+#### Practical coexistence
+
+You can install both plugins simultaneously. Edits made in StoryLine (reordering scenes, changing statuses, updating characters) are immediately visible in Novalist, and edits in Novalist are visible in StoryLine. The only data StoryLine cannot display are Novalist-only features — items, lore entries, chapter overrides, entity templates, and inline annotations — which are silently preserved in the files.
+
 ### Book Paragraph Spacing
 
 A toggle in settings that adds printed-book-style spacing between paragraphs in edit mode.
