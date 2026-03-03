@@ -34,18 +34,34 @@ export async function compileChapters(
   chapterFiles: TFile[]
 ): Promise<ChapterContent[]> {
   const chapters: ChapterContent[] = [];
+  const isSceneBased = plugin.isSceneBasedProject();
   
   for (const file of chapterFiles) {
-    // Normalise line endings (Windows \r\n → \n) so that every regex
-    // and every split('\n\n') in the export pipeline works reliably.
-    const content = (await plugin.app.vault.read(file)).replace(/\r/g, '');
     const cache = plugin.app.metadataCache.getFileCache(file);
     const frontmatter = cache?.frontmatter || {};
-    const order = Number(frontmatter.order) || 999;
-    
-    // Get chapter title (H1 heading)
-    const h1Match = content.match(/^#\s+(.+)$/m);
-    const title = h1Match ? h1Match[1] : file.basename;
+
+    let content: string;
+    let title: string;
+    let order: number;
+
+    if (isSceneBased) {
+      // Scene-based projects: readChapterContent assembles all sibling
+      // scene files into a single markdown string with ## headings, so
+      // the existing scene-break replacement logic below works as-is.
+      content = (await plugin.readChapterContent(file)).replace(/\r/g, '');
+      title = typeof frontmatter.novalist_chapterName === 'string' && frontmatter.novalist_chapterName
+        ? frontmatter.novalist_chapterName
+        : `Chapter ${frontmatter.chapter ?? '?'}`;
+      order = Number(frontmatter.chapter) || 999;
+    } else {
+      // Legacy chapter-based: read the single file directly.
+      // Normalise line endings (Windows \r\n → \n) so that every regex
+      // and every split('\n\n') in the export pipeline works reliably.
+      content = (await plugin.app.vault.read(file)).replace(/\r/g, '');
+      const h1Match = content.match(/^#\s+(.+)$/m);
+      title = h1Match ? h1Match[1] : file.basename;
+      order = Number(frontmatter.order) || 999;
+    }
     
     // Strip frontmatter and extract just the chapter text
     let body = content.replace(/^---\n[\s\S]*?\n---\n?/, '');
@@ -675,6 +691,54 @@ function docxRun(text: string, bold: boolean, italic: boolean): string {
 
 // ─── PDF Export (via pdf-lib) ────────────────────────────────────────
 
+// ── WinAnsi sanitisation ─────────────────────────────────────────────
+
+/**
+ * Characters encodable in WinAnsi (Windows-1252) beyond basic ASCII
+ * and the Latin-1 Supplement range 0x00A0–0x00FF.
+ */
+const WIN_ANSI_EXTRAS = new Set([
+  0x0152, 0x0153, 0x0160, 0x0161, 0x0178, 0x017D, 0x017E,
+  0x0192, 0x02C6, 0x02DC,
+  0x2013, 0x2014, 0x2018, 0x2019, 0x201A, 0x201C, 0x201D, 0x201E,
+  0x2020, 0x2021, 0x2022, 0x2026, 0x2030, 0x2039, 0x203A,
+  0x20AC, 0x2122,
+]);
+
+/** Common Unicode → ASCII fallbacks for characters outside WinAnsi. */
+const WIN_ANSI_REPLACEMENTS: Record<string, string> = {
+  '\u2192': '->', // →
+  '\u2190': '<-', // ←
+  '\u2194': '<->', // ↔
+  '\u2191': '^',  // ↑
+  '\u2193': 'v',  // ↓
+  '\u2260': '!=', // ≠
+  '\u2264': '<=', // ≤
+  '\u2265': '>=', // ≥
+  '\u2014\u2014': '--', // double em-dash (shouldn't occur, but safe)
+};
+
+/**
+ * Replace characters that WinAnsi (Windows-1252) cannot encode with safe
+ * ASCII equivalents.  pdf-lib standard fonts require WinAnsi; passing
+ * unsupported code points throws at draw-time.
+ */
+function sanitizeForWinAnsi(text: string): string {
+  let result = '';
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (WIN_ANSI_REPLACEMENTS[ch]) {
+      result += WIN_ANSI_REPLACEMENTS[ch];
+    } else if (code <= 0x007F || (code >= 0x00A0 && code <= 0x00FF) || WIN_ANSI_EXTRAS.has(code)) {
+      result += ch;
+    } else {
+      // Unsupported glyph – drop silently to avoid breaking the export.
+      result += '';
+    }
+  }
+  return result;
+}
+
 /** Points-per-inch constant. */
 const PPI = 72;
 
@@ -774,6 +838,15 @@ export async function exportToPDF(
     .filter((f): f is TFile => f instanceof TFile);
   const chapters = await compileChapters(plugin, files);
 
+  // Sanitize text for WinAnsi encoding (pdf-lib standard fonts cannot
+  // render characters outside the Windows-1252 code page).
+  for (const ch of chapters) {
+    ch.title = sanitizeForWinAnsi(ch.title);
+    ch.content = sanitizeForWinAnsi(ch.content);
+  }
+  const pdfTitle = sanitizeForWinAnsi(options.title);
+  const pdfAuthor = sanitizeForWinAnsi(options.author);
+
   const useSMF = options.smfPreset;
 
   // Font selection
@@ -801,17 +874,17 @@ export async function exportToPDF(
    * Build the short surname slug used in SMF headers.
    * If the author field is empty, falls back to an empty string.
    */
-  const surname = options.author
-    ? options.author.split(/\s+/).pop() ?? options.author
+  const surname = pdfAuthor
+    ? pdfAuthor.split(/\s+/).pop() ?? pdfAuthor
     : '';
 
   /**
    * Short title used in SMF page headers (first significant word(s),
    * capped at ~30 characters to fit comfortably).
    */
-  const shortTitle = options.title.length > 30
-    ? options.title.substring(0, 27) + '...'
-    : options.title;
+  const shortTitle = pdfTitle.length > 30
+    ? pdfTitle.substring(0, 27) + '...'
+    : pdfTitle;
 
   /** Add an SMF page header: Surname / SHORT TITLE / page# */
   function addPageHeader(
@@ -847,8 +920,8 @@ export async function exportToPDF(
       // SMF title page: contact info top-left, word count top-right,
       // title centered vertically.
       // Top-left: author name
-      if (options.author) {
-        tp.drawText(options.author, {
+      if (pdfAuthor) {
+        tp.drawText(pdfAuthor, {
           x: PDF_MARGIN,
           y: PDF_PAGE_HEIGHT - PDF_MARGIN,
           size: 12,
@@ -860,8 +933,8 @@ export async function exportToPDF(
       // Center block: title + "by" + author
       const titleFontSize = 12;
       const centerY = PDF_PAGE_HEIGHT / 2;
-      const titleWidth = bodyFont.widthOfTextAtSize(options.title.toUpperCase(), titleFontSize);
-      tp.drawText(options.title.toUpperCase(), {
+      const titleWidth = bodyFont.widthOfTextAtSize(pdfTitle.toUpperCase(), titleFontSize);
+      tp.drawText(pdfTitle.toUpperCase(), {
         x: (PDF_PAGE_WIDTH - titleWidth) / 2,
         y: centerY + lineSpacing,
         size: titleFontSize,
@@ -869,8 +942,8 @@ export async function exportToPDF(
         color: rgb(0, 0, 0),
       });
 
-      if (options.author) {
-        const byLine = `by ${options.author}`;
+      if (pdfAuthor) {
+        const byLine = `by ${pdfAuthor}`;
         const byWidth = bodyFont.widthOfTextAtSize(byLine, titleFontSize);
         tp.drawText(byLine, {
           x: (PDF_PAGE_WIDTH - byWidth) / 2,
@@ -883,8 +956,8 @@ export async function exportToPDF(
     } else {
       // Standard decorative title page
       const titleFontSize = 24;
-      const titleWidth = boldFont.widthOfTextAtSize(options.title, titleFontSize);
-      tp.drawText(options.title, {
+      const titleWidth = boldFont.widthOfTextAtSize(pdfTitle, titleFontSize);
+      tp.drawText(pdfTitle, {
         x: (PDF_PAGE_WIDTH - titleWidth) / 2,
         y: PDF_PAGE_HEIGHT * 0.6,
         size: titleFontSize,
@@ -892,10 +965,10 @@ export async function exportToPDF(
         color: rgb(0, 0, 0),
       });
 
-      if (options.author) {
+      if (pdfAuthor) {
         const authorFontSize = 16;
-        const authorWidth = italicFont.widthOfTextAtSize(options.author, authorFontSize);
-        tp.drawText(options.author, {
+        const authorWidth = italicFont.widthOfTextAtSize(pdfAuthor, authorFontSize);
+        tp.drawText(pdfAuthor, {
           x: (PDF_PAGE_WIDTH - authorWidth) / 2,
           y: PDF_PAGE_HEIGHT * 0.6 - 36,
           size: authorFontSize,
