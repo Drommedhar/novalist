@@ -667,7 +667,7 @@ export interface WordCountGoals {
 }
 
 // ─── Ollama / AI Assistant ──────────────────────────────────────────
-export type AiProvider = 'ollama' | 'copilot';
+export type AiProvider = 'ollama' | 'copilot' | 'llamacpp';
 export type AiAnalysisMode = 'paragraph' | 'chapter';
 
 export interface OllamaSettings {
@@ -709,6 +709,16 @@ export interface OllamaSettings {
   frequencyPenalty: number;
   /** Repeat last N tokens to check for repetition. */
   repeatLastN: number;
+  /** Base URL of the llama.cpp server (OpenAI-compatible endpoint). */
+  llamaCppBaseUrl: string;
+  /** Path to the llama.cpp server executable. Used to verify availability. */
+  llamaCppPath: string;
+  /** Model name to send to the llama.cpp server. */
+  llamaCppModel: string;
+  /** Whether to automatically start the llama.cpp server when the plugin loads. */
+  llamaCppAutoStart: boolean;
+  /** Additional command-line arguments for the llama.cpp server (e.g. -m /path/to/model.gguf). */
+  llamaCppServerArgs: string;
 }
 
 // ─── Timeline ───────────────────────────────────────────────────────

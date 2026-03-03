@@ -769,9 +769,14 @@ export class NovalistSidebarView extends ItemView {
   }
 
   /** Schedule a debounced AI analysis (5 s after the last call). */
+  private isAiModelConfigured(): boolean {
+    const p = this.plugin.settings.ollama.provider;
+    if (p === 'copilot' || p === 'llamacpp') return true;
+    return !!this.plugin.settings.ollama.model;
+  }
+
   private scheduleAiAnalysis(): void {
-    const isCopilot = this.plugin.settings.ollama.provider === 'copilot';
-    if (!this.plugin.settings.ollama.enabled || (!isCopilot && !this.plugin.settings.ollama.model)) return;
+    if (!this.plugin.settings.ollama.enabled || !this.isAiModelConfigured()) return;
     if (this.aiAnalysisTimer !== null) {
       window.clearTimeout(this.aiAnalysisTimer);
     }
@@ -784,12 +789,12 @@ export class NovalistSidebarView extends ItemView {
   /** Run the AI analysis for the current chapter. */
   async runAiAnalysis(): Promise<void> {
     if (!this.currentChapterFile || !this.plugin.ollamaService) return;
-    const isCopilotRun = this.plugin.settings.ollama.provider === 'copilot';
-    if (!this.plugin.settings.ollama.enabled || (!isCopilotRun && !this.plugin.settings.ollama.model)) return;
-    if (!this.plugin.isChapterFile(this.currentChapterFile)) return;
+    if (!this.plugin.settings.ollama.enabled || !this.isAiModelConfigured()) return;
+    if (!this.plugin.isChapterFile(this.currentChapterFile) && !this.plugin.isSceneFile(this.currentChapterFile)) return;
 
     // Read chapter text and check if it changed since last analysis
-    const chapterText = await this.app.vault.read(this.currentChapterFile);
+    const chapterText = await this.plugin.readChapterContent(this.currentChapterFile);
+    console.debug(`[Novalist AI] Sidebar runAiAnalysis — file "${this.currentChapterFile.path}", content length=${chapterText.length}${chapterText.length === 0 ? ' ⚠ EMPTY' : ''}`);
     const hash = this.hashText(chapterText);
     if (hash === this.aiLastAnalysedHash && this.aiFindings.length > 0) return;
 
@@ -976,9 +981,8 @@ export class NovalistSidebarView extends ItemView {
     if (!this.aiSectionEl) return;
     this.aiSectionEl.empty();
 
-    // Not configured — for Copilot the model field can be empty (uses default)
-    const isCopilot = this.plugin.settings.ollama.provider === 'copilot';
-    if (!this.plugin.settings.ollama.enabled || (!isCopilot && !this.plugin.settings.ollama.model)) {
+    // Not configured — for Copilot/llama.cpp the model field can be empty
+    if (!this.plugin.settings.ollama.enabled || !this.isAiModelConfigured()) {
       this.aiSectionEl.createEl('p', { text: t('ollama.sidebarDisabled'), cls: 'novalist-ai-sidebar-hint' });
       return;
     }
@@ -1080,7 +1084,7 @@ export class NovalistSidebarView extends ItemView {
         const opt = this.aiModelDropdown.createEl('option', { text: m.name, value: m.name });
         if (m.name === this.plugin.settings.ollama.model) opt.selected = true;
       }
-    } else {
+    } else if (provider === 'copilot') {
       const defaultOpt = this.aiModelDropdown.createEl('option', {
         text: t('aiChat.modelDefault'),
         value: '',
@@ -1095,6 +1099,10 @@ export class NovalistSidebarView extends ItemView {
         const opt = this.aiModelDropdown.createEl('option', { text: m.name, value: m.id });
         if (m.id === this.plugin.settings.ollama.copilotModel) opt.selected = true;
       }
+    } else if (provider === 'llamacpp') {
+      const modelName = this.plugin.settings.ollama.llamaCppModel || t('aiChat.modelDefault');
+      const opt = this.aiModelDropdown.createEl('option', { text: modelName, value: this.plugin.settings.ollama.llamaCppModel });
+      opt.selected = true;
     }
   }
 
@@ -1106,10 +1114,15 @@ export class NovalistSidebarView extends ItemView {
       if (this.plugin.ollamaService) {
         this.plugin.ollamaService.setModel(value);
       }
-    } else {
+    } else if (provider === 'copilot') {
       this.plugin.settings.ollama.copilotModel = value;
       if (this.plugin.ollamaService) {
         await this.plugin.ollamaService.setCopilotModel(value);
+      }
+    } else if (provider === 'llamacpp') {
+      this.plugin.settings.ollama.llamaCppModel = value;
+      if (this.plugin.ollamaService) {
+        this.plugin.ollamaService.setLlamaCppModel(value);
       }
     }
     await this.plugin.saveSettings();

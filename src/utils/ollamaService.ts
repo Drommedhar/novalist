@@ -523,6 +523,14 @@ export class OllamaService {
   private repeatLastN: number;
   private copilotClient: CopilotAcpClient;
   private abortController: AbortController | null = null;
+  private llamaCppBaseUrl: string;
+  private llamaCppModel: string;
+  private llamaCppPath = '';
+  private llamaCppServerArgs = '';
+  private llamaCppProcess: ChildProcess | null = null;
+  /** User-configured system prompt (from settings). Applied as additional
+   *  context in analysis methods so the LLM respects the author's guidelines. */
+  private systemPrompt = '';
 
   constructor(
     baseUrl: string,
@@ -538,6 +546,8 @@ export class OllamaService {
     minP = 0.05,
     frequencyPenalty = 1.1,
     repeatLastN = 64,
+    llamaCppBaseUrl = 'http://127.0.0.1:8080',
+    llamaCppModel = '',
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.model = model;
@@ -552,6 +562,8 @@ export class OllamaService {
     this.copilotClient = new CopilotAcpClient(copilotPath);
     this.copilotClient.vaultPath = vaultPath;
     this.copilotClient.modelId = copilotModel;
+    this.llamaCppBaseUrl = llamaCppBaseUrl.replace(/\/+$/, '');
+    this.llamaCppModel = llamaCppModel;
   }
 
   setModel(model: string): void {
@@ -592,6 +604,26 @@ export class OllamaService {
 
   setRepeatLastN(value: number): void {
     this.repeatLastN = value;
+  }
+
+  setLlamaCppBaseUrl(url: string): void {
+    this.llamaCppBaseUrl = url.replace(/\/+$/, '');
+  }
+
+  setLlamaCppModel(model: string): void {
+    this.llamaCppModel = model;
+  }
+
+  setLlamaCppPath(path: string): void {
+    this.llamaCppPath = path;
+  }
+
+  setLlamaCppServerArgs(args: string): void {
+    this.llamaCppServerArgs = args;
+  }
+
+  setSystemPrompt(prompt: string): void {
+    this.systemPrompt = prompt;
   }
 
   setCopilotPath(path: string): void {
@@ -640,6 +672,16 @@ export class OllamaService {
   async isServerRunning(): Promise<boolean> {
     try {
       await requestUrl({ url: `${this.baseUrl}/api/tags`, method: 'GET' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Check whether the llama.cpp server is reachable via its /health endpoint. */
+  async isLlamaCppServerRunning(): Promise<boolean> {
+    try {
+      await requestUrl({ url: `${this.llamaCppBaseUrl}/health`, method: 'GET' });
       return true;
     } catch {
       return false;
@@ -736,6 +778,131 @@ export class OllamaService {
     return this.copilotClient.isAlive;
   }
 
+  // ── llama.cpp server process management ────────────────────────
+
+  /** Whether the llama.cpp server process was started by us and is alive. */
+  get isLlamaCppProcessRunning(): boolean {
+    return this.llamaCppProcess !== null && this.llamaCppProcess.exitCode === null;
+  }
+
+  /**
+   * Start the llama.cpp server process.  Derives `--host` and `--port`
+   * from the configured base URL unless the user already included them
+   * in the server arguments.  Polls `/health` for up to 30 seconds.
+   */
+  async startLlamaCppServer(): Promise<boolean> {
+    if (this.isLlamaCppProcessRunning) return true;
+    if (!this.llamaCppPath) return false;
+
+    // Parse host/port from the configured base URL
+    let host = '127.0.0.1';
+    let port = '8080';
+    try {
+      const url = new URL(this.llamaCppBaseUrl);
+      host = url.hostname;
+      port = url.port || '8080';
+    } catch { /* use defaults */ }
+
+    const userArgs = OllamaService.parseShellArgs(this.llamaCppServerArgs);
+    const args = [...userArgs];
+    if (!args.includes('--host')) {
+      args.push('--host', host);
+    }
+    if (!args.includes('--port')) {
+      args.push('--port', port);
+    }
+
+    console.debug('[Novalist llama.cpp] Starting server:', this.llamaCppPath, args.join(' '));
+
+    this.llamaCppProcess = spawn(this.llamaCppPath, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    this.llamaCppProcess.stdout?.on('data', (chunk: Buffer) => {
+      console.debug('[Novalist llama.cpp]', chunk.toString().trimEnd());
+    });
+
+    this.llamaCppProcess.stderr?.on('data', (chunk: Buffer) => {
+      console.debug('[Novalist llama.cpp]', chunk.toString().trimEnd());
+    });
+
+    this.llamaCppProcess.on('error', (err: Error) => {
+      console.error('[Novalist llama.cpp] Process error:', err.message);
+      this.llamaCppProcess = null;
+    });
+
+    this.llamaCppProcess.on('exit', (code) => {
+      console.debug('[Novalist llama.cpp] Server exited with code', code);
+      this.llamaCppProcess = null;
+    });
+
+    // Poll /health for up to 30 seconds
+    for (let i = 0; i < 60; i++) {
+      await new Promise<void>(r => { setTimeout(r, 500); });
+      if (this.llamaCppProcess === null) return false;
+      if (await this.isLlamaCppServerRunning()) return true;
+    }
+
+    return false;
+  }
+
+  /** Stop the llama.cpp server process if it was started by us. */
+  async stopLlamaCppServer(): Promise<void> {
+    if (!this.llamaCppProcess) return;
+    const p = this.llamaCppProcess;
+    this.llamaCppProcess = null;
+    p.kill('SIGTERM');
+    await new Promise<void>(resolve => {
+      const timeout = setTimeout(() => {
+        try { p.kill('SIGKILL'); } catch { /* already dead */ }
+        resolve();
+      }, 5000);
+      p.once('exit', () => { clearTimeout(timeout); resolve(); });
+    });
+  }
+
+  /**
+   * Parse a shell-like argument string into an array.
+   * Handles double-quoted and single-quoted segments so that paths with
+   * spaces work correctly (e.g. `-m "C:\\my models\\model.gguf"`).
+   */
+  private static parseShellArgs(raw: string): string[] {
+    const args: string[] = [];
+    const regex = /(?:"([^"]*)")|(?:'([^']*)')|(\S+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(raw)) !== null) {
+      args.push(m[1] ?? m[2] ?? m[3]);
+    }
+    return args;
+  }
+
+  // ── Auto-start helpers ─────────────────────────────────────────
+
+  /**
+   * Ensure the llama.cpp server is reachable.  If it is not running and
+   * a server executable path is configured, start it automatically and
+   * wait for it to become healthy.
+   *
+   * This is called transparently before every llama.cpp generation so
+   * the user never has to start the server manually.
+   */
+  async ensureLlamaCppRunning(): Promise<void> {
+    // Already running (either started by us or externally)
+    if (await this.isLlamaCppServerRunning()) return;
+
+    // No executable configured — nothing we can do
+    if (!this.llamaCppPath) {
+      throw new Error('llama.cpp server is not running and no executable path is configured.');
+    }
+
+    console.debug('[Novalist llama.cpp] Server not reachable — auto-starting…');
+    const ok = await this.startLlamaCppServer();
+    if (!ok) {
+      throw new Error('Failed to auto-start llama.cpp server. Check the executable path and server arguments in settings.');
+    }
+    console.debug('[Novalist llama.cpp] Server auto-started successfully.');
+  }
+
   // ── Generation ─────────────────────────────────────────────────
 
   private async generate(
@@ -744,17 +911,36 @@ export class OllamaService {
     maxTokens?: number,
     onChunk?: (token: string) => void,
     onThinkingChunk?: (token: string) => void,
+    systemPrompt?: string,
   ): Promise<string> {
     const temp = temperature ?? this.temperature;
     const tokens = maxTokens ?? this.maxTokens;
-    if (this.provider === 'copilot') {
-      return this.copilotClient.generate(prompt);
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
     }
-    return this.generateOllama(prompt, temp, tokens, onChunk, onThinkingChunk);
+    messages.push({ role: 'user', content: prompt });
+    if (this.provider === 'copilot') {
+      // Copilot ACP doesn't support system messages natively — flatten
+      const flat = messages.map(m => m.role === 'system' ? `[System]\n${m.content}` : m.content).join('\n\n');
+      return this.copilotClient.generate(flat);
+    }
+    if (this.provider === 'llamacpp') {
+      await this.ensureLlamaCppRunning();
+      const result = await this.generateChatLlamaCpp(
+        messages,
+        onChunk ?? (() => {}),
+        temp,
+        tokens,
+        onThinkingChunk,
+      );
+      return result.response;
+    }
+    return this.generateOllama(messages, temp, tokens, onChunk, onThinkingChunk);
   }
 
   private async generateOllama(
-    prompt: string,
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
     temperature: number,
     maxTokens: number,
     onChunk?: (token: string) => void,
@@ -762,11 +948,10 @@ export class OllamaService {
   ): Promise<string> {
     this.abortController = new AbortController();
     // Use /api/chat instead of /api/generate for better thinking-model
-    // support and context handling.  The prompt is wrapped as a single
-    // user message.
+    // support and context handling.
     const body = {
       model: this.model,
-      messages: [{ role: 'user', content: prompt }],
+      messages,
       stream: true,
       options: {
         temperature,
@@ -855,6 +1040,10 @@ export class OllamaService {
     const tokens = maxTokens ?? this.maxTokens;
     if (this.provider === 'copilot') {
       return this.generateChatCopilot(messages, onChunk, onThinkingChunk);
+    }
+    if (this.provider === 'llamacpp') {
+      await this.ensureLlamaCppRunning();
+      return this.generateChatLlamaCpp(messages, onChunk, temp, tokens, onThinkingChunk);
     }
     return this.generateChatOllama(messages, onChunk, temp, tokens, onThinkingChunk);
   }
@@ -977,6 +1166,93 @@ export class OllamaService {
       this.copilotClient.onChunk = null;
       this.copilotClient.onThinkingChunk = null;
     }
+  }
+
+  // ── llama.cpp generation (OpenAI-compatible API) ───────────────
+
+  private async generateChatLlamaCpp(
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    onChunk: (token: string) => void,
+    temperature: number,
+    maxTokens: number,
+    onThinkingChunk?: (token: string) => void,
+  ): Promise<{ response: string; thinking: string }> {
+    this.abortController = new AbortController();
+    const body: Record<string, unknown> = {
+      messages,
+      stream: true,
+      temperature,
+      max_tokens: maxTokens,
+      top_p: this.topP,
+      frequency_penalty: this.frequencyPenalty,
+    };
+    if (this.llamaCppModel) {
+      body['model'] = this.llamaCppModel;
+    }
+
+    const response = await fetch(`${this.llamaCppBaseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: this.abortController.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      this.abortController = null;
+      throw new Error(`llama.cpp chat request failed: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let thinkingText = '';
+    let buffer = '';
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === 'data: [DONE]') continue;
+          if (!trimmed.startsWith('data: ')) continue;
+          const jsonStr = trimmed.slice(6);
+          try {
+            const json = JSON.parse(jsonStr) as {
+              choices?: Array<{
+                delta?: { content?: string; reasoning_content?: string };
+              }>;
+            };
+            const delta = json.choices?.[0]?.delta;
+            if (!delta) continue;
+            const reasoning = delta.reasoning_content ?? '';
+            if (reasoning) {
+              thinkingText += reasoning;
+              onThinkingChunk?.(reasoning);
+            }
+            const token = delta.content ?? '';
+            if (token) {
+              fullText += token;
+              onChunk(token);
+            }
+          } catch { /* skip malformed SSE lines */ }
+        }
+      }
+    } finally {
+      this.abortController = null;
+    }
+
+    // Strip inline <think>…</think> tags (some models embed reasoning there).
+    const { cleaned, thinking: inlineThinking } = OllamaService.stripInlineThinking(fullText);
+    if (inlineThinking) {
+      thinkingText = (thinkingText + '\n\n' + inlineThinking).trim();
+      onThinkingChunk?.(inlineThinking);
+    }
+
+    return { response: cleaned, thinking: thinkingText };
   }
 
   // ── Analysis methods ───────────────────────────────────────────
@@ -1116,7 +1392,7 @@ ${tasks.join('\n')}
 
 If a task has no findings, simply omit entries for it. Return an empty array [] if nothing is found.`;
 
-    const raw = await this.generate(prompt, 0, 2048);
+    const raw = await this.generate(prompt, 0, 2048, undefined, undefined, this.systemPrompt || undefined);
     return this.parseFindings(raw);
   }
 
@@ -1198,9 +1474,11 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
 
     if (onResponseChunk || onThinkingChunk) {
       // Use streaming chat API so we can forward thinking + response tokens
-      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-        { role: 'user', content: prompt },
-      ];
+      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+      if (this.systemPrompt) {
+        messages.push({ role: 'system', content: this.systemPrompt });
+      }
+      messages.push({ role: 'user', content: prompt });
       const result = await this.generateChat(
         messages,
         (token) => { onResponseChunk?.(token); },
@@ -1211,7 +1489,7 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
       raw = result.response;
       thinking = result.thinking;
     } else {
-      raw = await this.generate(prompt, 0, 8192);
+      raw = await this.generate(prompt, 0, 8192, undefined, undefined, this.systemPrompt || undefined);
     }
 
     return { findings: this.parseFindings(raw), rawResponse: raw, thinking };
@@ -1365,9 +1643,11 @@ IMPORTANT: After your thinking/reasoning, you MUST produce the JSON array as pla
    let thinking = '';
 
    if (onResponseChunk || onThinkingChunk) {
-     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-       { role: 'user', content: prompt },
-     ];
+     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+     if (this.systemPrompt) {
+       messages.push({ role: 'system', content: this.systemPrompt });
+     }
+     messages.push({ role: 'user', content: prompt });
      const result = await this.generateChat(
        messages,
        (token) => { onResponseChunk?.(token); },
@@ -1378,7 +1658,7 @@ IMPORTANT: After your thinking/reasoning, you MUST produce the JSON array as pla
      raw = result.response;
      thinking = result.thinking;
    } else {
-     raw = await this.generate(prompt, 0, 32768);
+     raw = await this.generate(prompt, 0, 32768, undefined, undefined, this.systemPrompt || undefined);
    }
 
    // Fallback: some extended-thinking models (e.g. Copilot Claude with

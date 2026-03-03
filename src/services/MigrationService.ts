@@ -240,14 +240,30 @@ export async function analyseProject(
     f.path.startsWith(charDir + '/') && f.extension === 'md'
   ).length;
 
-  // Count locations
+  // Count locations + detect worlds
   const locFiles = vault.getFiles().filter(f =>
     f.path.startsWith(locDir + '/') && f.extension === 'md'
   );
   analysis.locationCount = locFiles.length;
 
-  // A default world is always created when there are locations
-  analysis.worldCount = locFiles.length > 0 ? 1 : 0;
+  // Detect potential worlds: locations that are parents of other locations
+  const parentNames = new Set<string>();
+  const allLocNames = new Set<string>();
+  for (const file of locFiles) {
+    try {
+      const content = await vault.read(file);
+      const sheet = parseLocationSheet(content);
+      allLocNames.add(sheet.name);
+      if (sheet.parent) {
+        const cleaned = sheet.parent.replace(/\[\[|\]\]/g, '').trim();
+        if (cleaned) parentNames.add(cleaned);
+      }
+    } catch {
+      // skip
+    }
+  }
+  // Top-level parents that exist as locations become worlds
+  analysis.worldCount = [...parentNames].filter(p => allLocNames.has(p)).length;
 
   // Count items
   analysis.itemCount = vault.getFiles().filter(f =>
@@ -523,32 +539,46 @@ export async function migrateProject(
     // Clean up stale files from previous migration runs
     await purgeStaleEntityFiles(app, locFolder);
 
-    // Always create a default world so that all locations belong to one.
-    // Storyline requires locations to reside in a world for parent
-    // hierarchies to work correctly.
-    const defaultWorldName = projectName;
-    if (locFiles.length > 0) {
+    // First pass: identify worlds (top-level parents)
+    const worldNames = await identifyWorlds(vault, locFiles);
+    const createdWorldNames = new Set<string>();
+
+    // Create world entities
+    for (const file of locFiles) {
       try {
-        await createWorld(vault, locFolder, defaultWorldName, {
-          description: '',
-        });
-        result.summary.push(`World "${defaultWorldName}" created as default container`);
+        const content = await vault.read(file);
+        const sheet = parseLocationSheet(content);
+        if (worldNames.has(sheet.name) && !createdWorldNames.has(sheet.name)) {
+          await createWorld(vault, locFolder, sheet.name, {
+            description: sheet.description,
+            notes: buildSectionsBody(sheet.sections),
+          });
+          createdWorldNames.add(sheet.name);
+          result.summary.push(`World "${sheet.name}" auto-created from top-level location`);
+        }
       } catch (err) {
-        result.errors.push(`Failed to create default world: ${err}`);
+        result.errors.push(`Failed to create world from ${file.path}: ${err}`);
       }
     }
 
-    // Create all locations, assigning them to the default world
+    // Second pass: create locations
     for (const file of locFiles) {
       try {
         const content = await vault.read(file);
         const sheet = parseLocationSheet(content);
 
+        // Skip if this was already converted to a world. Note: worlds that
+        // also have their own location data still get a location file.
+        if (createdWorldNames.has(sheet.name) && !sheet.parent) {
+          // This location was promoted to world; skip creating a location.
+          continue;
+        }
+
         const parentClean = sheet.parent.replace(/\[\[|\]\]/g, '').trim();
         const locOpts: Partial<NovalistLocation> = {
           locationType: sheet.type || undefined,
           parent: parentClean || undefined,
-          world: defaultWorldName,
+          world: determineWorld(sheet.name, parentClean, worldNames),
           description: sheet.description,
           image: sheet.images?.[0]?.path?.replace(/\[\[|\]\]/g, '').replace(/^!/, '').trim() || undefined,
           novalist_images: sheet.images
@@ -839,6 +869,61 @@ function convertCharacterSheet(
     novalist_templateId: sheet.templateId,
     novalist_chapterOverrides: novalistOverrides.length > 0 ? novalistOverrides : undefined,
   };
+}
+
+/** Identify which location names should be promoted to worlds. */
+async function identifyWorlds(
+  vault: Vault,
+  locFiles: TFile[]
+): Promise<Set<string>> {
+  // A location is a "world" if it is referenced as a parent by at least
+  // one other location AND has no parent itself.
+  const allNames = new Set<string>();
+  const parentNames = new Set<string>();
+  const hasParent = new Set<string>();
+
+  for (const file of locFiles) {
+    try {
+      const content = await vault.read(file);
+      const sheet = parseLocationSheet(content);
+      allNames.add(sheet.name);
+      if (sheet.parent) {
+        const cleaned = sheet.parent.replace(/\[\[|\]\]/g, '').trim();
+        if (cleaned) {
+          parentNames.add(cleaned);
+          hasParent.add(sheet.name);
+        }
+      }
+    } catch {
+      // skip
+    }
+  }
+
+  // Locations that are referenced as a parent AND have no parent themselves
+  const worlds = new Set<string>();
+  for (const name of parentNames) {
+    if (allNames.has(name) && !hasParent.has(name)) {
+      worlds.add(name);
+    }
+  }
+  return worlds;
+}
+
+/** Determine the world name for a location based on its parent chain. */
+function determineWorld(
+  name: string,
+  parent: string,
+  worldNames: Set<string>
+): string | undefined {
+  // If the parent is a world name, use it as the world
+  if (parent && worldNames.has(parent)) {
+    return parent;
+  }
+  // If this location itself is a world, no world reference needed
+  if (worldNames.has(name)) {
+    return undefined;
+  }
+  return undefined;
 }
 
 /** Build body markdown from legacy sections. */

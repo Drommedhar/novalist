@@ -20,7 +20,7 @@ import {
   cloneLoreTemplate,
   DEFAULT_SYSTEM_PROMPT
 } from './NovalistSettings';
-import { LanguageKey } from '../types';
+import { LanguageKey, AiProvider } from '../types';
 import { t } from '../i18n';
 import { CharacterTemplateEditorModal, LocationTemplateEditorModal, ItemTemplateEditorModal, LoreTemplateEditorModal } from '../modals/TemplateEditorModal';
 import { ProjectAddModal, ProjectRenameModal, RootMoveConfirmModal } from '../modals/ProjectModals';
@@ -495,12 +495,13 @@ export class NovalistSettingTab extends PluginSettingTab {
       .addDropdown(dd => dd
         .addOption('ollama', t('ollama.providerOllama'))
         .addOption('copilot', t('ollama.providerCopilot'))
+        .addOption('llamacpp', t('ollama.providerLlamaCpp'))
         .setValue(provider)
         .onChange(async (value) => {
-          this.plugin.settings.ollama.provider = value as 'ollama' | 'copilot';
+          this.plugin.settings.ollama.provider = value as AiProvider;
           await this.plugin.saveSettings();
           if (this.plugin.ollamaService) {
-            this.plugin.ollamaService.setProvider(value as 'ollama' | 'copilot');
+            this.plugin.ollamaService.setProvider(value as AiProvider);
           }
           this.display();
         }));
@@ -524,8 +525,10 @@ export class NovalistSettingTab extends PluginSettingTab {
     // ── Provider-specific settings ──────────────────────────────
     if (provider === 'ollama') {
       this.renderOllamaProviderSettings(containerEl);
-    } else {
+    } else if (provider === 'copilot') {
       this.renderCopilotProviderSettings(containerEl);
+    } else if (provider === 'llamacpp') {
+      this.renderLlamaCppProviderSettings(containerEl);
     }
 
     // ── Shared check toggles ──────────────────────────────────────
@@ -615,6 +618,9 @@ export class NovalistSettingTab extends PluginSettingTab {
         void (async () => {
           promptTextarea.value = DEFAULT_SYSTEM_PROMPT;
           this.plugin.settings.ollama.systemPrompt = '';
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setSystemPrompt('');
+          }
           await this.plugin.saveSettings();
         })();
       });
@@ -631,6 +637,9 @@ export class NovalistSettingTab extends PluginSettingTab {
             this.plugin.settings.ollama.systemPrompt = '';
           } else {
             this.plugin.settings.ollama.systemPrompt = promptTextarea.value;
+          }
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setSystemPrompt(this.plugin.settings.ollama.systemPrompt);
           }
           await this.plugin.saveSettings();
         })();
@@ -951,6 +960,208 @@ export class NovalistSettingTab extends PluginSettingTab {
     copilotRefreshBtn.addEventListener('click', () => { void populateCopilotModels(); });
 
     void populateCopilotModels();
+  }
+
+  /** Render settings specific to the llama.cpp provider. */
+  private renderLlamaCppProviderSettings(containerEl: HTMLElement): void {
+    // Base URL
+    new Setting(containerEl)
+      .setName(t('ollama.llamaCppBaseUrl'))
+      .setDesc(t('ollama.llamaCppBaseUrlDesc'))
+      .addText(text => text
+        .setPlaceholder(t('ollama.llamaCppBaseUrlPlaceholder'))
+        .setValue(this.plugin.settings.ollama.llamaCppBaseUrl)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.llamaCppBaseUrl = value;
+          await this.plugin.saveSettings();
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setLlamaCppBaseUrl(value);
+          }
+        }));
+
+    // Executable path
+    new Setting(containerEl)
+      .setName(t('ollama.llamaCppPath'))
+      .setDesc(t('ollama.llamaCppPathDesc'))
+      .addText(text => text
+        .setPlaceholder(t('ollama.llamaCppPathPlaceholder'))
+        .setValue(this.plugin.settings.ollama.llamaCppPath)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.llamaCppPath = value;
+          await this.plugin.saveSettings();
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setLlamaCppPath(value);
+          }
+        }));
+
+    // Server arguments
+    new Setting(containerEl)
+      .setName(t('ollama.llamaCppServerArgs'))
+      .setDesc(t('ollama.llamaCppServerArgsDesc'))
+      .addText(text => text
+        .setPlaceholder(t('ollama.llamaCppServerArgsPlaceholder'))
+        .setValue(this.plugin.settings.ollama.llamaCppServerArgs)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.llamaCppServerArgs = value;
+          await this.plugin.saveSettings();
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setLlamaCppServerArgs(value);
+          }
+        }));
+
+    // Server status indicator
+    const statusSetting = new Setting(containerEl)
+      .setName(t('ollama.llamaCppStatus'));
+    const statusDesc = statusSetting.descEl;
+    statusDesc.setText(t('ollama.llamaCppChecking'));
+    statusDesc.addClass('novalist-ollama-status');
+
+    const verifyLlamaCpp = async (): Promise<void> => {
+      statusDesc.setText(t('ollama.llamaCppChecking'));
+      statusDesc.toggleClass('mod-success', false);
+      statusDesc.toggleClass('mod-warning', false);
+      if (!this.plugin.ollamaService) return;
+      const ok = await this.plugin.ollamaService.isLlamaCppServerRunning();
+      statusDesc.setText(ok ? t('ollama.llamaCppReady') : t('ollama.llamaCppOffline'));
+      statusDesc.toggleClass('mod-success', ok);
+      statusDesc.toggleClass('mod-warning', !ok);
+    };
+
+    statusSetting.addButton(btn => btn
+      .setButtonText(t('ollama.llamaCppStartBtn'))
+      .onClick(async () => {
+        if (!this.plugin.ollamaService) return;
+        new Notice(t('ollama.llamaCppStarting'));
+        const ok = await this.plugin.ollamaService.startLlamaCppServer();
+        new Notice(ok ? t('ollama.llamaCppStarted') : t('ollama.llamaCppStartFailed'));
+        void verifyLlamaCpp();
+      }));
+
+    statusSetting.addButton(btn => btn
+      .setButtonText(t('ollama.llamaCppStopBtn'))
+      .onClick(async () => {
+        if (!this.plugin.ollamaService) return;
+        await this.plugin.ollamaService.stopLlamaCppServer();
+        new Notice(t('ollama.llamaCppStopped'));
+        void verifyLlamaCpp();
+      }));
+
+    statusSetting.addButton(btn => btn
+      .setButtonText(t('ollama.llamaCppVerify'))
+      .setCta()
+      .onClick(() => { void verifyLlamaCpp(); }));
+
+    void verifyLlamaCpp();
+
+    // Auto-start toggle
+    new Setting(containerEl)
+      .setName(t('ollama.llamaCppAutoStart'))
+      .setDesc(t('ollama.llamaCppAutoStartDesc'))
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.ollama.llamaCppAutoStart)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.llamaCppAutoStart = value;
+          await this.plugin.saveSettings();
+          if (this.plugin.ollamaService) {
+            if (value) {
+              new Notice(t('ollama.llamaCppStarting'));
+              const ok = await this.plugin.ollamaService.startLlamaCppServer();
+              new Notice(ok ? t('ollama.llamaCppStarted') : t('ollama.llamaCppStartFailed'));
+              void verifyLlamaCpp();
+            } else {
+              await this.plugin.ollamaService.stopLlamaCppServer();
+              new Notice(t('ollama.llamaCppStopped'));
+              void verifyLlamaCpp();
+            }
+          }
+        }));
+
+    // Model name (free text input)
+    new Setting(containerEl)
+      .setName(t('ollama.llamaCppModel'))
+      .setDesc(t('ollama.llamaCppModelDesc'))
+      .addText(text => text
+        .setPlaceholder(t('ollama.llamaCppModelPlaceholder'))
+        .setValue(this.plugin.settings.ollama.llamaCppModel)
+        .onChange(async (value) => {
+          this.plugin.settings.ollama.llamaCppModel = value;
+          await this.plugin.saveSettings();
+          if (this.plugin.ollamaService) {
+            this.plugin.ollamaService.setLlamaCppModel(value);
+          }
+        }));
+
+    // Temperature slider (0 – 2, step 0.1)
+    const tempSetting = new Setting(containerEl)
+      .setName(t('ollama.temperature'));
+    const tempValue = tempSetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.temperature ?? 0.7) });
+    tempSetting.setDesc(t('ollama.temperatureDesc'));
+    tempSetting.addSlider(slider => slider
+      .setLimits(0, 2, 0.1)
+      .setValue(this.plugin.settings.ollama.temperature ?? 0.7)
+      .setDynamicTooltip()
+      .onChange(async (value) => {
+        this.plugin.settings.ollama.temperature = value;
+        tempValue.textContent = String(value);
+        await this.plugin.saveSettings();
+        if (this.plugin.ollamaService) {
+          this.plugin.ollamaService.setTemperature(value);
+        }
+      }));
+
+    // Max tokens input
+    new Setting(containerEl)
+      .setName(t('ollama.maxTokens'))
+      .setDesc(t('ollama.maxTokensDesc'))
+      .addText(text => text
+        .setPlaceholder('8192')
+        .setValue(String(this.plugin.settings.ollama.maxTokens ?? 8192))
+        .onChange(async (value) => {
+          const parsed = parseInt(value, 10);
+          if (!isNaN(parsed) && parsed > 0) {
+            this.plugin.settings.ollama.maxTokens = parsed;
+            await this.plugin.saveSettings();
+            if (this.plugin.ollamaService) {
+              this.plugin.ollamaService.setMaxTokens(parsed);
+            }
+          }
+        }));
+
+    // Top P slider (0-1)
+    const topPSetting = new Setting(containerEl)
+      .setName(t('ollama.topP'));
+    const topPValue = topPSetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.topP ?? 0.9) });
+    topPSetting.setDesc(t('ollama.topPDesc'));
+    topPSetting.addSlider(slider => slider
+      .setLimits(0, 1, 0.05)
+      .setValue(this.plugin.settings.ollama.topP ?? 0.9)
+      .setDynamicTooltip()
+      .onChange(async (value) => {
+        this.plugin.settings.ollama.topP = value;
+        topPValue.textContent = String(value);
+        await this.plugin.saveSettings();
+        if (this.plugin.ollamaService) {
+          this.plugin.ollamaService.setTopP(value);
+        }
+      }));
+
+    // Frequency Penalty slider (0-2)
+    const freqPenaltySetting = new Setting(containerEl)
+      .setName(t('ollama.frequencyPenalty'));
+    const freqPenaltyValue = freqPenaltySetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.frequencyPenalty ?? 1.1) });
+    freqPenaltySetting.setDesc(t('ollama.frequencyPenaltyDesc'));
+    freqPenaltySetting.addSlider(slider => slider
+      .setLimits(0, 2, 0.1)
+      .setValue(this.plugin.settings.ollama.frequencyPenalty ?? 1.1)
+      .setDynamicTooltip()
+      .onChange(async (value) => {
+        this.plugin.settings.ollama.frequencyPenalty = value;
+        freqPenaltyValue.textContent = String(value);
+        await this.plugin.saveSettings();
+        if (this.plugin.ollamaService) {
+          this.plugin.ollamaService.setFrequencyPenalty(value);
+        }
+      }));
   }
 
   private renderTemplatesForCategory(containerEl: HTMLElement): void {

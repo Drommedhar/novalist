@@ -860,6 +860,9 @@ export default class NovalistPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const data = await this.loadData() as NovalistSettings | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+    // Deep-merge nested objects so newly added keys get their defaults
+    // even when the user's saved data has an older (smaller) object.
+    this.settings.ollama = Object.assign({}, DEFAULT_SETTINGS.ollama, data?.ollama);
     this.settings.enableToolbar = true;
     this.settings.enableCustomExplorer = true;
 
@@ -2233,38 +2236,37 @@ export default class NovalistPlugin extends Plugin {
 
   initOllamaService(): void {
     const vaultPath = (this.app.vault.adapter as unknown as { basePath?: string }).basePath ?? '';
-    if (this.settings.ollama.enabled && (this.settings.ollama.model || this.settings.ollama.provider === 'copilot')) {
-      this.ollamaService = new OllamaService(
-        this.settings.ollama.baseUrl,
-        this.settings.ollama.model,
-        this.settings.ollama.provider,
-        this.settings.ollama.analysisMode,
-        this.settings.ollama.copilotPath,
-        vaultPath,
-        this.settings.ollama.copilotModel,
-        this.settings.ollama.temperature,
-        this.settings.ollama.maxTokens,
-        this.settings.ollama.topP,
-        this.settings.ollama.minP,
-        this.settings.ollama.frequencyPenalty,
-        this.settings.ollama.repeatLastN,
-      );
-    } else {
-      this.ollamaService = new OllamaService(
-        this.settings.ollama.baseUrl || 'http://127.0.0.1:11434',
-        this.settings.ollama.model || '',
-        this.settings.ollama.provider || 'ollama',
-        this.settings.ollama.analysisMode || 'paragraph',
-        this.settings.ollama.copilotPath || 'copilot',
-        vaultPath,
-        this.settings.ollama.copilotModel || '',
-        this.settings.ollama.temperature ?? 0.7,
-        this.settings.ollama.maxTokens ?? 8192,
-        this.settings.ollama.topP ?? 0.9,
-        this.settings.ollama.minP ?? 0.05,
-        this.settings.ollama.frequencyPenalty ?? 1.1,
-        this.settings.ollama.repeatLastN ?? 64,
-      );
+    const ol = this.settings.ollama;
+    this.ollamaService = new OllamaService(
+      ol.baseUrl || 'http://127.0.0.1:11434',
+      ol.model || '',
+      ol.provider || 'ollama',
+      ol.analysisMode || 'paragraph',
+      ol.copilotPath || 'copilot',
+      vaultPath,
+      ol.copilotModel || '',
+      ol.temperature ?? 0.7,
+      ol.maxTokens ?? 8192,
+      ol.topP ?? 0.9,
+      ol.minP ?? 0.05,
+      ol.frequencyPenalty ?? 1.1,
+      ol.repeatLastN ?? 64,
+      ol.llamaCppBaseUrl || 'http://127.0.0.1:8080',
+      ol.llamaCppModel || '',
+    );
+    this.ollamaService.setLlamaCppPath(ol.llamaCppPath || '');
+    this.ollamaService.setLlamaCppServerArgs(ol.llamaCppServerArgs || '');
+    this.ollamaService.setSystemPrompt(ol.systemPrompt || '');
+
+    // Auto-start the llama.cpp server at plugin load when configured
+    if (ol.provider === 'llamacpp' && ol.llamaCppAutoStart && ol.llamaCppPath) {
+      void this.ollamaService.startLlamaCppServer().then(ok => {
+        if (ok) {
+          console.debug('[Novalist llama.cpp] Auto-started server on plugin load.');
+        } else {
+          console.warn('[Novalist llama.cpp] Auto-start failed on plugin load.');
+        }
+      });
     }
   }
 
@@ -2356,7 +2358,8 @@ export default class NovalistPlugin extends Plugin {
             }
           }
         }
-        summaries.push({ name: ch.name, type: 'character', details: details.join(', ') || 'No details' });
+        const charDetails = details.join(', ') || 'No details';
+        summaries.push({ name: ch.name, type: 'character', details: charDetails });
       } catch {
         summaries.push({ name: ch.name, type: 'character', details: `Role: ${ch.role}` });
       }
@@ -2383,7 +2386,8 @@ export default class NovalistPlugin extends Plugin {
             }
           }
         }
-        summaries.push({ name: loc.name, type: 'location', details: details.join(', ') || 'No details' });
+        const locDetails = details.join(', ') || 'No details';
+        summaries.push({ name: loc.name, type: 'location', details: locDetails });
       } catch {
         summaries.push({ name: loc.name, type: 'location', details: '' });
       }
@@ -2411,7 +2415,8 @@ export default class NovalistPlugin extends Plugin {
             }
           }
         }
-        summaries.push({ name: item.name, type: 'item', details: details.join(', ') || 'No details' });
+        const itemDetails = details.join(', ') || 'No details';
+        summaries.push({ name: item.name, type: 'item', details: itemDetails });
       } catch {
         summaries.push({ name: item.name, type: 'item', details: `Type: ${item.type}` });
       }
@@ -2438,7 +2443,8 @@ export default class NovalistPlugin extends Plugin {
             }
           }
         }
-        summaries.push({ name: lore.name, type: 'lore', details: details.join(', ') || 'No details' });
+        const loreDetails = details.join(', ') || 'No details';
+        summaries.push({ name: lore.name, type: 'lore', details: loreDetails });
       } catch {
         summaries.push({ name: lore.name, type: 'lore', details: `Category: ${lore.category}` });
       }
@@ -3762,27 +3768,25 @@ export default class NovalistPlugin extends Plugin {
     }
   }
 
-  private extractLocationHierarchyFields(content: string): { type: string; parent: string; world: string; entityType: string } {
+  private extractLocationHierarchyFields(content: string): { type: string; parent: string } {
     // ── YAML frontmatter format ────────────────────────────────────
     const { frontmatter } = extractFmAndBody(content);
     if (frontmatter.type === 'location' || frontmatter.type === 'world') {
       return {
         type: typeof frontmatter.locationType === 'string' ? frontmatter.locationType : '',
         parent: typeof frontmatter.parent === 'string' ? `[[${frontmatter.parent}]]` : '',
-        world: typeof frontmatter.world === 'string' ? frontmatter.world : '',
-        entityType: frontmatter.type as string,
       };
     }
 
     // ── Legacy ## LocationSheet format ─────────────────────────────
     const sheetMatch = content.match(/## LocationSheet\n([\s\S]*?)(?=\n## |$)/);
-    if (!sheetMatch) return { type: '', parent: '', world: '', entityType: '' };
+    if (!sheetMatch) return { type: '', parent: '' };
     const sheet = sheetMatch[1];
     const getField = (name: string): string => {
       const m = sheet.match(new RegExp(`^[ \\t]*${name}:[ \\t]*(.*?)$`, 'm'));
       return m ? m[1].trim() : '';
     };
-    return { type: getField('Type'), parent: getField('Parent'), world: '', entityType: 'location' };
+    return { type: getField('Type'), parent: getField('Parent') };
   }
 
   private extractCharacterHierarchyFields(content: string): { surname: string; group: string } {
@@ -3853,23 +3857,6 @@ export default class NovalistPlugin extends Plugin {
     } else {
       delete fm.parent;
     }
-    const updated = serializeFrontmatterAndBody(fm, body);
-    await this.app.vault.modify(file, updated);
-    await this.updateLocationHierarchyCacheEntry(file);
-    this.debouncedSaveSettings();
-  }
-
-  /** Set the world of a location file (persists to disk + updates cache). Clears parent. */
-  async setLocationWorld(file: TFile, worldName: string): Promise<void> {
-    const content = await this.app.vault.read(file);
-    const { frontmatter: fm, body } = extractFmAndBody(content);
-    if (worldName) {
-      fm.world = worldName;
-    } else {
-      delete fm.world;
-    }
-    // Moving to a world directly — clear explicit parent
-    delete fm.parent;
     const updated = serializeFrontmatterAndBody(fm, body);
     await this.app.vault.modify(file, updated);
     await this.updateLocationHierarchyCacheEntry(file);
@@ -4007,15 +3994,12 @@ export default class NovalistPlugin extends Plugin {
       // Prefer frontmatter name (StoryLine may rename without renaming the file)
       const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
       const fmName = typeof fm?.name === 'string' && fm.name ? fm.name : '';
-      const entityType = entry?.entityType ?? (typeof fm?.type === 'string' ? fm.type : '');
       return {
         name: fmName || file.basename,
         file,
         type: entry?.type ?? '',
         parent: entry?.parent ?? '',
-        world: entry?.world ?? '',
-        isWorld: entityType === 'world',
-        entityType,
+        entityType: typeof fm?.type === 'string' ? fm.type : '',
       };
     });
 
@@ -4135,7 +4119,7 @@ export default class NovalistPlugin extends Plugin {
     if (this.entityIndexReady !== null) {
       await this.entityIndexReady;
     }
-    const content = await this.app.vault.read(file);
+    const content = await this.readChapterContent(file);
     const hash = await this.hashContent(content);
     // Check the persistent mention cache
     const cache = this.getMentionCache();
@@ -4195,7 +4179,7 @@ export default class NovalistPlugin extends Plugin {
    * scans only the requested scene section and updates the cache.
    */
   async getSceneMentions(file: TFile, sceneName: string): Promise<MentionResult> {
-    const content = await this.app.vault.read(file);
+    const content = await this.readChapterContent(file);
     const hash = await this.hashContent(content);
 
     const cache = this.getMentionCache();
@@ -5042,6 +5026,51 @@ export default class NovalistPlugin extends Plugin {
       const chapterFolder = `${root}/${this.settings.chapterFolder}/`;
       if (path.startsWith(chapterFolder)) return true;
       return false;
+  }
+
+  /** Check whether a given file resides in the Scenes/ folder. */
+  isSceneFile(file: TFile): boolean {
+    const root = this.resolvedProjectPath();
+    if (!root) return false;
+    const scenesFolder = `${root}/Scenes/`;
+    return file.path.startsWith(scenesFolder) && file.extension === 'md';
+  }
+
+  /**
+   * Read the full chapter body for a given file. For legacy and assembled
+   * chapter files the file is read directly. For scene-based projects where
+   * the file is a single scene, all sibling scene files are read and
+   * assembled with H2 headings — the same format assembleChapterFromScenes
+   * produces — so that extractSceneText / extractSceneSection work correctly.
+   *
+   * The returned string has **no** surrounding frontmatter for the
+   * scene-based path; callers that run stripFrontmatter() on it will get
+   * a harmless no-op in that case.
+   */
+  async readChapterContent(file: TFile): Promise<string> {
+    // Assembled or legacy chapter → read the file directly
+    if (this.assembledChapterPaths.has(file.path) || this.isChapterFile(file)) {
+      const content = await this.app.vault.read(file);
+      console.debug(`[Novalist AI] readChapterContent — direct read of "${file.path}" (assembled=${this.assembledChapterPaths.has(file.path)}, chapter=${this.isChapterFile(file)}), length=${content.length}`);
+      return content;
+    }
+
+    // Scene-based: read all scene files for the chapter and assemble with H2 headings
+    const sceneFiles = this.getSceneFilesInChapter(file);
+    console.debug(`[Novalist AI] readChapterContent — scene-based for "${file.path}", found ${sceneFiles.length} scene file(s):`, sceneFiles.map(f => f.path));
+    const bodyParts: string[] = [];
+    for (const sf of sceneFiles) {
+      const content = await this.app.vault.read(sf);
+      const cache = this.app.metadataCache.getFileCache(sf);
+      const sfm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
+      const sceneTitle = typeof sfm.title === 'string' && sfm.title ? sfm.title : sf.basename;
+      const sceneBody = this.stripFrontmatter(content);
+      console.debug(`[Novalist AI]   scene "${sceneTitle}" (${sf.path}) — body length=${sceneBody.trim().length}`);
+      bodyParts.push(`## ${sceneTitle}\n\n${sceneBody.trim()}`);
+    }
+    const assembled = bodyParts.join('\n\n');
+    console.debug(`[Novalist AI] readChapterContent — assembled total length=${assembled.length}`);
+    return assembled;
   }
 
   /** Check whether a given file path is an assembled chapter file (built from scene files). */
@@ -6895,7 +6924,7 @@ export default class NovalistPlugin extends Plugin {
           mentions[charName].push(cachedChars.includes(charName));
         }
       } else {
-        const content = await this.app.vault.read(ch.file);
+        const content = await this.readChapterContent(ch.file);
         const body = this.stripFrontmatter(content);
 
         for (const charName of trackedCharacters) {
@@ -6955,7 +6984,7 @@ export default class NovalistPlugin extends Plugin {
    * Uses the same SHA-256 hash-check pattern as parseChapterFile().
    */
   async analyseChapterScenes(file: TFile): Promise<SceneMetadataCache> {
-    const content = await this.app.vault.read(file);
+    const content = await this.readChapterContent(file);
     const hash = await this.hashContent(content);
 
     const smCache = this.getSceneMetadataCache();

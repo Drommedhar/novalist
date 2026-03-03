@@ -197,7 +197,7 @@ export class AiChatView extends ItemView {
         const opt = this.modelDropdown.createEl('option', { text: m.name, value: m.name });
         if (m.name === this.plugin.settings.ollama.model) opt.selected = true;
       }
-    } else {
+    } else if (provider === 'copilot') {
       // Copilot: list available models
       const defaultOpt = this.modelDropdown.createEl('option', {
         text: t('aiChat.modelDefault'),
@@ -213,6 +213,11 @@ export class AiChatView extends ItemView {
         const opt = this.modelDropdown.createEl('option', { text: m.name, value: m.id });
         if (m.id === this.plugin.settings.ollama.copilotModel) opt.selected = true;
       }
+    } else if (provider === 'llamacpp') {
+      // llama.cpp: single editable model name from settings
+      const modelName = this.plugin.settings.ollama.llamaCppModel || t('aiChat.modelDefault');
+      const opt = this.modelDropdown.createEl('option', { text: modelName, value: this.plugin.settings.ollama.llamaCppModel });
+      opt.selected = true;
     }
   }
 
@@ -224,10 +229,15 @@ export class AiChatView extends ItemView {
       if (this.plugin.ollamaService) {
         this.plugin.ollamaService.setModel(value);
       }
-    } else {
+    } else if (provider === 'copilot') {
       this.plugin.settings.ollama.copilotModel = value;
       if (this.plugin.ollamaService) {
         await this.plugin.ollamaService.setCopilotModel(value);
+      }
+    } else if (provider === 'llamacpp') {
+      this.plugin.settings.ollama.llamaCppModel = value;
+      if (this.plugin.ollamaService) {
+        this.plugin.ollamaService.setLlamaCppModel(value);
       }
     }
     await this.plugin.saveSettings();
@@ -319,6 +329,7 @@ export class AiChatView extends ItemView {
     try {
       // Build system prompt with all project context
       const systemPrompt = await this.buildSystemPrompt(chapterFile);
+      console.debug(`[Novalist AI] Chat system prompt (${systemPrompt.length} chars, custom=${!!this.plugin.settings.ollama.systemPrompt?.trim()}):\n${systemPrompt.substring(0, 500)}${systemPrompt.length > 500 ? '…' : ''}`);
 
       // Build messages array for the chat API
       const apiMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [

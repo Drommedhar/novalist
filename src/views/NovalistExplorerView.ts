@@ -1260,11 +1260,11 @@ export class NovalistExplorerView extends ItemView {
         const srcFile = this.app.vault.getAbstractFileByPath(srcPath);
         if (srcFile instanceof TFile) {
           if (item.isWorld) {
-            // Dropping onto a world: set world, clear parent
-            void this.plugin.setLocationWorld(srcFile, item.name).then(() => void this.render());
+            // Dropping onto a world: set parent to the world
+            void (async () => { await this.plugin.setLocationParent(srcFile, item.name); void this.render(); })();
           } else {
             // Dropping onto a location: set parent
-            void this.plugin.setLocationParent(srcFile, item.name).then(() => void this.render());
+            void (async () => { await this.plugin.setLocationParent(srcFile, item.name); void this.render(); })();
           }
         }
       });

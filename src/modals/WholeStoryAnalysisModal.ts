@@ -193,8 +193,9 @@ export class WholeStoryAnalysisModal extends Modal {
 
       const chapters: Array<{ name: string; text: string }> = [];
       for (const ch of chapterDescs) {
-        const raw = await this.app.vault.read(ch.file);
+        const raw = await this.plugin.readChapterContent(ch.file);
         const body = this.plugin.stripFrontmatter(raw);
+        console.debug(`[Novalist AI] WholeStoryAnalysis — chapter "${ch.name}" (${ch.file.path}): body length=${body.length}${body.length === 0 ? ' ⚠ EMPTY' : ''}`);
         chapters.push({ name: ch.name, text: body });
       }
 

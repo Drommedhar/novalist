@@ -209,10 +209,11 @@ When you paste or drop an image into a project file, Novalist automatically move
 
 ### AI Analysis
 
-Connect an LLM to analyse chapter text for references, inconsistencies, and missing entities. Two providers are supported:
+Connect an LLM to analyse chapter text for references, inconsistencies, and missing entities. Three providers are supported:
 
 - **Ollama (local)** — point at a local [Ollama](https://ollama.com) server and select a model. Model lifecycle can be managed automatically (loaded on demand, unloaded when the plugin closes) or manually via the settings panel.
 - **GitHub Copilot** — uses the [Copilot CLI](https://docs.github.com/en/copilot/reference/acp-server) as an ACP server. Install and authenticate the CLI, then set the executable path in settings (defaults to `copilot`).
+- **llama.cpp (local)** — connects to a [llama.cpp](https://github.com/ggml-org/llama.cpp) server via its OpenAI-compatible API. Set the server URL (defaults to `http://127.0.0.1:8080`) and optionally enter the model name manually. The server can be started and stopped automatically by the plugin when the executable path and server arguments are configured, or managed manually via Start/Stop buttons in settings.
 
 Two analysis modes are available. **Per paragraph** splits the text and analyses each piece individually, enabling incremental re-scanning — only paragraphs whose content has changed since the last run are sent to the model. **Whole chapter** sends the entire chapter in a single prompt, giving the model full narrative context (requires a large context window). Each check can be individually enabled or disabled.
 
@@ -234,7 +235,7 @@ An interactive chat sidebar where you can converse with the LLM about your novel
 - Conversation history is maintained within the session. Use `Clear chat` to start fresh.
 - The AI can edit the active chapter file directly. It proposes edits using a structured search-and-replace format; edits are applied automatically and a notice confirms how many changes were made.
 - The AI cannot modify any other project files (characters, locations, items, lore). It can only read them for context.
-- Supports both Ollama and GitHub Copilot providers. Responses are streamed token-by-token for immediate feedback.
+- Supports Ollama, GitHub Copilot, and llama.cpp providers. Responses are streamed token-by-token for immediate feedback.
 - Open the chat from the toolbar `AI > Chat` button, or from the command palette (`Open AI chat`).
 
 ### Acts
@@ -307,13 +308,18 @@ A fixed-width panel on the left side of the editor that shows notes and outline 
 | Role colors | Color picker per character role | Auto-discovered |
 | Gender colors | Color picker per gender value | Auto-discovered |
 | Enable AI assistant | Use an LLM for reference detection, consistency checks, and entity suggestions | Off |
-| Provider | Choose the AI provider: Ollama (local) or GitHub Copilot | Ollama |
+| Provider | Choose the AI provider: Ollama (local), GitHub Copilot, or llama.cpp (local) | Ollama |
 | Analysis mode | Per paragraph (incremental) or whole chapter (single prompt) | Per paragraph |
 | Ollama server URL | Address of the Ollama API server (Ollama provider) | `http://127.0.0.1:11434` |
 | Model | Select which Ollama model to use for analysis (Ollama provider) | _(none)_ |
 | Auto-manage model | Automatically load the model when needed and unload it when the plugin closes (Ollama provider) | On |
 | Copilot CLI path | Path to the Copilot CLI executable (Copilot provider) | `copilot` |
 | Copilot model | Select which model Copilot uses for analysis (Copilot provider) | _(default)_ |
+| llama.cpp server URL | Address of the llama.cpp server (llama.cpp provider) | `http://127.0.0.1:8080` |
+| llama.cpp executable path | Path to the llama-server executable (llama.cpp provider) | _(empty)_ |
+| llama.cpp server arguments | Command-line arguments passed to the server, e.g. `-m /path/to/model.gguf` (llama.cpp provider) | _(empty)_ |
+| llama.cpp auto-start server | Start the server automatically on plugin load and stop it on close (llama.cpp provider) | Off |
+| llama.cpp model name | Model identifier sent to the llama.cpp server (llama.cpp provider) | _(empty)_ |
 | Check references | Detect indirect entity references (pronouns, relationship terms) that regex matching cannot find | On |
 | Check inconsistencies | Flag contradictions between the chapter text and entity details | On |
 | Check suggestions | Identify unregistered entities mentioned in the text | On |
