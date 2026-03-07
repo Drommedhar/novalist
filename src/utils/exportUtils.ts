@@ -34,34 +34,18 @@ export async function compileChapters(
   chapterFiles: TFile[]
 ): Promise<ChapterContent[]> {
   const chapters: ChapterContent[] = [];
-  const isSceneBased = plugin.isSceneBasedProject();
   
   for (const file of chapterFiles) {
+    // Normalise line endings (Windows \r\n → \n) so that every regex
+    // and every split('\n\n') in the export pipeline works reliably.
+    const content = (await plugin.app.vault.read(file)).replace(/\r/g, '');
     const cache = plugin.app.metadataCache.getFileCache(file);
     const frontmatter = cache?.frontmatter || {};
-
-    let content: string;
-    let title: string;
-    let order: number;
-
-    if (isSceneBased) {
-      // Scene-based projects: readChapterContent assembles all sibling
-      // scene files into a single markdown string with ## headings, so
-      // the existing scene-break replacement logic below works as-is.
-      content = (await plugin.readChapterContent(file)).replace(/\r/g, '');
-      title = typeof frontmatter.novalist_chapterName === 'string' && frontmatter.novalist_chapterName
-        ? frontmatter.novalist_chapterName
-        : `Chapter ${frontmatter.chapter ?? '?'}`;
-      order = Number(frontmatter.chapter) || 999;
-    } else {
-      // Legacy chapter-based: read the single file directly.
-      // Normalise line endings (Windows \r\n → \n) so that every regex
-      // and every split('\n\n') in the export pipeline works reliably.
-      content = (await plugin.app.vault.read(file)).replace(/\r/g, '');
-      const h1Match = content.match(/^#\s+(.+)$/m);
-      title = h1Match ? h1Match[1] : file.basename;
-      order = Number(frontmatter.order) || 999;
-    }
+    const order = Number(frontmatter.order) || 999;
+    
+    // Get chapter title (H1 heading)
+    const h1Match = content.match(/^#\s+(.+)$/m);
+    const title = h1Match ? h1Match[1] : file.basename;
     
     // Strip frontmatter and extract just the chapter text
     let body = content.replace(/^---\n[\s\S]*?\n---\n?/, '');

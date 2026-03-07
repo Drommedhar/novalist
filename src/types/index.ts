@@ -1,26 +1,6 @@
 ﻿import { t } from '../i18n';
 
-// ─── StoryLine & Novalist Extension Types (re-exports) ──────────────
-// Consumers can import SL-compatible types from '../types' directly.
-export type {
-  NovalistScene,
-  NovalistCharacter,
-  NovalistLocation,
-  NovalistWorld,
-  NovalistItem,
-  NovalistLore,
-  NovalistChapterOverride,
-  NovalistProject as NovalistProjectSL,
-} from './novalist-extensions';
-export { STATUS_MIGRATION_MAP, RELATIONSHIP_ROLE_MAP } from './novalist-extensions';
-export type { Scene, SceneStatus, TimelineMode } from '@storyline/models/Scene';
-export type { Character, CharacterRelation, CharacterRelationCategory } from '@storyline/models/Character';
-export type { StoryWorld, StoryLocation } from '@storyline/models/Location';
-export type { StoryLineProject } from '@storyline/models/StoryLineProject';
-export type { PlotGridData, CellData, ColumnMeta, RowMeta } from '@storyline/models/PlotGridData';
-
 // ─── Multi-project & World Bible ────────────────────────────────────
-/** Legacy project reference type. See NovalistProjectSL for the SL-based equivalent. */
 export interface NovalistProject {
   id: string;
   name: string;
@@ -174,13 +154,6 @@ export interface NovalistSettings {
   enableChapterNotes: boolean;
   /** Persisted Focus Peek card dimensions. */
   focusPeekSize: { width: number; height: number } | null;
-  /**
-   * Data format version used to detect whether a YAML migration has been
-   * offered/completed for each project. `undefined` or absent means the
-   * user has never been prompted.  Set to `2` once migration completes or
-   * the user explicitly skips it.
-   */
-  dataFormatVersion?: number;
 }
 
 // ─── Comment / Annotation System ────────────────────────────────────
@@ -292,10 +265,6 @@ export interface LocationListData {
   type: string;
   /** Raw wikilink to parent location, e.g. [[Hillsford]], or empty string. */
   parent: string;
-  /** World name this location belongs to, or empty string. */
-  world: string;
-  /** Whether this entry represents a world entity. */
-  isWorld: boolean;
 }
 
 // Character Sheet Data Structure
@@ -668,8 +637,8 @@ export interface WordCountGoals {
   dailyBaselineDate?: string;
 }
 
-// ─── Ollama / AI Assistant ──────────────────────────────────────────
-export type AiProvider = 'ollama' | 'copilot' | 'llamacpp';
+// ─── AI Assistant ────────────────────────────────────────────────────
+export type AiProvider = 'lmstudio' | 'copilot';
 export type AiAnalysisMode = 'paragraph' | 'chapter';
 
 export interface OllamaSettings {
@@ -679,32 +648,26 @@ export interface OllamaSettings {
   provider: AiProvider;
   /** Whether to analyse per paragraph or send the whole chapter at once. */
   analysisMode: AiAnalysisMode;
-  /** Base URL of the Ollama API server. */
-  baseUrl: string;
-  /** Model name to use (e.g. "llama3.2:latest"). */
-  model: string;
-  /** Auto-load model when needed and unload on plugin close. */
-  autoManageModel: boolean;
-  /** Enable reference detection in AI analysis. */
-  checkReferences: boolean;
-  /** Enable inconsistency checking in AI analysis. */
-  checkInconsistencies: boolean;
-  /** Enable entity suggestion detection in AI analysis. */
-  checkSuggestions: boolean;
-  /** Enable AI-based scene stats detection (POV, emotion, intensity, conflict). */
-  checkSceneStats: boolean;
+
+  // ── LM Studio ─────────────────────────────────────────
+  /** Base URL of the LM Studio server. */
+  lmStudioBaseUrl: string;
+  /** Model key to use (e.g. "lmstudio-community/qwen3-8b"). */
+  lmStudioModel: string;
+  /** Optional API token for authenticated LM Studio instances. */
+  lmStudioApiToken: string;
+
+  // ── Copilot ────────────────────────────────────────────
   /** Path to the Copilot CLI executable (used when provider is 'copilot'). */
   copilotPath: string;
   /** Copilot model to use (e.g. "gpt-4o"). Empty means Copilot's default. */
   copilotModel: string;
-  /** Temperature for Ollama generation (0 = deterministic, higher = more creative). */
+
+  // ── Shared generation parameters ──────────────────────
+  /** Temperature (0 = deterministic, higher = more creative). */
   temperature: number;
-  /** Maximum number of tokens the model may generate per request. */
-  maxTokens: number;
-  /** When true, skip regex-based entity scanning and rely solely on AI for reference detection. */
-  disableRegexReferences: boolean;
-  /** Custom system prompt override. If empty, the default prompt is used. */
-  systemPrompt: string;
+  /** Context window size when loading a model (0 = server default). */
+  contextLength: number;
   /** Top P sampling (0-1). Lower values make output more focused. */
   topP: number;
   /** Min P sampling (0-1). Tokens with probability below this are filtered out. */
@@ -713,16 +676,20 @@ export interface OllamaSettings {
   frequencyPenalty: number;
   /** Repeat last N tokens to check for repetition. */
   repeatLastN: number;
-  /** Base URL of the llama.cpp server (OpenAI-compatible endpoint). */
-  llamaCppBaseUrl: string;
-  /** Path to the llama.cpp server executable. Used to verify availability. */
-  llamaCppPath: string;
-  /** Model name to send to the llama.cpp server. */
-  llamaCppModel: string;
-  /** Whether to automatically start the llama.cpp server when the plugin loads. */
-  llamaCppAutoStart: boolean;
-  /** Additional command-line arguments for the llama.cpp server (e.g. -m /path/to/model.gguf). */
-  llamaCppServerArgs: string;
+
+  // ── Shared toggles ────────────────────────────────────
+  /** Enable reference detection in AI analysis. */
+  checkReferences: boolean;
+  /** Enable inconsistency checking in AI analysis. */
+  checkInconsistencies: boolean;
+  /** Enable entity suggestion detection in AI analysis. */
+  checkSuggestions: boolean;
+  /** Enable AI-based scene stats detection (POV, emotion, intensity, conflict). */
+  checkSceneStats: boolean;
+  /** When true, skip regex-based entity scanning and rely solely on AI for reference detection. */
+  disableRegexReferences: boolean;
+  /** Custom system prompt override. If empty, the default prompt is used. */
+  systemPrompt: string;
 }
 
 // ─── Timeline ───────────────────────────────────────────────────────
@@ -957,10 +924,6 @@ export interface LocationHierarchyEntry {
   type: string;
   /** Raw wikilink [[ParentName]] or empty string. */
   parent: string;
-  /** World name this location belongs to, or empty string. */
-  world: string;
-  /** Entity type from frontmatter: 'world' | 'location'. */
-  entityType: string;
 }
 
 export interface CharacterHierarchyEntry {

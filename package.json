@@ -4,8 +4,6 @@
   "private": true,
   "main": "main.js",
   "scripts": {
-    "prebuild": "git submodule update --init --recursive",
-    "sync-sl-models": "node scripts/sync-storyline.mjs",
     "build": "node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
     "lint": "eslint .",

@@ -493,9 +493,8 @@ export class NovalistSettingTab extends PluginSettingTab {
       .setName(t('ollama.provider'))
       .setDesc(t('ollama.providerDesc'))
       .addDropdown(dd => dd
-        .addOption('ollama', t('ollama.providerOllama'))
+        .addOption('lmstudio', t('ollama.providerLmStudio'))
         .addOption('copilot', t('ollama.providerCopilot'))
-        .addOption('llamacpp', t('ollama.providerLlamaCpp'))
         .setValue(provider)
         .onChange(async (value) => {
           this.plugin.settings.ollama.provider = value as AiProvider;
@@ -523,12 +522,10 @@ export class NovalistSettingTab extends PluginSettingTab {
         }));
 
     // ── Provider-specific settings ──────────────────────────────
-    if (provider === 'ollama') {
-      this.renderOllamaProviderSettings(containerEl);
+    if (provider === 'lmstudio') {
+      this.renderLmStudioProviderSettings(containerEl);
     } else if (provider === 'copilot') {
       this.renderCopilotProviderSettings(containerEl);
-    } else if (provider === 'llamacpp') {
-      this.renderLlamaCppProviderSettings(containerEl);
     }
 
     // ── Shared check toggles ──────────────────────────────────────
@@ -657,85 +654,110 @@ export class NovalistSettingTab extends PluginSettingTab {
     });
   }
 
-  /** Render settings specific to the Ollama provider. */
-  private renderOllamaProviderSettings(containerEl: HTMLElement): void {
+  /** Render settings specific to the LM Studio provider. */
+  private renderLmStudioProviderSettings(containerEl: HTMLElement): void {
+    // Server URL
     new Setting(containerEl)
-      .setName(t('ollama.baseUrl'))
-      .setDesc(t('ollama.baseUrlDesc'))
+      .setName(t('ollama.lmStudioBaseUrl'))
+      .setDesc(t('ollama.lmStudioBaseUrlDesc'))
       .addText(text => text
-        .setPlaceholder(t('ollama.baseUrlPlaceholder'))
-        .setValue(this.plugin.settings.ollama.baseUrl)
+        .setPlaceholder(t('ollama.lmStudioBaseUrlPlaceholder'))
+        .setValue(this.plugin.settings.ollama.lmStudioBaseUrl)
         .onChange(async (value) => {
-          this.plugin.settings.ollama.baseUrl = value;
+          this.plugin.settings.ollama.lmStudioBaseUrl = value;
           await this.plugin.saveSettings();
           if (this.plugin.ollamaService) {
-            this.plugin.ollamaService.setBaseUrl(value);
+            this.plugin.ollamaService.setLmStudioBaseUrl(value);
           }
         }));
 
+    // API Token
+    new Setting(containerEl)
+      .setName(t('ollama.lmStudioApiToken'))
+      .setDesc(t('ollama.lmStudioApiTokenDesc'))
+      .addText(text => {
+        text.inputEl.type = 'password';
+        text
+          .setPlaceholder(t('ollama.lmStudioApiTokenPlaceholder'))
+          .setValue(this.plugin.settings.ollama.lmStudioApiToken)
+          .onChange(async (value) => {
+            this.plugin.settings.ollama.lmStudioApiToken = value;
+            await this.plugin.saveSettings();
+            if (this.plugin.ollamaService) {
+              this.plugin.ollamaService.setLmStudioApiToken(value);
+            }
+          });
+      });
+
     // Server status indicator
     const statusSetting = new Setting(containerEl)
-      .setName(t('ollama.serverStatus'));
+      .setName(t('ollama.lmStudioStatus'));
     const statusDesc = statusSetting.descEl;
-    statusDesc.setText(t('ollama.serverOffline'));
+    statusDesc.setText(t('ollama.lmStudioOffline'));
     statusDesc.addClass('novalist-ollama-status');
+
+    const verifyLmStudio = async (): Promise<void> => {
+      statusDesc.setText(t('ollama.lmStudioChecking'));
+      statusDesc.toggleClass('mod-success', false);
+      statusDesc.toggleClass('mod-warning', false);
+      if (!this.plugin.ollamaService) return;
+      const ok = await this.plugin.ollamaService.isServerRunning();
+      statusDesc.setText(ok ? t('ollama.lmStudioOnline') : t('ollama.lmStudioOffline'));
+      statusDesc.toggleClass('mod-success', ok);
+      statusDesc.toggleClass('mod-warning', !ok);
+    };
+
+    statusSetting.addButton(btn => btn
+      .setButtonText(t('ollama.lmStudioVerify'))
+      .setCta()
+      .onClick(() => { void verifyLmStudio(); }));
 
     // Model selector + refresh
     const modelSetting = new Setting(containerEl)
-      .setName(t('ollama.model'))
-      .setDesc(t('ollama.modelDesc'));
+      .setName(t('ollama.lmStudioModel'))
+      .setDesc(t('ollama.lmStudioModelDesc'));
 
     const modelDropdown = modelSetting.controlEl.createEl('select', { cls: 'dropdown' });
-    const refreshBtn = modelSetting.controlEl.createEl('button', { text: t('ollama.refreshModels'), cls: 'mod-cta' });
+    const refreshBtn = modelSetting.controlEl.createEl('button', { text: t('ollama.lmStudioRefreshModels'), cls: 'mod-cta' });
     refreshBtn.setCssProps({ 'margin-left': '8px' });
 
     const populateModels = async (): Promise<void> => {
       modelDropdown.empty();
       if (!this.plugin.ollamaService) return;
       const online = await this.plugin.ollamaService.isServerRunning();
-      statusDesc.setText(online ? t('ollama.serverOnline') : t('ollama.serverOffline'));
+      statusDesc.setText(online ? t('ollama.lmStudioOnline') : t('ollama.lmStudioOffline'));
       statusDesc.toggleClass('mod-success', online);
       statusDesc.toggleClass('mod-warning', !online);
       if (!online) {
-        const opt = modelDropdown.createEl('option', { text: t('ollama.noModels'), value: '' });
+        const opt = modelDropdown.createEl('option', { text: t('ollama.lmStudioNoModels'), value: '' });
         opt.selected = true;
         return;
       }
       const models = await this.plugin.ollamaService.listModels();
       if (models.length === 0) {
-        const opt = modelDropdown.createEl('option', { text: t('ollama.noModels'), value: '' });
+        const opt = modelDropdown.createEl('option', { text: t('ollama.lmStudioNoModels'), value: '' });
         opt.selected = true;
         return;
       }
       for (const m of models) {
         const opt = modelDropdown.createEl('option', { text: m.name, value: m.name });
-        if (m.name === this.plugin.settings.ollama.model) opt.selected = true;
+        if (m.name === this.plugin.settings.ollama.lmStudioModel) opt.selected = true;
       }
       // If current model not in list, select first
-      if (!models.some(m => m.name === this.plugin.settings.ollama.model) && models.length > 0) {
-        this.plugin.settings.ollama.model = models[0].name;
-        if (this.plugin.ollamaService) this.plugin.ollamaService.setModel(models[0].name);
+      if (!models.some(m => m.name === this.plugin.settings.ollama.lmStudioModel) && models.length > 0) {
+        this.plugin.settings.ollama.lmStudioModel = models[0].name;
+        if (this.plugin.ollamaService) this.plugin.ollamaService.setLmStudioModel(models[0].name);
         await this.plugin.saveSettings();
       }
     };
 
     modelDropdown.addEventListener('change', () => {
-      this.plugin.settings.ollama.model = modelDropdown.value;
-      if (this.plugin.ollamaService) this.plugin.ollamaService.setModel(modelDropdown.value);
+      this.plugin.settings.ollama.lmStudioModel = modelDropdown.value;
+      if (this.plugin.ollamaService) this.plugin.ollamaService.setLmStudioModel(modelDropdown.value);
       void this.plugin.saveSettings();
     });
 
     refreshBtn.addEventListener('click', () => { void populateModels(); });
-
-    new Setting(containerEl)
-      .setName(t('ollama.autoManage'))
-      .setDesc(t('ollama.autoManageDesc'))
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.ollama.autoManageModel)
-        .onChange(async (value) => {
-          this.plugin.settings.ollama.autoManageModel = value;
-          await this.plugin.saveSettings();
-        }));
 
     // Temperature slider (0 – 2, step 0.1)
     const tempSetting = new Setting(containerEl)
@@ -755,20 +777,20 @@ export class NovalistSettingTab extends PluginSettingTab {
         }
       }));
 
-    // Max tokens input
+    // Context length input
     new Setting(containerEl)
-      .setName(t('ollama.maxTokens'))
-      .setDesc(t('ollama.maxTokensDesc'))
+      .setName(t('ollama.contextLength'))
+      .setDesc(t('ollama.contextLengthDesc'))
       .addText(text => text
-        .setPlaceholder('8192')
-        .setValue(String(this.plugin.settings.ollama.maxTokens ?? 8192))
+        .setPlaceholder('0')
+        .setValue(String(this.plugin.settings.ollama.contextLength ?? 0))
         .onChange(async (value) => {
           const parsed = parseInt(value, 10);
-          if (!isNaN(parsed) && parsed > 0) {
-            this.plugin.settings.ollama.maxTokens = parsed;
+          if (!isNaN(parsed) && parsed >= 0) {
+            this.plugin.settings.ollama.contextLength = parsed;
             await this.plugin.saveSettings();
             if (this.plugin.ollamaService) {
-              this.plugin.ollamaService.setMaxTokens(parsed);
+              this.plugin.ollamaService.setContextLength(parsed);
             }
           }
         }));
@@ -851,8 +873,9 @@ export class NovalistSettingTab extends PluginSettingTab {
       .setButtonText(t('ollama.loadModel'))
       .setCta()
       .onClick(async () => {
-        if (!this.plugin.ollamaService || !this.plugin.settings.ollama.model) return;
+        if (!this.plugin.ollamaService || !this.plugin.settings.ollama.lmStudioModel) return;
         new Notice(t('ollama.loadingModel'));
+        await this.plugin.ollamaService.unloadModel();
         const ok = await this.plugin.ollamaService.loadModel();
         new Notice(ok ? t('ollama.modelLoadSuccess') : t('ollama.modelLoadFail'));
       }));
@@ -970,208 +993,6 @@ export class NovalistSettingTab extends PluginSettingTab {
     copilotRefreshBtn.addEventListener('click', () => { void populateCopilotModels(); });
 
     void populateCopilotModels();
-  }
-
-  /** Render settings specific to the llama.cpp provider. */
-  private renderLlamaCppProviderSettings(containerEl: HTMLElement): void {
-    // Base URL
-    new Setting(containerEl)
-      .setName(t('ollama.llamaCppBaseUrl'))
-      .setDesc(t('ollama.llamaCppBaseUrlDesc'))
-      .addText(text => text
-        .setPlaceholder(t('ollama.llamaCppBaseUrlPlaceholder'))
-        .setValue(this.plugin.settings.ollama.llamaCppBaseUrl)
-        .onChange(async (value) => {
-          this.plugin.settings.ollama.llamaCppBaseUrl = value;
-          await this.plugin.saveSettings();
-          if (this.plugin.ollamaService) {
-            this.plugin.ollamaService.setLlamaCppBaseUrl(value);
-          }
-        }));
-
-    // Executable path
-    new Setting(containerEl)
-      .setName(t('ollama.llamaCppPath'))
-      .setDesc(t('ollama.llamaCppPathDesc'))
-      .addText(text => text
-        .setPlaceholder(t('ollama.llamaCppPathPlaceholder'))
-        .setValue(this.plugin.settings.ollama.llamaCppPath)
-        .onChange(async (value) => {
-          this.plugin.settings.ollama.llamaCppPath = value;
-          await this.plugin.saveSettings();
-          if (this.plugin.ollamaService) {
-            this.plugin.ollamaService.setLlamaCppPath(value);
-          }
-        }));
-
-    // Server arguments
-    new Setting(containerEl)
-      .setName(t('ollama.llamaCppServerArgs'))
-      .setDesc(t('ollama.llamaCppServerArgsDesc'))
-      .addText(text => text
-        .setPlaceholder(t('ollama.llamaCppServerArgsPlaceholder'))
-        .setValue(this.plugin.settings.ollama.llamaCppServerArgs)
-        .onChange(async (value) => {
-          this.plugin.settings.ollama.llamaCppServerArgs = value;
-          await this.plugin.saveSettings();
-          if (this.plugin.ollamaService) {
-            this.plugin.ollamaService.setLlamaCppServerArgs(value);
-          }
-        }));
-
-    // Server status indicator
-    const statusSetting = new Setting(containerEl)
-      .setName(t('ollama.llamaCppStatus'));
-    const statusDesc = statusSetting.descEl;
-    statusDesc.setText(t('ollama.llamaCppChecking'));
-    statusDesc.addClass('novalist-ollama-status');
-
-    const verifyLlamaCpp = async (): Promise<void> => {
-      statusDesc.setText(t('ollama.llamaCppChecking'));
-      statusDesc.toggleClass('mod-success', false);
-      statusDesc.toggleClass('mod-warning', false);
-      if (!this.plugin.ollamaService) return;
-      const ok = await this.plugin.ollamaService.isLlamaCppServerRunning();
-      statusDesc.setText(ok ? t('ollama.llamaCppReady') : t('ollama.llamaCppOffline'));
-      statusDesc.toggleClass('mod-success', ok);
-      statusDesc.toggleClass('mod-warning', !ok);
-    };
-
-    statusSetting.addButton(btn => btn
-      .setButtonText(t('ollama.llamaCppStartBtn'))
-      .onClick(async () => {
-        if (!this.plugin.ollamaService) return;
-        new Notice(t('ollama.llamaCppStarting'));
-        const ok = await this.plugin.ollamaService.startLlamaCppServer();
-        new Notice(ok ? t('ollama.llamaCppStarted') : t('ollama.llamaCppStartFailed'));
-        void verifyLlamaCpp();
-      }));
-
-    statusSetting.addButton(btn => btn
-      .setButtonText(t('ollama.llamaCppStopBtn'))
-      .onClick(async () => {
-        if (!this.plugin.ollamaService) return;
-        await this.plugin.ollamaService.stopLlamaCppServer();
-        new Notice(t('ollama.llamaCppStopped'));
-        void verifyLlamaCpp();
-      }));
-
-    statusSetting.addButton(btn => btn
-      .setButtonText(t('ollama.llamaCppVerify'))
-      .setCta()
-      .onClick(() => { void verifyLlamaCpp(); }));
-
-    void verifyLlamaCpp();
-
-    // Auto-start toggle
-    new Setting(containerEl)
-      .setName(t('ollama.llamaCppAutoStart'))
-      .setDesc(t('ollama.llamaCppAutoStartDesc'))
-      .addToggle(toggle => toggle
-        .setValue(this.plugin.settings.ollama.llamaCppAutoStart)
-        .onChange(async (value) => {
-          this.plugin.settings.ollama.llamaCppAutoStart = value;
-          await this.plugin.saveSettings();
-          if (this.plugin.ollamaService) {
-            if (value) {
-              new Notice(t('ollama.llamaCppStarting'));
-              const ok = await this.plugin.ollamaService.startLlamaCppServer();
-              new Notice(ok ? t('ollama.llamaCppStarted') : t('ollama.llamaCppStartFailed'));
-              void verifyLlamaCpp();
-            } else {
-              await this.plugin.ollamaService.stopLlamaCppServer();
-              new Notice(t('ollama.llamaCppStopped'));
-              void verifyLlamaCpp();
-            }
-          }
-        }));
-
-    // Model name (free text input)
-    new Setting(containerEl)
-      .setName(t('ollama.llamaCppModel'))
-      .setDesc(t('ollama.llamaCppModelDesc'))
-      .addText(text => text
-        .setPlaceholder(t('ollama.llamaCppModelPlaceholder'))
-        .setValue(this.plugin.settings.ollama.llamaCppModel)
-        .onChange(async (value) => {
-          this.plugin.settings.ollama.llamaCppModel = value;
-          await this.plugin.saveSettings();
-          if (this.plugin.ollamaService) {
-            this.plugin.ollamaService.setLlamaCppModel(value);
-          }
-        }));
-
-    // Temperature slider (0 – 2, step 0.1)
-    const tempSetting = new Setting(containerEl)
-      .setName(t('ollama.temperature'));
-    const tempValue = tempSetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.temperature ?? 0.7) });
-    tempSetting.setDesc(t('ollama.temperatureDesc'));
-    tempSetting.addSlider(slider => slider
-      .setLimits(0, 2, 0.1)
-      .setValue(this.plugin.settings.ollama.temperature ?? 0.7)
-      .setDynamicTooltip()
-      .onChange(async (value) => {
-        this.plugin.settings.ollama.temperature = value;
-        tempValue.textContent = String(value);
-        await this.plugin.saveSettings();
-        if (this.plugin.ollamaService) {
-          this.plugin.ollamaService.setTemperature(value);
-        }
-      }));
-
-    // Max tokens input
-    new Setting(containerEl)
-      .setName(t('ollama.maxTokens'))
-      .setDesc(t('ollama.maxTokensDesc'))
-      .addText(text => text
-        .setPlaceholder('8192')
-        .setValue(String(this.plugin.settings.ollama.maxTokens ?? 8192))
-        .onChange(async (value) => {
-          const parsed = parseInt(value, 10);
-          if (!isNaN(parsed) && parsed > 0) {
-            this.plugin.settings.ollama.maxTokens = parsed;
-            await this.plugin.saveSettings();
-            if (this.plugin.ollamaService) {
-              this.plugin.ollamaService.setMaxTokens(parsed);
-            }
-          }
-        }));
-
-    // Top P slider (0-1)
-    const topPSetting = new Setting(containerEl)
-      .setName(t('ollama.topP'));
-    const topPValue = topPSetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.topP ?? 0.9) });
-    topPSetting.setDesc(t('ollama.topPDesc'));
-    topPSetting.addSlider(slider => slider
-      .setLimits(0, 1, 0.05)
-      .setValue(this.plugin.settings.ollama.topP ?? 0.9)
-      .setDynamicTooltip()
-      .onChange(async (value) => {
-        this.plugin.settings.ollama.topP = value;
-        topPValue.textContent = String(value);
-        await this.plugin.saveSettings();
-        if (this.plugin.ollamaService) {
-          this.plugin.ollamaService.setTopP(value);
-        }
-      }));
-
-    // Frequency Penalty slider (0-2)
-    const freqPenaltySetting = new Setting(containerEl)
-      .setName(t('ollama.frequencyPenalty'));
-    const freqPenaltyValue = freqPenaltySetting.controlEl.createSpan({ cls: 'novalist-slider-value', text: String(this.plugin.settings.ollama.frequencyPenalty ?? 1.1) });
-    freqPenaltySetting.setDesc(t('ollama.frequencyPenaltyDesc'));
-    freqPenaltySetting.addSlider(slider => slider
-      .setLimits(0, 2, 0.1)
-      .setValue(this.plugin.settings.ollama.frequencyPenalty ?? 1.1)
-      .setDynamicTooltip()
-      .onChange(async (value) => {
-        this.plugin.settings.ollama.frequencyPenalty = value;
-        freqPenaltyValue.textContent = String(value);
-        await this.plugin.saveSettings();
-        if (this.plugin.ollamaService) {
-          this.plugin.ollamaService.setFrequencyPenalty(value);
-        }
-      }));
   }
 
   private renderTemplatesForCategory(containerEl: HTMLElement): void {

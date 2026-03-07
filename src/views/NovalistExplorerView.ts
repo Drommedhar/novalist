@@ -16,7 +16,6 @@ import { ChapterListData, CharacterListData, LocationListData, CHAPTER_STATUSES,
 import { ChapterEditData } from '../modals/ChapterDescriptionModal';
 import { SceneNameModal } from '../modals/SceneNameModal';
 import { SnapshotNameModal, SnapshotListModal } from '../modals/SnapshotModal';
-import { extractFrontmatterAndBody, serializeFrontmatterAndBody } from '../services/FrontmatterUtils';
 import { t } from '../i18n';
 
 export const NOVELIST_EXPLORER_VIEW_TYPE = 'novalist-explorer';
@@ -459,11 +458,7 @@ export class NovalistExplorerView extends ItemView {
     evt.preventDefault();
     const menu = new Menu();
 
-    // In scene-based projects, chapter items in the Explorer reference scene files.
-    // Treat them the same as chapter files for the context menu.
-    const isChapterEntry = this.plugin.isChapterFile(file) || this.isSceneFileRef(file);
-
-    if (isChapterEntry) {
+    if (this.plugin.isChapterFile(file)) {
       menu.addItem((item) => {
         item
           .setTitle(t('explorer.editChapter'))
@@ -583,34 +578,30 @@ export class NovalistExplorerView extends ItemView {
     // ── Location hierarchy ──────────────────────────────────────────
     if (this.plugin.isLocationFile(file)) {
       const locationEntry = this.plugin.getLocationList().find(l => l.file.path === file.path);
+      const hasParent = !!(locationEntry?.parent);
+      const allLocations = this.plugin.getLocationList().filter(l => l.file.path !== file.path);
 
-      // Skip parent actions for world entities — worlds are top-level containers
-      if (locationEntry && !locationEntry.isWorld) {
-        const hasParent = !!(locationEntry.parent);
-        const allLocations = this.plugin.getLocationList().filter(l => l.file.path !== file.path && !l.isWorld);
-
-        menu.addSeparator();
+      menu.addSeparator();
+      menu.addItem((item) => {
+        item
+          .setTitle(t('explorer.setParent'))
+          .setIcon('git-branch')
+          .onClick(() => {
+            new LocationParentPickerModal(this.app, allLocations, (chosen) => {
+              void this.plugin.setLocationParent(file, chosen.name).then(() => { void this.render(); });
+            }).open();
+          });
+      });
+      if (hasParent) {
         menu.addItem((item) => {
           item
-            .setTitle(t('explorer.setParent'))
-            .setIcon('git-branch')
-            .onClick(() => {
-              new LocationParentPickerModal(this.app, allLocations, (chosen) => {
-                void this.plugin.setLocationParent(file, chosen.name).then(() => { void this.render(); });
-              }).open();
+            .setTitle(t('explorer.removeParent'))
+            .setIcon('x')
+            .onClick(async () => {
+              await this.plugin.setLocationParent(file, '');
+              void this.render();
             });
         });
-        if (hasParent) {
-          menu.addItem((item) => {
-            item
-              .setTitle(t('explorer.removeParent'))
-              .setIcon('x')
-              .onClick(async () => {
-                await this.plugin.setLocationParent(file, '');
-                void this.render();
-              });
-          });
-        }
       }
     }
 
@@ -815,11 +806,7 @@ export class NovalistExplorerView extends ItemView {
       statusIcon.style.color = statusDef.color;
 
       row.addEventListener('click', () => {
-        if (this.plugin.isSceneBasedProject()) {
-          void this.openAssembledChapter(item.file);
-        } else {
-          void this.openFileInExplorer(item.file);
-        }
+        void this.openFileInExplorer(item.file);
       });
 
       row.addEventListener('contextmenu', (evt) => {
@@ -910,59 +897,6 @@ export class NovalistExplorerView extends ItemView {
   }
 
   private openEditChapterModal(file: TFile): void {
-    // Scene-based: edit chapter-level metadata across all sibling scenes
-    if (this.plugin.isSceneBasedProject()) {
-      const cache = this.app.metadataCache.getFileCache(file);
-      const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
-      const existing: ChapterEditData = {
-        name: typeof fm.novalist_chapterName === 'string' ? fm.novalist_chapterName : file.basename,
-        order: typeof fm.chapter === 'number' ? String(fm.chapter) : (typeof fm.chapter === 'string' ? fm.chapter : ''),
-        status: this.plugin.sceneStatusToChapterStatus(typeof fm.status === 'string' ? fm.status : 'draft'),
-        act: typeof fm.act === 'string' ? fm.act : (typeof fm.act === 'number' ? String(fm.act) : ''),
-        date: typeof fm.storyDate === 'string' ? fm.storyDate : '',
-      };
-      this.plugin.openChapterDescriptionModal(existing, (data) => {
-        void (async () => {
-          // Get all scene files in this chapter
-          const chapterNum = Number(fm.chapter) || 0;
-          const root = this.plugin.resolvedProjectPath();
-          const scenesFolder = `${root}/Scenes/`;
-          const siblings = this.app.vault.getFiles()
-            .filter(f => f.path.startsWith(scenesFolder) && f.extension === 'md')
-            .filter(f => Number(this.app.metadataCache.getFileCache(f)?.frontmatter?.chapter) === chapterNum);
-
-          for (const sf of siblings) {
-            const content = await this.app.vault.read(sf);
-            const { frontmatter, body } = extractFrontmatterAndBody(content);
-            if (data.name !== existing.name) {
-              frontmatter.novalist_chapterName = data.name;
-            }
-            if (data.order !== existing.order) {
-              frontmatter.chapter = Number(data.order) || chapterNum;
-            }
-            if (data.act !== existing.act) {
-              if (data.act) {
-                frontmatter.act = data.act;
-              } else {
-                delete frontmatter.act;
-              }
-            }
-            await this.app.vault.modify(sf, serializeFrontmatterAndBody(frontmatter, body));
-          }
-          // Wait for metadata cache to process the changes before re-rendering
-          await new Promise<void>(resolve => {
-            const handler = this.app.metadataCache.on('resolved', () => {
-              this.app.metadataCache.offref(handler);
-              resolve();
-            });
-          });
-          void this.render();
-        })();
-      });
-      return;
-    }
-
-    // Legacy: edit chapter file frontmatter
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter ?? {};
     const heading = cache?.headings?.find(h => h.level === 1)?.heading;
@@ -1006,71 +940,6 @@ export class NovalistExplorerView extends ItemView {
   }
 
   private openEditSceneModal(chapterFile: TFile, sceneName: string): void {
-    // Scene-based: directly modify the individual scene file's frontmatter.
-    // The assembled chapter sync handler will auto-reassemble if tracked.
-    if (this.plugin.isSceneBasedProject()) {
-      // Find the actual scene file by chapter number + title
-      const cache = this.app.metadataCache.getFileCache(chapterFile);
-      const chapterNum = Number((cache?.frontmatter as Record<string, unknown> | undefined)?.chapter) || 0;
-      const root = this.plugin.resolvedProjectPath();
-      const scenesFolder = `${root}/Scenes/`;
-      const sceneFile = this.app.vault.getFiles().find(f => {
-        if (!f.path.startsWith(scenesFolder) || f.extension !== 'md') return false;
-        const c = this.app.metadataCache.getFileCache(f);
-        const fm = c?.frontmatter as Record<string, unknown> | undefined;
-        return Number(fm?.chapter) === chapterNum
-          && (fm?.title === sceneName || f.basename === sceneName);
-      });
-      if (!sceneFile) {
-        new Notice(t('notice.sceneNotFound'));
-        return;
-      }
-
-      const sceneDate = this.plugin.getSceneDateSync(sceneFile, sceneName);
-      const chapterDate = this.plugin.getChapterDateSync(chapterFile);
-      const explicitDate = sceneDate !== chapterDate ? sceneDate : '';
-      const modal = new SceneNameModal(this.app, (data) => {
-        void (async () => {
-          const content = await this.app.vault.read(sceneFile);
-          const { frontmatter, body } = extractFrontmatterAndBody(content);
-
-          // Update title in frontmatter
-          if (data.name !== sceneName) {
-            frontmatter.title = data.name;
-          }
-
-          // Update storyDate in frontmatter
-          if (data.date !== explicitDate) {
-            if (data.date) {
-              frontmatter.storyDate = data.date;
-            } else {
-              delete frontmatter.storyDate;
-            }
-          }
-
-          await this.app.vault.modify(sceneFile, serializeFrontmatterAndBody(frontmatter, body));
-
-          // Rename the file if the title changed
-          if (data.name !== sceneName) {
-            const newPath = sceneFile.path.replace(/[^/]+\.md$/, `${data.name}.md`);
-            await this.app.fileManager.renameFile(sceneFile, newPath);
-          }
-
-          // Wait for metadata cache before re-rendering
-          await new Promise<void>(resolve => {
-            const handler = this.app.metadataCache.on('resolved', () => {
-              this.app.metadataCache.offref(handler);
-              resolve();
-            });
-          });
-          void this.render();
-        })();
-      }, { name: sceneName, date: explicitDate });
-      modal.open();
-      return;
-    }
-
-    // Legacy: edit H2 heading within chapter file
     const sceneDate = this.plugin.getSceneDateSync(chapterFile, sceneName);
     // Use chapter date as inherited fallback display — but only pass explicit scene date
     const chapterDate = this.plugin.getChapterDateSync(chapterFile);
@@ -1117,20 +986,13 @@ export class NovalistExplorerView extends ItemView {
     const roots: LocationListData[] = [];
 
     for (const item of items) {
-      if (item.isWorld) {
-        // Worlds are always root nodes
-        roots.push(item);
-        continue;
-      }
       const rawParent = item.parent ?? '';
       const parentName = rawParent.replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
-      // Effective parent: explicit parent if set, otherwise the world (if present)
-      const effectiveParent = parentName || item.world || '';
-      if (!effectiveParent || !byName.has(effectiveParent)) {
+      if (!parentName || !byName.has(parentName)) {
         roots.push(item);
       } else {
-        if (!childMap.has(effectiveParent)) childMap.set(effectiveParent, []);
-        childMap.get(effectiveParent)?.push(item);
+        if (!childMap.has(parentName)) childMap.set(parentName, []);
+        childMap.get(parentName)?.push(item);
       }
     }
 
@@ -1138,12 +1000,7 @@ export class NovalistExplorerView extends ItemView {
     for (const children of childMap.values()) {
       children.sort((a, b) => a.name.localeCompare(b.name));
     }
-    // Sort roots: worlds first, then alphabetical
-    roots.sort((a, b) => {
-      if (a.isWorld && !b.isWorld) return -1;
-      if (!a.isWorld && b.isWorld) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    roots.sort((a, b) => a.name.localeCompare(b.name));
 
     // Root drop zone (only visible while dragging)
     const treeContainer = list.createDiv('novalist-tree-container');
@@ -1185,10 +1042,6 @@ export class NovalistExplorerView extends ItemView {
       row.style.setProperty('--tree-depth', String(depth));
       row.setAttribute('draggable', 'true');
 
-      if (item.isWorld) {
-        row.addClass('novalist-tree-world');
-      }
-
       const children = childMap.get(item.name) ?? [];
       const hasChildren = children.length > 0;
 
@@ -1213,14 +1066,9 @@ export class NovalistExplorerView extends ItemView {
         row.createEl('span', { text: t('project.wbBadge'), cls: 'novalist-explorer-badge novalist-wb-badge' });
       }
 
-      // World badge for world nodes
-      if (item.isWorld) {
-        row.createEl('span', { text: t('explorer.worldBadge'), cls: 'novalist-explorer-badge novalist-world-badge' });
-      }
-
       row.createEl('span', { text: item.name, cls: 'novalist-explorer-label' });
 
-      if (item.type && !item.isWorld) {
+      if (item.type) {
         row.createEl('span', { text: item.type, cls: 'novalist-explorer-badge novalist-type-badge' });
       }
 
@@ -1236,27 +1084,21 @@ export class NovalistExplorerView extends ItemView {
       row.addEventListener('click', () => void this.openFileInExplorer(item.file));
       row.addEventListener('contextmenu', (evt) => { void this.handleContextMenu(evt, item.file); });
 
-      // Drag-to-reparent (worlds are not draggable)
-      if (!item.isWorld) {
-        row.addEventListener('dragstart', (evt) => {
-          this.draggingLocationPath = item.file.path;
-          row.addClass('is-dragging');
-          if (evt.dataTransfer) {
-            evt.dataTransfer.effectAllowed = 'move';
-            evt.dataTransfer.setData('text/plain', item.file.path);
-          }
-        });
-        row.addEventListener('dragend', () => {
-          this.draggingLocationPath = null;
-          row.removeClass('is-dragging');
-          treeContainer.querySelectorAll('.drag-over').forEach(el => el.removeClass('drag-over'));
-          treeContainer.removeClass('is-dragging');
-        });
-      } else {
-        row.removeAttribute('draggable');
-      }
-
-      // Accept drops (both worlds and locations can be drop targets)
+      // Drag-to-reparent
+      row.addEventListener('dragstart', (evt) => {
+        this.draggingLocationPath = item.file.path;
+        row.addClass('is-dragging');
+        if (evt.dataTransfer) {
+          evt.dataTransfer.effectAllowed = 'move';
+          evt.dataTransfer.setData('text/plain', item.file.path);
+        }
+      });
+      row.addEventListener('dragend', () => {
+        this.draggingLocationPath = null;
+        row.removeClass('is-dragging');
+        treeContainer.querySelectorAll('.drag-over').forEach(el => el.removeClass('drag-over'));
+        treeContainer.removeClass('is-dragging');
+      });
       row.addEventListener('dragover', (evt) => {
         evt.preventDefault();
         evt.stopPropagation();
@@ -1274,13 +1116,7 @@ export class NovalistExplorerView extends ItemView {
         if (!srcPath || srcPath === item.file.path) return;
         const srcFile = this.app.vault.getAbstractFileByPath(srcPath);
         if (srcFile instanceof TFile) {
-          if (item.isWorld) {
-            // Dropping onto a world: set parent to the world
-            void (async () => { await this.plugin.setLocationParent(srcFile, item.name); void this.render(); })();
-          } else {
-            // Dropping onto a location: set parent
-            void (async () => { await this.plugin.setLocationParent(srcFile, item.name); void this.render(); })();
-          }
+          void this.plugin.setLocationParent(srcFile, item.name).then(() => void this.render());
         }
       });
 
@@ -1700,32 +1536,6 @@ export class NovalistExplorerView extends ItemView {
   }
 
   private async openSceneInChapter(file: TFile, sceneName: string): Promise<void> {
-    // Scene-based: assemble the chapter first, then scroll to the scene H2
-    if (this.plugin.isSceneBasedProject()) {
-      const chapterFile = await this.openAssembledChapter(file);
-      if (!chapterFile) return;
-
-      // Wait a tick for the metadata cache to process the assembled file
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const cache = this.app.metadataCache.getFileCache(chapterFile);
-      if (cache?.headings) {
-        const heading = cache.headings.find(h => h.level === 2 && h.heading === sceneName);
-        if (heading) {
-          const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-          if (activeView?.file?.path === chapterFile.path) {
-            activeView.editor.setCursor({ line: heading.position.start.line, ch: 0 });
-            activeView.editor.scrollIntoView({
-              from: { line: heading.position.start.line, ch: 0 },
-              to: { line: heading.position.start.line, ch: 0 }
-            }, true);
-          }
-        }
-      }
-      return;
-    }
-
-    // Legacy: scroll to H2 heading within the chapter file
     const existingLeaf = this.app.workspace.getLeavesOfType('markdown')
       .find((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path);
 
@@ -1748,38 +1558,6 @@ export class NovalistExplorerView extends ItemView {
         }
       }
     }
-  }
-
-  /**
-   * Assemble all scenes for the chapter represented by `sceneFile` into a single
-   * Chapters/ file and open it. Returns the assembled TFile.
-   */
-  private async openAssembledChapter(sceneFile: TFile): Promise<TFile | null> {
-    const cache = this.app.metadataCache.getFileCache(sceneFile);
-    const chapterNum = Number((cache?.frontmatter as Record<string, unknown> | undefined)?.chapter);
-    if (!chapterNum) {
-      await this.openFileInExplorer(sceneFile);
-      return null;
-    }
-
-    const chapterFile = await this.plugin.assembleChapterFromScenes(chapterNum);
-    if (!chapterFile) return null;
-
-    // Open the assembled chapter file
-    const existingLeaf = this.app.workspace.getLeavesOfType('markdown')
-      .find(l => l.view instanceof MarkdownView && l.view.file?.path === chapterFile.path);
-    const leaf = existingLeaf ?? this.app.workspace.getLeaf(false);
-    await leaf.openFile(chapterFile);
-    await this.app.workspace.revealLeaf(leaf);
-    return chapterFile;
-  }
-
-  /** Check whether a file is a scene file in a scene-based project (acts as a chapter reference). */
-  private isSceneFileRef(file: TFile): boolean {
-    if (!this.plugin.isSceneBasedProject()) return false;
-    const root = this.plugin.resolvedProjectPath();
-    if (!root) return false;
-    return file.path.startsWith(`${root}/Scenes/`) && file.extension === 'md';
   }
 }
 

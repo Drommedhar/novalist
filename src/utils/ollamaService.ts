@@ -1,6 +1,5 @@
 import { requestUrl } from 'obsidian';
-import { spawn } from 'child_process';
-import type { ChildProcess } from 'child_process';
+import { spawn, type ChildProcess } from 'child_process';
 import type { AiProvider, AiAnalysisMode } from '../types';
 import { getLanguageName } from '../i18n';
 
@@ -10,24 +9,6 @@ export interface OllamaModel {
   name: string;
   modified_at: string;
   size: number;
-}
-
-export interface OllamaGenerateRequest {
-  model: string;
-  prompt: string;
-  stream: boolean;
-  options?: {
-    temperature?: number;
-    num_predict?: number;
-  };
-}
-
-export interface OllamaGenerateResponse {
-  model: string;
-  response: string;
-  /** Thinking / chain-of-thought tokens (thinking models like DeepSeek-R1, Qwen3). */
-  thinking?: string;
-  done: boolean;
 }
 
 export type AiFindingType = 'reference' | 'inconsistency' | 'suggestion' | 'scene_stats';
@@ -520,50 +501,46 @@ class CopilotAcpClient {
 // ─── Service ────────────────────────────────────────────────────────
 
 export class OllamaService {
-  private baseUrl: string;
-  private model: string;
+  private lmStudioBaseUrl: string;
+  private lmStudioModel: string;
+  private lmStudioApiToken: string;
   private provider: AiProvider;
   private analysisMode: AiAnalysisMode;
   private temperature: number;
-  private maxTokens: number;
+  private contextLength: number;
   private topP: number;
   private minP: number;
   private frequencyPenalty: number;
   private repeatLastN: number;
   private copilotClient: CopilotAcpClient;
   private abortController: AbortController | null = null;
-  private llamaCppBaseUrl: string;
-  private llamaCppModel: string;
-  private llamaCppPath = '';
-  private llamaCppServerArgs = '';
-  private llamaCppProcess: ChildProcess | null = null;
   /** User-configured system prompt (from settings). Applied as additional
    *  context in analysis methods so the LLM respects the author's guidelines. */
   private systemPrompt = '';
 
   constructor(
-    baseUrl: string,
-    model: string,
-    provider: AiProvider = 'ollama',
+    lmStudioBaseUrl: string,
+    lmStudioModel: string,
+    lmStudioApiToken: string,
+    provider: AiProvider = 'lmstudio',
     analysisMode: AiAnalysisMode = 'paragraph',
     copilotPath = 'copilot',
     vaultPath = '',
     copilotModel = '',
     temperature = 0.7,
-    maxTokens = 8192,
+    contextLength = 0,
     topP = 0.9,
     minP = 0.05,
     frequencyPenalty = 1.1,
     repeatLastN = 64,
-    llamaCppBaseUrl = 'http://127.0.0.1:8080',
-    llamaCppModel = '',
   ) {
-    this.baseUrl = baseUrl.replace(/\/+$/, '');
-    this.model = model;
+    this.lmStudioBaseUrl = lmStudioBaseUrl.replace(/\/+$/, '');
+    this.lmStudioModel = lmStudioModel;
+    this.lmStudioApiToken = lmStudioApiToken;
     this.provider = provider;
     this.analysisMode = analysisMode;
     this.temperature = temperature;
-    this.maxTokens = maxTokens;
+    this.contextLength = contextLength;
     this.topP = topP;
     this.minP = minP;
     this.frequencyPenalty = frequencyPenalty;
@@ -571,16 +548,18 @@ export class OllamaService {
     this.copilotClient = new CopilotAcpClient(copilotPath);
     this.copilotClient.vaultPath = vaultPath;
     this.copilotClient.modelId = copilotModel;
-    this.llamaCppBaseUrl = llamaCppBaseUrl.replace(/\/+$/, '');
-    this.llamaCppModel = llamaCppModel;
   }
 
-  setModel(model: string): void {
-    this.model = model;
+  setLmStudioBaseUrl(url: string): void {
+    this.lmStudioBaseUrl = url.replace(/\/+$/, '');
   }
 
-  setBaseUrl(url: string): void {
-    this.baseUrl = url.replace(/\/+$/, '');
+  setLmStudioModel(model: string): void {
+    this.lmStudioModel = model;
+  }
+
+  setLmStudioApiToken(token: string): void {
+    this.lmStudioApiToken = token;
   }
 
   setProvider(provider: AiProvider): void {
@@ -595,8 +574,8 @@ export class OllamaService {
     this.temperature = value;
   }
 
-  setMaxTokens(value: number): void {
-    this.maxTokens = value;
+  setContextLength(value: number): void {
+    this.contextLength = value;
   }
 
   setTopP(value: number): void {
@@ -613,22 +592,6 @@ export class OllamaService {
 
   setRepeatLastN(value: number): void {
     this.repeatLastN = value;
-  }
-
-  setLlamaCppBaseUrl(url: string): void {
-    this.llamaCppBaseUrl = url.replace(/\/+$/, '');
-  }
-
-  setLlamaCppModel(model: string): void {
-    this.llamaCppModel = model;
-  }
-
-  setLlamaCppPath(path: string): void {
-    this.llamaCppPath = path;
-  }
-
-  setLlamaCppServerArgs(args: string): void {
-    this.llamaCppServerArgs = args;
   }
 
   setSystemPrompt(prompt: string): void {
@@ -652,7 +615,7 @@ export class OllamaService {
   }
 
   /** Reset the Copilot ACP session so server-side conversation history
-   *  is cleared. No-op when using Ollama (stateless HTTP). */
+   *  is cleared. No-op when using LM Studio (stateless HTTP). */
   async resetChatSession(): Promise<void> {
     if (this.provider === 'copilot') {
       await this.copilotClient.resetSession();
@@ -675,82 +638,162 @@ export class OllamaService {
     }
   }
 
-  // ── Connection helpers ──────────────────────────────────────────
+  // ── LM Studio helpers ──────────────────────────────────────────
 
-  /** Check whether the Ollama server is reachable. */
+  /** Build request headers for LM Studio API calls. */
+  private lmStudioHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.lmStudioApiToken) {
+      headers['Authorization'] = `Bearer ${this.lmStudioApiToken}`;
+    }
+    return headers;
+  }
+
+  /** Check whether the LM Studio server is reachable. */
   async isServerRunning(): Promise<boolean> {
     try {
-      await requestUrl({ url: `${this.baseUrl}/api/tags`, method: 'GET' });
+      const headers: Record<string, string> = {};
+      if (this.lmStudioApiToken) {
+        headers['Authorization'] = `Bearer ${this.lmStudioApiToken}`;
+      }
+      await requestUrl({ url: `${this.lmStudioBaseUrl}/api/v1/models`, method: 'GET', headers });
       return true;
     } catch {
       return false;
     }
   }
 
-  /** Check whether the llama.cpp server is reachable via its /health endpoint. */
-  async isLlamaCppServerRunning(): Promise<boolean> {
-    try {
-      await requestUrl({ url: `${this.llamaCppBaseUrl}/health`, method: 'GET' });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /** List all models available on the Ollama server. */
+  /** List all LLM models available on the LM Studio server. */
   async listModels(): Promise<OllamaModel[]> {
     try {
-      const res = await requestUrl({ url: `${this.baseUrl}/api/tags`, method: 'GET' });
-      const data = res.json as { models?: OllamaModel[] };
-      return data.models ?? [];
-    } catch {
+      const headers: Record<string, string> = {};
+      if (this.lmStudioApiToken) {
+        headers['Authorization'] = `Bearer ${this.lmStudioApiToken}`;
+      }
+      const res = await requestUrl({ url: `${this.lmStudioBaseUrl}/api/v1/models`, method: 'GET', headers });
+      const body = res.json as { models?: Array<{ type?: string; key?: string; display_name?: string; size_bytes?: number }> };
+      console.debug('[Novalist LM Studio] /api/v1/models response:', JSON.stringify(body).slice(0, 2000));
+      const models = (body.models ?? []).filter(m => m.type === 'llm');
+      return models.map(m => ({ name: m.key ?? '', modified_at: '', size: m.size_bytes ?? 0 }));
+    } catch (e) {
+      console.warn('[Novalist LM Studio] Failed to list models:', e);
       return [];
     }
   }
 
-  /** Check whether the currently configured model is loaded. */
-  async isModelLoaded(): Promise<boolean> {
-    try {
-      const res = await requestUrl({ url: `${this.baseUrl}/api/ps`, method: 'GET' });
-      const data = res.json as { models?: Array<{ name: string }> };
-      return (data.models ?? []).some(m => m.name === this.model || m.name.startsWith(this.model.split(':')[0]));
-    } catch {
-      return false;
-    }
-  }
-
-  /** Load the model (warm it up) by sending a minimal generate call. */
+  /** Load a model on the LM Studio server. */
   async loadModel(): Promise<boolean> {
     try {
-      const body: OllamaGenerateRequest = {
-        model: this.model,
-        prompt: '',
-        stream: false,
-        options: { num_predict: 1 },
-      };
+      const payload: Record<string, unknown> = { model: this.lmStudioModel };
+      if (this.contextLength > 0) {
+        payload['context_length'] = this.contextLength;
+      }
+      console.debug('[Novalist LM Studio] loadModel()', JSON.stringify(payload));
       await requestUrl({
-        url: `${this.baseUrl}/api/generate`,
+        url: `${this.lmStudioBaseUrl}/api/v1/models/load`,
         method: 'POST',
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        headers: this.lmStudioHeaders(),
       });
       return true;
-    } catch {
+    } catch (e) {
+      console.warn('[Novalist LM Studio] loadModel() failed:', e);
       return false;
     }
   }
 
-  /** Unload the model from GPU/memory by setting keep_alive to 0. */
+  /**
+   * Ensure the current model is loaded with the configured context length.
+   * If already loaded with a matching context length (or no preference is set),
+   * this is a no-op. Otherwise unloads all instances and reloads.
+   */
+  async ensureModelLoaded(): Promise<void> {
+    if (!this.lmStudioModel) return;
+    try {
+      const res = await requestUrl({
+        url: `${this.lmStudioBaseUrl}/api/v1/models`,
+        method: 'GET',
+        headers: this.lmStudioHeaders(),
+      });
+      const body = res.json as {
+        models?: Array<{
+          key?: string;
+          loaded_instances?: Array<{
+            id?: string;
+            config?: { context_length?: number };
+          }>;
+        }>;
+      };
+      const entry = (body.models ?? []).find(m => m.key === this.lmStudioModel);
+      const instances = entry?.loaded_instances ?? [];
+
+      // Check if any instance already matches the desired context length
+      if (instances.length > 0) {
+        if (this.contextLength <= 0) {
+          // No preference — any loaded instance is fine
+          console.debug('[Novalist LM Studio] ensureModelLoaded() — already loaded, no context preference');
+          return;
+        }
+        const hasMatch = instances.some(
+          inst => inst.config?.context_length === this.contextLength,
+        );
+        if (hasMatch && instances.length === 1) {
+          console.debug('[Novalist LM Studio] ensureModelLoaded() — already loaded with correct context');
+          return;
+        }
+      }
+
+      // Unload all existing instances first
+      if (instances.length > 0) {
+        console.debug('[Novalist LM Studio] ensureModelLoaded() — unloading', instances.length, 'instance(s)');
+        await this.unloadModel();
+      }
+
+      // Load with correct context length
+      await this.loadModel();
+    } catch (e) {
+      console.warn('[Novalist LM Studio] ensureModelLoaded() failed:', e);
+    }
+  }
+
+  /** Unload all loaded instances of the current model from LM Studio. */
   async unloadModel(): Promise<boolean> {
     try {
-      await requestUrl({
-        url: `${this.baseUrl}/api/generate`,
-        method: 'POST',
-        body: JSON.stringify({ model: this.model, prompt: '', stream: false, keep_alive: 0 }),
-        headers: { 'Content-Type': 'application/json' },
+      // List models to find all loaded instances with a matching key
+      const res = await requestUrl({
+        url: `${this.lmStudioBaseUrl}/api/v1/models`,
+        method: 'GET',
+        headers: this.lmStudioHeaders(),
       });
+      const body = res.json as {
+        models?: Array<{
+          type?: string;
+          key?: string;
+          loaded_instances?: Array<{ id?: string }>;
+        }>;
+      };
+      const entry = (body.models ?? []).find(m => m.key === this.lmStudioModel);
+      const instances = entry?.loaded_instances ?? [];
+
+      if (instances.length === 0) {
+        console.debug('[Novalist LM Studio] unloadModel() — no loaded instances found');
+        return true;
+      }
+
+      // Unload each loaded instance by its id
+      for (const inst of instances) {
+        const instanceId = inst.id ?? this.lmStudioModel;
+        console.debug('[Novalist LM Studio] unloadModel() — unloading instance:', instanceId);
+        await requestUrl({
+          url: `${this.lmStudioBaseUrl}/api/v1/models/unload`,
+          method: 'POST',
+          body: JSON.stringify({ instance_id: instanceId }),
+          headers: this.lmStudioHeaders(),
+        });
+      }
       return true;
-    } catch {
+    } catch (e) {
+      console.warn('[Novalist LM Studio] unloadModel() failed:', e);
       return false;
     }
   }
@@ -787,244 +830,41 @@ export class OllamaService {
     return this.copilotClient.isAlive;
   }
 
-  // ── llama.cpp server process management ────────────────────────
-
-  /** Whether the llama.cpp server process was started by us and is alive. */
-  get isLlamaCppProcessRunning(): boolean {
-    return this.llamaCppProcess !== null && this.llamaCppProcess.exitCode === null;
-  }
-
-  /**
-   * Start the llama.cpp server process.  Derives `--host` and `--port`
-   * from the configured base URL unless the user already included them
-   * in the server arguments.  Polls `/health` for up to 30 seconds.
-   */
-  async startLlamaCppServer(): Promise<boolean> {
-    if (this.isLlamaCppProcessRunning) return true;
-    if (!this.llamaCppPath) return false;
-
-    // Parse host/port from the configured base URL
-    let host = '127.0.0.1';
-    let port = '8080';
-    try {
-      const url = new URL(this.llamaCppBaseUrl);
-      host = url.hostname;
-      port = url.port || '8080';
-    } catch { /* use defaults */ }
-
-    const userArgs = OllamaService.parseShellArgs(this.llamaCppServerArgs);
-    const args = [...userArgs];
-    if (!args.includes('--host')) {
-      args.push('--host', host);
-    }
-    if (!args.includes('--port')) {
-      args.push('--port', port);
-    }
-
-    console.debug('[Novalist llama.cpp] Starting server:', this.llamaCppPath, args.join(' '));
-
-    this.llamaCppProcess = spawn(this.llamaCppPath, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    this.llamaCppProcess.stdout?.on('data', (chunk: Buffer) => {
-      console.debug('[Novalist llama.cpp]', chunk.toString().trimEnd());
-    });
-
-    this.llamaCppProcess.stderr?.on('data', (chunk: Buffer) => {
-      console.debug('[Novalist llama.cpp]', chunk.toString().trimEnd());
-    });
-
-    this.llamaCppProcess.on('error', (err: Error) => {
-      console.error('[Novalist llama.cpp] Process error:', err.message);
-      this.llamaCppProcess = null;
-    });
-
-    this.llamaCppProcess.on('exit', (code) => {
-      console.debug('[Novalist llama.cpp] Server exited with code', code);
-      this.llamaCppProcess = null;
-    });
-
-    // Poll /health for up to 30 seconds
-    for (let i = 0; i < 60; i++) {
-      await new Promise<void>(r => { setTimeout(r, 500); });
-      if (this.llamaCppProcess === null) return false;
-      if (await this.isLlamaCppServerRunning()) return true;
-    }
-
-    return false;
-  }
-
-  /** Stop the llama.cpp server process if it was started by us. */
-  async stopLlamaCppServer(): Promise<void> {
-    if (!this.llamaCppProcess) return;
-    const p = this.llamaCppProcess;
-    this.llamaCppProcess = null;
-    p.kill('SIGTERM');
-    await new Promise<void>(resolve => {
-      const timeout = setTimeout(() => {
-        try { p.kill('SIGKILL'); } catch { /* already dead */ }
-        resolve();
-      }, 5000);
-      p.once('exit', () => { clearTimeout(timeout); resolve(); });
-    });
-  }
-
-  /**
-   * Parse a shell-like argument string into an array.
-   * Handles double-quoted and single-quoted segments so that paths with
-   * spaces work correctly (e.g. `-m "C:\\my models\\model.gguf"`).
-   */
-  private static parseShellArgs(raw: string): string[] {
-    const args: string[] = [];
-    const regex = /(?:"([^"]*)")|(?:'([^']*)')|(\S+)/g;
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(raw)) !== null) {
-      args.push(m[1] ?? m[2] ?? m[3]);
-    }
-    return args;
-  }
-
-  // ── Auto-start helpers ─────────────────────────────────────────
-
-  /**
-   * Ensure the llama.cpp server is reachable.  If it is not running and
-   * a server executable path is configured, start it automatically and
-   * wait for it to become healthy.
-   *
-   * This is called transparently before every llama.cpp generation so
-   * the user never has to start the server manually.
-   */
-  async ensureLlamaCppRunning(): Promise<void> {
-    // Already running (either started by us or externally)
-    if (await this.isLlamaCppServerRunning()) return;
-
-    // No executable configured — nothing we can do
-    if (!this.llamaCppPath) {
-      throw new Error('llama.cpp server is not running and no executable path is configured.');
-    }
-
-    console.debug('[Novalist llama.cpp] Server not reachable — auto-starting…');
-    const ok = await this.startLlamaCppServer();
-    if (!ok) {
-      throw new Error('Failed to auto-start llama.cpp server. Check the executable path and server arguments in settings.');
-    }
-    console.debug('[Novalist llama.cpp] Server auto-started successfully.');
-  }
-
   // ── Generation ─────────────────────────────────────────────────
 
   private async generate(
     prompt: string,
     temperature?: number,
-    maxTokens?: number,
     onChunk?: (token: string) => void,
     onThinkingChunk?: (token: string) => void,
     systemPrompt?: string,
   ): Promise<string> {
     const temp = temperature ?? this.temperature;
-    const tokens = maxTokens ?? this.maxTokens;
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
     }
     messages.push({ role: 'user', content: prompt });
+    console.debug('[Novalist LM Studio] generate() called —', {
+      provider: this.provider,
+      model: this.lmStudioModel,
+      promptLength: prompt.length,
+      hasSystemPrompt: !!systemPrompt,
+      temperature: temp,
+    });
     if (this.provider === 'copilot') {
       // Copilot ACP doesn't support system messages natively — flatten
       const flat = messages.map(m => m.role === 'system' ? `[System]\n${m.content}` : m.content).join('\n\n');
       return this.copilotClient.generate(flat);
     }
-    if (this.provider === 'llamacpp') {
-      await this.ensureLlamaCppRunning();
-      const result = await this.generateChatLlamaCpp(
-        messages,
-        onChunk ?? (() => {}),
-        temp,
-        tokens,
-        onThinkingChunk,
-      );
-      return result.response;
-    }
-    return this.generateOllama(messages, temp, tokens, onChunk, onThinkingChunk);
-  }
-
-  private async generateOllama(
-    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-    temperature: number,
-    maxTokens: number,
-    onChunk?: (token: string) => void,
-    onThinkingChunk?: (token: string) => void,
-  ): Promise<string> {
-    this.abortController = new AbortController();
-    // Use /api/chat instead of /api/generate for better thinking-model
-    // support and context handling.
-    const body = {
-      model: this.model,
-      messages,
-      stream: true,
-      options: {
-        temperature,
-        num_predict: maxTokens,
-        top_p: this.topP,
-        min_p: this.minP,
-        frequency_penalty: this.frequencyPenalty,
-        repeat_last_n: this.repeatLastN,
-      },
-    };
-
-    const response = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: this.abortController.signal,
+    // provider === 'lmstudio'
+    const result = await this.generateChatLmStudio(messages, onChunk ?? (() => {}), temp, onThinkingChunk);
+    console.debug('[Novalist LM Studio] generate() result —', {
+      responseLength: result.response.length,
+      thinkingLength: result.thinking.length,
+      responsePreview: result.response.slice(0, 200),
     });
-
-    if (!response.ok || !response.body) {
-      this.abortController = null;
-      throw new Error(`Ollama chat request failed: ${response.status}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let fullText = '';
-    let buffer = '';
-
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const json = JSON.parse(trimmed) as { message?: { content?: string; thinking?: string }; done?: boolean };
-            const thinking = json.message?.thinking ?? '';
-            if (thinking) {
-              onThinkingChunk?.(thinking);
-            }
-            const token = json.message?.content ?? '';
-            if (token) {
-              fullText += token;
-              onChunk?.(token);
-            }
-          } catch { /* skip malformed lines */ }
-        }
-      }
-    } finally {
-      this.abortController = null;
-    }
-
-    // Some models embed thinking inside <think>…</think> tags in the
-    // response text instead of using the dedicated thinking field.
-    // Strip those out so the caller gets only the actual answer.
-    const { cleaned, thinking: inlineThinking } = OllamaService.stripInlineThinking(fullText);
-    if (inlineThinking) {
-      onThinkingChunk?.(inlineThinking);
-    }
-    return cleaned;
+    return result.response;
   }
 
   // ── Streaming chat generation ──────────────────────────────────
@@ -1042,53 +882,93 @@ export class OllamaService {
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
     onChunk: (token: string) => void,
     temperature?: number,
-    maxTokens?: number,
     onThinkingChunk?: (token: string) => void,
   ): Promise<{ response: string; thinking: string }> {
     const temp = temperature ?? this.temperature;
-    const tokens = maxTokens ?? this.maxTokens;
+    console.debug('[Novalist LM Studio] generateChat() called —', {
+      provider: this.provider,
+      model: this.lmStudioModel,
+      messageCount: messages.length,
+      roles: messages.map(m => m.role),
+      totalChars: messages.reduce((s, m) => s + m.content.length, 0),
+      hasOnThinkingChunk: !!onThinkingChunk,
+    });
     if (this.provider === 'copilot') {
       return this.generateChatCopilot(messages, onChunk, onThinkingChunk);
     }
-    if (this.provider === 'llamacpp') {
-      await this.ensureLlamaCppRunning();
-      return this.generateChatLlamaCpp(messages, onChunk, temp, tokens, onThinkingChunk);
-    }
-    return this.generateChatOllama(messages, onChunk, temp, tokens, onThinkingChunk);
+    // provider === 'lmstudio'
+    return this.generateChatLmStudio(messages, onChunk, temp, onThinkingChunk);
   }
 
-  private async generateChatOllama(
+  // ── LM Studio generation (native v1 API with named SSE) ───────
+
+  /** Copilot ACP streaming chat — flatten messages and feed through CopilotAcpClient. */
+  private async generateChatCopilot(
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    onChunk: (token: string) => void,
+    onThinkingChunk?: (token: string) => void,
+  ): Promise<{ response: string; thinking: string }> {
+    this.copilotClient.onChunk = onChunk;
+    this.copilotClient.onThinkingChunk = onThinkingChunk ?? null;
+
+    const flat = messages
+      .map(m => m.role === 'system' ? `[System]\n${m.content}` : m.content)
+      .join('\n\n');
+    const response = await this.copilotClient.generate(flat);
+
+    this.copilotClient.onChunk = null;
+    this.copilotClient.onThinkingChunk = null;
+
+    return { response, thinking: '' };
+  }
+
+  private async generateChatLmStudio(
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
     onChunk: (token: string) => void,
     temperature: number,
-    maxTokens: number,
     onThinkingChunk?: (token: string) => void,
   ): Promise<{ response: string; thinking: string }> {
+    // Ensure the model is loaded with the correct context length before inference
+    await this.ensureModelLoaded();
+
     this.abortController = new AbortController();
-    const body = {
-      model: this.model,
+
+    const body: Record<string, unknown> = {
+      model: this.lmStudioModel,
       messages,
       stream: true,
-      options: {
-        temperature,
-        num_predict: maxTokens,
-        top_p: this.topP,
-        min_p: this.minP,
-        frequency_penalty: this.frequencyPenalty,
-        repeat_last_n: this.repeatLastN,
-      },
+      temperature,
+      top_p: this.topP,
+      min_p: this.minP,
+      frequency_penalty: this.frequencyPenalty,
+      repeat_last_n: this.repeatLastN,
     };
 
-    const response = await fetch(`${this.baseUrl}/api/chat`, {
+    const url = `${this.lmStudioBaseUrl}/v1/chat/completions`;
+    console.debug('[Novalist LM Studio] POST', url, {
+      model: this.lmStudioModel,
+      messageCount: messages.length,
+      temperature,
+      topP: this.topP,
+      minP: this.minP,
+      frequencyPenalty: this.frequencyPenalty,
+      repeatLastN: this.repeatLastN,
+      firstMsgRole: messages[0]?.role,
+      promptLength: messages.reduce((s, m) => s + m.content.length, 0),
+    });
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.lmStudioHeaders(),
       body: JSON.stringify(body),
       signal: this.abortController.signal,
     });
 
+    console.debug('[Novalist LM Studio] Response status:', response.status, response.statusText, 'body:', !!response.body);
+
     if (!response.ok || !response.body) {
       this.abortController = null;
-      throw new Error(`Ollama chat request failed: ${response.status}`);
+      throw new Error(`LM Studio chat request failed: ${response.status}`);
     }
 
     const reader = response.body.getReader();
@@ -1096,172 +976,164 @@ export class OllamaService {
     let fullText = '';
     let thinkingText = '';
     let buffer = '';
+    let sseLineCount = 0;
+    let chunkCount = 0;
+    let sseError: string | null = null;
+    /** Track whether we are inside an inline `<think>` block so we can
+     *  route tokens to the thinking callback during streaming. */
+    let insideThinkTag = false;
+    /** Buffer for accumulating a potential partial `<think>` or `</think>` tag
+     *  that arrived split across SSE chunks. */
+    let tagBuffer = '';
 
     try {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        chunkCount++;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
-          try {
-            const json = JSON.parse(trimmed) as { message?: { content?: string; thinking?: string }; done?: boolean };
-            const thinking = json.message?.thinking ?? '';
-            if (thinking) {
-              thinkingText += thinking;
-              onThinkingChunk?.(thinking);
+          if (trimmed === 'data: [DONE]') {
+            console.debug('[Novalist LM Studio] SSE stream ended (data: [DONE])');
+            continue;
+          }
+          if (!trimmed.startsWith('data: ')) {
+            // Log unexpected non-data lines (e.g. event: lines)
+            if (sseLineCount < 5) {
+              console.debug('[Novalist LM Studio] Non-data SSE line:', trimmed.slice(0, 200));
             }
-            const token = json.message?.content ?? '';
-            if (token) {
-              fullText += token;
-              onChunk(token);
-            }
-          } catch { /* skip malformed lines */ }
-        }
-      }
-    } finally {
-      this.abortController = null;
-    }
-
-    // Some models embed thinking inside <think>…</think> tags in the
-    // response text instead of (or in addition to) the dedicated field.
-    const { cleaned, thinking: inlineThinking } = OllamaService.stripInlineThinking(fullText);
-    if (inlineThinking) {
-      thinkingText = (thinkingText + '\n\n' + inlineThinking).trim();
-      onThinkingChunk?.(inlineThinking);
-    }
-
-    return { response: cleaned, thinking: thinkingText };
-  }
-
-  private async generateChatCopilot(
-    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-    onChunk: (token: string) => void,
-    onThinkingChunk?: (token: string) => void,
-  ): Promise<{ response: string; thinking: string }> {
-    // Copilot ACP doesn't have a native chat-messages API, so we
-    // flatten the messages into a single prompt and stream via the
-    // existing `generate` method with the onChunk callback.
-    this.copilotClient.onChunk = onChunk;
-    this.copilotClient.onThinkingChunk = onThinkingChunk ?? null;
-    let thinkingText = '';
-    const origThinkCb = onThinkingChunk;
-    if (origThinkCb) {
-      // Capture thinking tokens streamed via ACP notifications.
-      this.copilotClient.onThinkingChunk = (t: string) => {
-        thinkingText += t;
-        origThinkCb(t);
-      };
-    }
-    const prompt = messages.map(m => {
-      if (m.role === 'system') return `[System]\n${m.content}`;
-      if (m.role === 'assistant') return `[Assistant]\n${m.content}`;
-      return `[User]\n${m.content}`;
-    }).join('\n\n');
-    try {
-      const raw = await this.copilotClient.generate(prompt);
-      // Strip inline <think>…</think> tags and route them to the
-      // thinking callback.
-      const { cleaned, thinking: inlineThinking } = OllamaService.stripInlineThinking(raw);
-      if (inlineThinking) {
-        origThinkCb?.(inlineThinking);
-        thinkingText = (thinkingText + '\n\n' + inlineThinking).trim();
-      }
-      return { response: cleaned, thinking: thinkingText };
-    } finally {
-      this.copilotClient.onChunk = null;
-      this.copilotClient.onThinkingChunk = null;
-    }
-  }
-
-  // ── llama.cpp generation (OpenAI-compatible API) ───────────────
-
-  private async generateChatLlamaCpp(
-    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-    onChunk: (token: string) => void,
-    temperature: number,
-    maxTokens: number,
-    onThinkingChunk?: (token: string) => void,
-  ): Promise<{ response: string; thinking: string }> {
-    this.abortController = new AbortController();
-    const body: Record<string, unknown> = {
-      messages,
-      stream: true,
-      temperature,
-      max_tokens: maxTokens,
-      top_p: this.topP,
-      frequency_penalty: this.frequencyPenalty,
-    };
-    if (this.llamaCppModel) {
-      body['model'] = this.llamaCppModel;
-    }
-
-    const response = await fetch(`${this.llamaCppBaseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: this.abortController.signal,
-    });
-
-    if (!response.ok || !response.body) {
-      this.abortController = null;
-      throw new Error(`llama.cpp chat request failed: ${response.status}`);
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let fullText = '';
-    let thinkingText = '';
-    let buffer = '';
-
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (!trimmed.startsWith('data: ')) continue;
+            continue;
+          }
+          sseLineCount++;
           const jsonStr = trimmed.slice(6);
           try {
-            const json = JSON.parse(jsonStr) as {
-              choices?: Array<{
-                delta?: { content?: string; reasoning_content?: string };
-              }>;
-            };
-            const delta = json.choices?.[0]?.delta;
-            if (!delta) continue;
-            const reasoning = delta.reasoning_content ?? '';
+            const json = JSON.parse(jsonStr) as Record<string, unknown>;
+            // Log the first few raw SSE data objects for debugging
+            if (sseLineCount <= 3) {
+              console.debug(`[Novalist LM Studio] SSE data #${sseLineCount}:`, JSON.stringify(json).slice(0, 500));
+            }
+
+            // Detect error responses from LM Studio
+            const errorObj = json['error'] as Record<string, unknown> | undefined;
+            if (errorObj) {
+              sseError = (errorObj['message'] as string) ?? JSON.stringify(errorObj);
+              console.error('[Novalist LM Studio] SSE error from server:', sseError);
+              continue;
+            }
+
+            const choices = json['choices'] as Array<Record<string, unknown>> | undefined;
+            const delta = choices?.[0]?.['delta'] as Record<string, unknown> | undefined;
+            if (!delta) {
+              if (sseLineCount <= 5) {
+                console.debug('[Novalist LM Studio] SSE line has no delta:', JSON.stringify(json).slice(0, 300));
+              }
+              continue;
+            }
+            const reasoning = (delta['reasoning_content'] as string | undefined) ?? '';
             if (reasoning) {
               thinkingText += reasoning;
               onThinkingChunk?.(reasoning);
             }
-            const token = delta.content ?? '';
+            const token = (delta['content'] as string | undefined) ?? '';
             if (token) {
-              fullText += token;
-              onChunk(token);
+              // Route tokens through inline <think> tag detection so models
+              // that embed chain-of-thought in content (e.g. Qwen3) get
+              // their thinking routed to the correct callback during streaming.
+              let pending = tagBuffer + token;
+              tagBuffer = '';
+
+              while (pending.length > 0) {
+                if (insideThinkTag) {
+                  const closeIdx = pending.indexOf('</think>');
+                  if (closeIdx !== -1) {
+                    // Everything before the close tag is thinking
+                    const chunk = pending.slice(0, closeIdx);
+                    if (chunk) {
+                      thinkingText += chunk;
+                      onThinkingChunk?.(chunk);
+                    }
+                    insideThinkTag = false;
+                    pending = pending.slice(closeIdx + 8); // skip </think>
+                  } else if (pending.includes('</') && pending.length < 8) {
+                    // Might be a partial </think> — buffer it
+                    tagBuffer = pending;
+                    pending = '';
+                  } else {
+                    // All thinking content
+                    thinkingText += pending;
+                    onThinkingChunk?.(pending);
+                    pending = '';
+                  }
+                } else {
+                  const openIdx = pending.indexOf('<think>');
+                  if (openIdx !== -1) {
+                    // Everything before the open tag is response content
+                    const chunk = pending.slice(0, openIdx);
+                    if (chunk) {
+                      fullText += chunk;
+                      onChunk(chunk);
+                    }
+                    insideThinkTag = true;
+                    pending = pending.slice(openIdx + 7); // skip <think>
+                  } else if (pending.endsWith('<') || (pending.length < 7 && pending.includes('<'))) {
+                    // Might be a partial <think> — buffer it
+                    const ltIdx = pending.lastIndexOf('<');
+                    const before = pending.slice(0, ltIdx);
+                    if (before) {
+                      fullText += before;
+                      onChunk(before);
+                    }
+                    tagBuffer = pending.slice(ltIdx);
+                    pending = '';
+                  } else {
+                    // Normal response content
+                    fullText += pending;
+                    onChunk(pending);
+                    pending = '';
+                  }
+                }
+              }
             }
-          } catch { /* skip malformed SSE lines */ }
+          } catch {
+            console.warn('[Novalist LM Studio] Malformed SSE JSON:', jsonStr.slice(0, 200));
+          }
         }
       }
     } finally {
       this.abortController = null;
     }
 
-    // Strip inline <think>…</think> tags (some models embed reasoning there).
-    const { cleaned, thinking: inlineThinking } = OllamaService.stripInlineThinking(fullText);
-    if (inlineThinking) {
-      thinkingText = (thinkingText + '\n\n' + inlineThinking).trim();
-      onThinkingChunk?.(inlineThinking);
+    // Flush any remaining tag buffer
+    if (tagBuffer) {
+      if (insideThinkTag) {
+        thinkingText += tagBuffer;
+        onThinkingChunk?.(tagBuffer);
+      } else {
+        fullText += tagBuffer;
+        onChunk(tagBuffer);
+      }
     }
 
-    return { response: cleaned, thinking: thinkingText };
+    console.debug('[Novalist LM Studio] Stream complete —', {
+      sseLines: sseLineCount,
+      rawChunks: chunkCount,
+      responseLength: fullText.length,
+      thinkingLength: thinkingText.length,
+      responsePreview: fullText.slice(0, 200),
+      thinkingPreview: thinkingText.slice(0, 200),
+      sseError,
+    });
+
+    // If the server returned an error and no content was generated, throw
+    if (sseError && fullText.length === 0) {
+      throw new Error(`LM Studio: ${sseError}`);
+    }
+
+    return { response: fullText, thinking: thinkingText };
   }
 
   // ── Analysis methods ───────────────────────────────────────────
@@ -1405,7 +1277,7 @@ ${tasks.join('\n')}
 
 If a task has no findings, simply omit entries for it. Return an empty array [] if nothing is found.`;
 
-    const raw = await this.generate(prompt, 0, 2048, undefined, undefined, this.systemPrompt || undefined);
+    const raw = await this.generate(prompt, 0, undefined, undefined, this.systemPrompt || undefined);
     return this.parseFindings(raw);
   }
 
@@ -1504,13 +1376,12 @@ If a task has no findings, simply omit entries for it. Return an empty array [] 
         messages,
         (token) => { onResponseChunk?.(token); },
         0,
-        8192,
         (token) => { onThinkingChunk?.(token); },
       );
       raw = result.response;
       thinking = result.thinking;
     } else {
-      raw = await this.generate(prompt, 0, 8192, undefined, undefined, this.systemPrompt || undefined);
+      raw = await this.generate(prompt, 0, undefined, undefined, this.systemPrompt || undefined);
     }
 
     return { findings: this.parseFindings(raw), rawResponse: raw, thinking };
@@ -1673,13 +1544,12 @@ IMPORTANT: After your thinking/reasoning, you MUST produce the JSON array as pla
        messages,
        (token) => { onResponseChunk?.(token); },
        0,
-       32768,
        (token) => { onThinkingChunk?.(token); },
      );
      raw = result.response;
      thinking = result.thinking;
    } else {
-     raw = await this.generate(prompt, 0, 32768, undefined, undefined, this.systemPrompt || undefined);
+     raw = await this.generate(prompt, 0, undefined, undefined, this.systemPrompt || undefined);
    }
 
    // Fallback: some extended-thinking models (e.g. Copilot Claude with
@@ -1710,6 +1580,11 @@ IMPORTANT: After your thinking/reasoning, you MUST produce the JSON array as pla
   // ── JSON parsing ───────────────────────────────────────────────
 
   private parseFindings(raw: string): AiFinding[] {
+    console.debug('[Novalist LM Studio] parseFindings input —', {
+      rawLength: raw.length,
+      preview: raw.slice(0, 300),
+      hasJsonArray: raw.includes('['),
+    });
     // Strip markdown code fences if the model wraps them anyway
     let cleaned = raw.trim();
     if (cleaned.startsWith('```')) {

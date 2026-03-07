@@ -8,7 +8,7 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 export default defineConfig([
   {
     // Avoid type-aware rule errors on config/build output files.
-    ignores: ["eslint.config.mjs", "main.js", "main.js.map", "vendor/**", "scripts/**"],
+    ignores: ["eslint.config.mjs", "main.js", "main.js.map"],
   },
   {
     files: ["**/*.{js,cjs,mjs,jsx,ts,tsx}"],

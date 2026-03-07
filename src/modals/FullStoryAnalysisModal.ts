@@ -136,37 +136,10 @@ export class FullStoryAnalysisModal extends Modal {
     this.startTime = Date.now();
 
     // Get chapters: if chapterFile is set, only analyze that chapter
-    type ChapterDesc = { file: TFile; name: string; order: number };
+    type ChapterDesc = { file: TFile; name: string };
     let chapters: ChapterDesc[];
     if (this.chapterFile) {
-      const allChapters = this.plugin.getChapterDescriptionsSync() as ChapterDesc[];
-      // Match by path first (legacy / assembled chapters)
-      chapters = allChapters.filter((ch: ChapterDesc) => ch.file.path === this.chapterFile?.path);
-      // For scene-based projects the chapter desc points to the first scene
-      // file, but the user may have opened a different scene in the same
-      // chapter. Fall back to matching by chapter number.
-      if (chapters.length === 0 && this.plugin.isSceneFile(this.chapterFile)) {
-        const cache = this.app.metadataCache.getFileCache(this.chapterFile);
-        const chapterNum = Number(cache?.frontmatter?.chapter);
-        if (chapterNum) {
-          chapters = allChapters.filter((ch: ChapterDesc) => ch.order === chapterNum);
-        }
-      }
-      // The user may have opened an assembled chapter file whose path
-      // differs from the first-scene file stored in the chapter desc.
-      // Match by chapter number from the assembled file's frontmatter,
-      // or fall back to matching by chapter name === file basename.
-      if (chapters.length === 0 && this.plugin.isAssembledChapterFile(this.chapterFile)) {
-        const cache = this.app.metadataCache.getFileCache(this.chapterFile);
-        const chapterNum = Number(cache?.frontmatter?.order);
-        if (chapterNum) {
-          chapters = allChapters.filter((ch: ChapterDesc) => ch.order === chapterNum);
-        }
-        if (chapters.length === 0) {
-          chapters = allChapters.filter((ch: ChapterDesc) => ch.name === this.chapterFile?.basename);
-        }
-      }
-      console.debug(`[Novalist AI] FullStoryAnalysis — single-chapter mode for "${this.chapterFile.path}", matched ${chapters.length} chapter(s)`);
+      chapters = (this.plugin.getChapterDescriptionsSync() as ChapterDesc[]).filter((ch: ChapterDesc) => ch.file === this.chapterFile);
     } else {
       chapters = this.plugin.getChapterDescriptionsSync() as ChapterDesc[];
     }
@@ -181,19 +154,15 @@ export class FullStoryAnalysisModal extends Modal {
     const chapterUnits: ChapterUnit[] = [];
     let totalUnits = 0;
     for (const ch of chapters) {
-      const raw = await this.plugin.readChapterContent(ch.file);
+      const raw = await this.app.vault.read(ch.file);
       const body = this.plugin.stripFrontmatter(raw);
       const sceneNames = this.plugin.getScenesForChapter(ch.file);
-      console.debug(`[Novalist AI] FullStoryAnalysis — chapter "${ch.name}" (${ch.file.path}): body length=${body.length}, scenes=[${sceneNames.join(', ')}]`);
       const scenes: SceneUnit[] = [];
       if (sceneNames.length > 0) {
         for (const sn of sceneNames) {
-          const sceneText = this.extractSceneText(body, sn);
-          console.debug(`[Novalist AI]   scene "${sn}" — extracted text length=${sceneText.length}${sceneText.length === 0 ? ' ⚠ EMPTY' : ''}`);
-          scenes.push({ name: sn, text: sceneText });
+          scenes.push({ name: sn, text: this.extractSceneText(body, sn) });
         }
       } else {
-        console.debug(`[Novalist AI]   no scenes — using full body (length=${body.length})`);
         scenes.push({ name: '', text: body });
       }
       chapterUnits.push({ file: ch.file, name: ch.name, body, scenes });
@@ -205,14 +174,6 @@ export class FullStoryAnalysisModal extends Modal {
     this.renderProgress(0, totalUnits, chapterUnits[0].name, 0);
 
     try {
-      // Auto-load model if configured (Ollama only)
-      if (this.plugin.settings.ollama.provider === 'ollama' && this.plugin.settings.ollama.autoManageModel) {
-        const loaded = await this.plugin.ollamaService.isModelLoaded();
-        if (!loaded) {
-          await this.plugin.ollamaService.loadModel();
-        }
-      }
-
       const checks: EnabledChecks = {
         references: true,
         inconsistencies: true,

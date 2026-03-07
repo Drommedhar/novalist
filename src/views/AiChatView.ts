@@ -179,8 +179,8 @@ export class AiChatView extends ItemView {
     }
     if (!this.plugin.ollamaService) return;
 
-    if (provider === 'ollama') {
-      // Ollama: fetch local models
+    if (provider === 'lmstudio') {
+      // LM Studio: fetch local models
       const loadingOpt = this.modelDropdown.createEl('option', { text: t('aiChat.modelLoading'), value: '__loading__' });
       loadingOpt.disabled = true;
       let models: OllamaModel[] = [];
@@ -195,7 +195,7 @@ export class AiChatView extends ItemView {
       }
       for (const m of models) {
         const opt = this.modelDropdown.createEl('option', { text: m.name, value: m.name });
-        if (m.name === this.plugin.settings.ollama.model) opt.selected = true;
+        if (m.name === this.plugin.settings.ollama.lmStudioModel) opt.selected = true;
       }
     } else if (provider === 'copilot') {
       // Copilot: list available models
@@ -213,31 +213,21 @@ export class AiChatView extends ItemView {
         const opt = this.modelDropdown.createEl('option', { text: m.name, value: m.id });
         if (m.id === this.plugin.settings.ollama.copilotModel) opt.selected = true;
       }
-    } else if (provider === 'llamacpp') {
-      // llama.cpp: single editable model name from settings
-      const modelName = this.plugin.settings.ollama.llamaCppModel || t('aiChat.modelDefault');
-      const opt = this.modelDropdown.createEl('option', { text: modelName, value: this.plugin.settings.ollama.llamaCppModel });
-      opt.selected = true;
     }
   }
 
   /** Handle model selection change from the dropdown. */
   private async onModelChange(value: string): Promise<void> {
     const provider = this.plugin.settings.ollama.provider;
-    if (provider === 'ollama') {
-      this.plugin.settings.ollama.model = value;
+    if (provider === 'lmstudio') {
+      this.plugin.settings.ollama.lmStudioModel = value;
       if (this.plugin.ollamaService) {
-        this.plugin.ollamaService.setModel(value);
+        this.plugin.ollamaService.setLmStudioModel(value);
       }
     } else if (provider === 'copilot') {
       this.plugin.settings.ollama.copilotModel = value;
       if (this.plugin.ollamaService) {
         await this.plugin.ollamaService.setCopilotModel(value);
-      }
-    } else if (provider === 'llamacpp') {
-      this.plugin.settings.ollama.llamaCppModel = value;
-      if (this.plugin.ollamaService) {
-        this.plugin.ollamaService.setLlamaCppModel(value);
       }
     }
     await this.plugin.saveSettings();
@@ -301,16 +291,28 @@ export class AiChatView extends ItemView {
 
   private async sendMessage(): Promise<void> {
     const text = this.inputEl.value.trim();
-    if (!text || this.isGenerating) return;
+    if (!text || this.isGenerating) {
+      console.debug('[Novalist AI Chat] sendMessage blocked —', { empty: !text, isGenerating: this.isGenerating });
+      return;
+    }
 
     if (!this.plugin.settings.ollama.enabled) {
+      console.debug('[Novalist AI Chat] AI assistant is disabled');
       new Notice(t('aiChat.disabled'));
       return;
     }
     if (!this.plugin.ollamaService) {
+      console.debug('[Novalist AI Chat] ollamaService is null, initialising…');
       this.plugin.initOllamaService();
     }
-    if (!this.plugin.ollamaService) return;
+    if (!this.plugin.ollamaService) {
+      console.error('[Novalist AI Chat] ollamaService still null after init — aborting');
+      return;
+    }
+
+    console.debug('[Novalist AI Chat] sendMessage — provider:', this.plugin.settings.ollama.provider,
+      'model:', this.plugin.settings.ollama.lmStudioModel,
+      'textLength:', text.length);
 
     // Resolve active chapter
     const chapterFile = this.getActiveChapterFile();
@@ -383,7 +385,6 @@ export class AiChatView extends ItemView {
             this.scrollToBottom();
           },
           undefined,
-          undefined,
           (thinkToken: string) => {
             this.messages[msgIdx].thinking = (this.messages[msgIdx].thinking ?? '') + thinkToken;
 
@@ -437,6 +438,7 @@ export class AiChatView extends ItemView {
       this.renderMessages();
       this.scrollToBottom();
     } catch (err) {
+      console.error('[Novalist AI Chat] sendMessage error:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
       new Notice(t('aiChat.error', { error: errMsg }));
       // Remove the empty assistant message if nothing was generated
