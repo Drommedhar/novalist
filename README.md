@@ -2,7 +2,7 @@
 
 <img src="images/novalist.png" alt="Novalist Logo" width="400"/>
 
-A comprehensive novel writing environment for Obsidian. Novalist turns your vault into a full-featured writing workspace with structured character and location management, an interactive relationship map, a plot board, inline annotations, real-time statistics, multi-project support, a shared World Bible, and multi-format export — all without leaving Obsidian.
+A comprehensive novel writing environment for Obsidian. Novalist turns your vault into a full-featured writing workspace with structured character and location management, an interactive relationship map, a plot board, a timeline, a writing dashboard, inline annotations, real-time statistics, multi-project support, a shared World Bible, and multi-format export — all without leaving Obsidian.
 
 ## Getting Started
 
@@ -37,7 +37,7 @@ A World Bible is a shared folder whose characters, locations, items, lore, and i
 An always-visible toolbar is injected into every editor tab header. It provides one-click access to all major actions:
 
 - **Create group** — Add Character, Add Location, Add Item, Add Lore, Add Chapter
-- **Views group** — Explorer, Context Sidebar, Character Map, Plot Board, Image Gallery, Export, Validate
+- **Views group** — Explorer, Context Sidebar, Character Map, Plot Board, Export, Image Gallery, Dashboard, Timeline, Chapter Notes, Validate
 - **Chapter status dropdown** — Visible on chapter files. Change between Outline (○), First Draft (◔), Revised (◑), Edited (◕), and Final (●). The status is stored in the chapter's frontmatter and reflected in the explorer.
 
 ### Project Explorer
@@ -166,6 +166,30 @@ Both views share a header toolbar for toggling the view, managing labels, and ad
 - **Notes** — right-click a card in board view to open a notes editor overlay that lets you fill in all note columns (and per-scene notes) in one place. In table view, cells remain inline-editable.
 - **Drag-and-drop** — in board view, drag chapter cards between act lanes to reassign their act and reorder them. Drop position is indicated by a highlight above or below existing cards.
 
+### Dashboard
+
+A project overview workspace that combines writing momentum, goals, and story health in one place. Open it from the toolbar or the command palette.
+
+- **Continue Writing** — lists your most recently edited chapter files with remembered cursor position and last-edited time so you can jump back in immediately.
+- **Project overview** — shows total words, chapters, estimated reading time, and entity counts for characters, locations, items, and lore.
+- **Daily progress and streak** — tracks words written today against your daily goal and shows the current writing streak.
+- **Trend chart** — visualizes daily word output over the last 30, 90, or 365 days.
+- **Chapter status breakdown** — summarizes how many chapters are in each status stage.
+- **Goal tracking** — shows progress toward the project word goal and optional deadline.
+- **Story Health widget** — surfaces validator counts and top findings, with a `Run Validator` button and direct navigation into problem chapters.
+
+### Timeline
+
+A date-driven view of your manuscript that combines act, chapter, scene, and manual events in one chronological workspace. Open it from the toolbar or the command palette.
+
+- **Automatic events** — chapters, scenes, and acts with dates are collected into the timeline automatically.
+- **Manual events** — add custom events with a title, date, description, category, linked chapter, linked scene, characters, and locations.
+- **Two layouts** — switch between vertical and horizontal timeline modes.
+- **Zoom levels** — group the timeline by year, month, or day.
+- **Filters** — narrow events by character, location, or source type (act, chapter, scene, manual).
+- **Date-aware event editor** — a mini calendar highlights dates already used in the story to make manual event placement easier.
+- **Navigation** — click timeline cards linked to chapters to open the underlying manuscript file directly.
+
 ### Export
 
 Export selected chapters to **EPUB**, **DOCX**, **PDF**, or **Markdown**. Configure a title, author, and whether to include a title page. Select individual chapters or use Select All / Select None. Exported chapters have frontmatter stripped, wikilinks converted to plain text, and are sorted by order. Scene headings (`## heading`) within chapters are converted to scene-break separators in the output.
@@ -209,24 +233,29 @@ When you paste or drop an image into a project file, Novalist automatically move
 
 ### AI Analysis
 
-Connect an LLM to analyse chapter text for references, inconsistencies, and missing entities. Three providers are supported:
+Connect an LLM to analyse chapter text for references, inconsistencies, and missing entities. Two providers are supported:
 
-- **Ollama (local)** — point at a local [Ollama](https://ollama.com) server and select a model. Model lifecycle can be managed automatically (loaded on demand, unloaded when the plugin closes) or manually via the settings panel.
+- **LM Studio (local)** — connect to an [LM Studio](https://lmstudio.ai) server via its OpenAI-compatible API. Configure the server URL (default `http://localhost:1234`), optionally provide an API token, select a loaded model, and manage model loading or unloading directly from settings.
 - **GitHub Copilot** — uses the [Copilot CLI](https://docs.github.com/en/copilot/reference/acp-server) as an ACP server. Install and authenticate the CLI, then set the executable path in settings (defaults to `copilot`).
-- **llama.cpp (local)** — connects to a [llama.cpp](https://github.com/ggml-org/llama.cpp) server via its OpenAI-compatible API. Set the server URL (defaults to `http://127.0.0.1:8080`) and optionally enter the model name manually. The server can be started and stopped automatically by the plugin when the executable path and server arguments are configured, or managed manually via Start/Stop buttons in settings.
 
 Two analysis modes are available. **Per paragraph** splits the text and analyses each piece individually, enabling incremental re-scanning — only paragraphs whose content has changed since the last run are sent to the model. **Whole chapter** sends the entire chapter in a single prompt, giving the model full narrative context (requires a large context window). Each check can be individually enabled or disabled.
 
 - **Reference detection** — finds indirect entity references the regex system cannot catch, such as pronouns, relationship terms (e.g. "his wife" → the character linked as Wife), nicknames, and abbreviated names. Direct name matches already found by regex are excluded.
+- **AI-only references** — optionally disable the built-in regex scanner and let the AI provide all entity reference detection, including direct name matches.
 - **Consistency checking** — flags contradictions between the chapter text and your entity data (e.g. wrong hair colour, mismatched location details). Relationship-based references are also checked. Entity data reflects act/chapter/scene overrides.
 - **Entity suggestions** — spots characters, locations, items, or lore concepts that appear in the text but do not exist in the project, and offers to create them. Each suggestion card has a `Create` button that opens the matching creation modal with the entity name and description pre-filled.
-- **Scene stats detection** — when analysing a scene, the AI determines the point-of-view character, dominant emotion, narrative intensity, and central conflict. The detected values are saved as AI overrides and appear in the Scene Analysis panel with an `(ai)` source label. Manual edits still take priority over AI-determined values, and both can be reset to fall back to the automatic heuristic.
+- **Scene stats detection** — optionally uses AI to determine POV, emotion, intensity, and conflict for each scene and save those values as AI overrides alongside the built-in heuristic analysis.
 
 Findings are shown in two places: the **AI Assistant section** at the bottom of the context sidebar (with sub-tabs and action buttons), and as **inline highlights** directly in the editor — references get a solid underline, inconsistencies a wavy red underline, and suggestions a dashed green underline. Hover over a highlight to see the finding title.
 
 An `Auto` toggle enables iterative re-analysis — the chapter is automatically re-analysed 5 seconds after each edit. A manual re-analyse button is always available. Unchanged paragraphs are skipped automatically (paragraph mode only), making re-analysis faster after small edits.
 
-The toolbar gains an `AI` tab with a one-click analyse button, a `Full Story` button, and a `Chat` button that opens the AI Chat sidebar.
+In addition to chapter analysis, Novalist offers two manuscript-wide AI review modes:
+
+- **Full Story** — analyses chapters sequentially with progress, ETA, and grouped findings.
+- **Consistency Check** — sends all chapters plus cached findings in a single cross-story review, stores the last result per project, and exposes it from the toolbar's `AI: Consistency Check` button.
+
+The toolbar gains an `AI` tab with `Chapter Review`, `Story Review`, `Consistency Check`, and `Chat` buttons.
 
 ### AI Chat
 
@@ -236,7 +265,7 @@ An interactive chat sidebar where you can converse with the LLM about your novel
 - Conversation history is maintained within the session. Use `Clear chat` to start fresh.
 - The AI can edit the active chapter file directly. It proposes edits using a structured search-and-replace format; edits are applied automatically and a notice confirms how many changes were made.
 - The AI cannot modify any other project files (characters, locations, items, lore). It can only read them for context.
-- Supports Ollama, GitHub Copilot, and llama.cpp providers. Responses are streamed token-by-token for immediate feedback.
+- Supports both LM Studio and GitHub Copilot providers. Responses are streamed token-by-token for immediate feedback.
 - Open the chat from the toolbar `AI > Chat` button, or from the command palette (`Open AI chat`).
 
 ### Acts
@@ -306,25 +335,29 @@ A fixed-width panel on the left side of the editor that shows notes and outline 
 | Enable annotations | Toggle the inline comment system | On |
 | Daily word goal | Target words per day | 1000 |
 | Project word goal | Target total word count | 50000 |
+| Project deadline | Optional manuscript deadline used by dashboard goal tracking | _(empty)_ |
 | Role colors | Color picker per character role | Auto-discovered |
 | Gender colors | Color picker per gender value | Auto-discovered |
 | Enable AI assistant | Use an LLM for reference detection, consistency checks, and entity suggestions | Off |
-| Provider | Choose the AI provider: Ollama (local), GitHub Copilot, or llama.cpp (local) | Ollama |
-| Analysis mode | Per paragraph (incremental) or whole chapter (single prompt) | Per paragraph |
-| Ollama server URL | Address of the Ollama API server (Ollama provider) | `http://127.0.0.1:11434` |
-| Model | Select which Ollama model to use for analysis (Ollama provider) | _(none)_ |
-| Auto-manage model | Automatically load the model when needed and unload it when the plugin closes (Ollama provider) | On |
+| Provider | Choose the AI provider: LM Studio (local) or GitHub Copilot | LM Studio |
+| Analysis mode | Per paragraph (incremental) or whole chapter (single prompt) | Whole chapter |
+| LM Studio server URL | Address of the LM Studio API server (LM Studio provider) | `http://localhost:1234` |
+| LM Studio API token | Optional bearer token for authenticated LM Studio instances | _(empty)_ |
+| LM Studio model | Select which LM Studio model to use for analysis | _(none)_ |
+| Temperature | Controls randomness of AI output | `0.7` |
+| Context length | Context window size for local model requests; `0` uses server default | `0` |
+| Top P | Nucleus sampling threshold for AI output | `0.9` |
+| Min P | Minimum probability threshold for token filtering | `0.05` |
+| Frequency penalty | Penalizes repetition in AI output | `1.1` |
+| Repeat last N | Number of recent tokens checked for repetition | `64` |
 | Copilot CLI path | Path to the Copilot CLI executable (Copilot provider) | `copilot` |
 | Copilot model | Select which model Copilot uses for analysis (Copilot provider) | _(default)_ |
-| llama.cpp server URL | Address of the llama.cpp server (llama.cpp provider) | `http://127.0.0.1:8080` |
-| llama.cpp executable path | Path to the llama-server executable (llama.cpp provider) | _(empty)_ |
-| llama.cpp server arguments | Command-line arguments passed to the server, e.g. `-m /path/to/model.gguf` (llama.cpp provider) | _(empty)_ |
-| llama.cpp auto-start server | Start the server automatically on plugin load and stop it on close (llama.cpp provider) | Off |
-| llama.cpp model name | Model identifier sent to the llama.cpp server (llama.cpp provider) | _(empty)_ |
 | Check references | Detect indirect entity references (pronouns, relationship terms) that regex matching cannot find | On |
+| AI-only references | Disable the built-in regex scanner and rely on AI for all entity reference detection | Off |
 | Check inconsistencies | Flag contradictions between the chapter text and entity details | On |
 | Check suggestions | Identify unregistered entities mentioned in the text | On |
 | Detect scene stats | Use AI to determine POV, emotion, intensity, and conflict for each scene | On |
+| System prompt | Custom system prompt override for the AI Assistant; leave empty to use the built-in default | Built-in default |
 
 ## Commands
 
@@ -335,6 +368,8 @@ A fixed-width panel on the left side of the editor that shows notes and outline 
 | Open custom explorer | Open the project explorer |
 | Open character map | Open the relationship graph |
 | Open plot board | Open the plot planning board |
+| Open dashboard | Open the writing dashboard |
+| Open timeline view | Open the timeline workspace |
 | Export novel | Open the export view |
 | Open character sheet view | View the active character file as a form |
 | Open location sheet view | View the active location file as a form |
@@ -354,7 +389,7 @@ A fixed-width panel on the left side of the editor that shows notes and outline 
 | Toggle chapter notes panel | Show or hide the chapter notes panel in the editor |
 | Move chapter content to notes | Extract chapter and scene prose into the notes panel, leaving only headings |
 | Move all chapter content to notes | Run the extraction for every chapter in the project |
-| Analyse chapter with AI | Run Ollama-powered reference, consistency, and suggestion analysis on the active chapter |
+| Analyse chapter with AI | Run AI reference, consistency, and suggestion analysis on the active chapter |
 | Analyse full story with AI | Analyse every chapter in the project with a progress bar, ETA, and grouped results |
 | Open AI chat | Open the AI chat sidebar for interactive conversation about your novel |
 | Validate story | Run the rule-based plot validator across the full project and open the findings modal |
@@ -370,13 +405,6 @@ Novalist ships with **English** and **German** UI translations. The active local
 If you find Novalist helpful in your writing journey, consider supporting its development:
 
 [<img src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" alt="Donate with PayPal" />](https://www.paypal.com/donate/?hosted_button_id=EQJG5JHAKYU4S)
-
-<a href="https://ko-fi.com/L3L81U8JW8" target="_blank">
-  <img src="https://storage.ko-fi.com/cdn/kofi6.png?v=6" height="36" alt="Buy Me a Coffee at ko-fi.com">
-</a>
-
-
-**Quick note**: I’m a professional developer, but for Novalist I leaned heavily on LLMs. That may or may not align with your philosophy — either way, I appreciate you taking a look. I prefer to be transparent about how it was built.
 
 ---
 
