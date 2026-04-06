@@ -1,5 +1,7 @@
 # Novalist for Obsidian
 
+> **This version of Novalist is superseded.** Development continues at [novalist-official](https://github.com/Drommedhar/novalist-official). Please use the new repository for the latest features, bug fixes, and support. This repository is no longer actively maintained.
+
 <img src="images/novalist.png" alt="Novalist Logo" width="400"/>
 
 A comprehensive novel writing environment for Obsidian. Novalist turns your vault into a full-featured writing workspace with structured character and location management, an interactive relationship map, a plot board, a timeline, a writing dashboard, inline annotations, real-time statistics, multi-project support, a shared World Bible, and multi-format export — all without leaving Obsidian.
